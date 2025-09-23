@@ -29,6 +29,9 @@ export class Player {
     };
     this.currentAction = null;
     this._jumpPlaying = false;
+    // Horizontal movement smoothing
+    this._hVelocity = new THREE.Vector3(); // horizontal velocity (x,z)
+    this._hAccel = options.hAcceleration ?? 40; // units per second^2-ish smoothing factor
     this._loadModel();
   }
 
@@ -310,7 +313,16 @@ export class Player {
     if (input.isKey('KeyD')) move.add(cameraOrientation.right);
     move.normalize();
 
-    const horiz = move.multiplyScalar(this.speed * delta);
+  // Desired horizontal displacement for this frame (without smoothing)
+  const desired = move.clone().multiplyScalar(this.speed);
+
+  // Smooth horizontal velocity: accelerate _hVelocity towards desired
+  // using a simple critically-damped style update: v += (desired - v) * (1 - exp(-k*dt))
+  const k = Math.max(0.0, this._hAccel);
+  const lerpFactor = 1 - Math.exp(-k * delta);
+  this._hVelocity.lerp(desired, lerpFactor);
+  // displacement this frame
+  const horiz = this._hVelocity.clone().multiplyScalar(delta);
 
     // When third-person camera is active (player control active), rotate the player to face camera forward
     if (active && cameraOrientation && cameraOrientation.forward) {
@@ -340,7 +352,7 @@ export class Player {
       this.onGround = false;
     }
 
-    const movementThisFrame = new THREE.Vector3(horiz.x, this.velocity.y * delta, horiz.z);
+  const movementThisFrame = new THREE.Vector3(horiz.x, this.velocity.y * delta, horiz.z);
     this.moveAndCollide(movementThisFrame, platforms, delta);
 
     // Update animations
@@ -351,7 +363,8 @@ export class Player {
     }
 
     // Determine which action should play: jump > walk > idle
-    const moving = horiz.lengthSq() > 1e-6;
+  // Determine moving state based on smoothed horizontal velocity magnitude
+  const moving = this._hVelocity.lengthSq() > 1e-6;
 
     // If we just started a jump (left ground and jump action exists), play jump
     if (!this.onGround && !this._jumpPlaying && this.actions.jump) {
