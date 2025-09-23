@@ -5,9 +5,47 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>cs-platformerv2</title>
+    <style>
+      /* Pause menu overlay */
+      #pauseMenu {
+        position: fixed;
+        left: 0;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        display: none; /* shown when paused */
+        align-items: center;
+        justify-content: center;
+        background: rgba(0,0,0,0.55);
+        z-index: 9999;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+        color: #fff;
+      }
+      #pauseMenu .panel {
+        background: rgba(20,20,20,0.95);
+        padding: 24px 32px;
+        border-radius: 8px;
+        min-width: 260px;
+        text-align: center;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      }
+      #pauseMenu h1 { margin: 0 0 12px 0; font-size: 20px; }
+      #pauseMenu p { margin: 0 0 18px 0; color: #ccc; }
+      #pauseMenu button { padding: 8px 14px; border-radius: 6px; border: none; background: #2b6eff; color: white; cursor: pointer; }
+      #pauseMenu button:active { transform: translateY(1px); }
+    </style>
   </head>
   <body>
     <div id="app"></div>
+    <div id="pauseMenu" role="dialog" aria-hidden="true">
+      <div class="panel">
+        <h1>Paused</h1>
+        <p>Game is paused. Press <strong>Esc</strong> or click Resume to continue.</p>
+        <div style="display:flex;gap:12px;justify-content:center">
+          <button id="resumeBtn">Resume</button>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
