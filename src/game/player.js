@@ -220,43 +220,72 @@ export class Player {
     // Determine the highest platform directly under the player (by XZ) regardless of velocity.
     const playerBottom = this.collider.min.y;
     let closestY = -Infinity;
+    let closestPlatBox = null;
     platforms.forEach(plat => {
       const platBox = plat.userData.collider;
       // require XZ overlap between player's horizontal footprint and platform
       const xOverlap = this.collider.max.x > platBox.min.x && this.collider.min.x < platBox.max.x;
       const zOverlap = this.collider.max.z > platBox.min.z && this.collider.min.z < platBox.max.z;
       if (xOverlap && zOverlap) {
-        if (platBox.max.y > closestY) closestY = platBox.max.y;
+        if (platBox.max.y > closestY) {
+          closestY = platBox.max.y;
+          closestPlatBox = platBox;
+        }
       }
     });
 
     const landThreshold = 0.06; // how close (in world units) bottom must be to platform top to land
     const penetrationAllowance = 0.01; // small allowance for penetration correction
     let snapped = false;
-    if (closestY > -Infinity) {
+    if (closestY > -Infinity && closestPlatBox) {
       // distance from player's bottom to platform top
       const distance = playerBottom - closestY;
+      // compute previous bottom (before movement) to determine where we came from
+      const playerHeight = (this.size && this.size[1]) ? this.size[1] : (this.collider.max.y - this.collider.min.y);
+      const prevBottom = prevPos.y - playerHeight / 2;
 
-      if (distance < -penetrationAllowance) {
-        // penetrating platform from below; move player up to sit on top
-        const playerHeight = this.collider.max.y - this.collider.min.y;
-        this.mesh.position.y = closestY + playerHeight / 2;
-        this._updateCollider();
-        this.velocity.y = 0;
-        this.onGround = true;
-        snapped = true;
-      } else if (distance <= landThreshold) {
-        // close enough to consider landed — snap and zero vertical velocity
-        const playerHeight = this.collider.max.y - this.collider.min.y;
-        this.mesh.position.y = closestY + playerHeight / 2;
-        this._updateCollider();
-        this.velocity.y = 0;
-        this.onGround = true;
-        snapped = true;
+      // Only snap to the top if the player was previously at or above the platform top
+      // (i.e., we're landing or slightly penetrating from above). This prevents
+      // teleporting the player to the top when they're coming from underneath.
+      if (prevBottom >= closestY - landThreshold) {
+        if (distance <= landThreshold) {
+          // close enough to consider landed — snap and zero vertical velocity
+          this.mesh.position.y = closestY + playerHeight / 2;
+          this._updateCollider();
+          this.velocity.y = 0;
+          this.onGround = true;
+          snapped = true;
+        } else if (distance < -penetrationAllowance) {
+          // penetrating from above (rare): correct by moving player up
+          this.mesh.position.y = closestY + playerHeight / 2;
+          this._updateCollider();
+          this.velocity.y = 0;
+          this.onGround = true;
+          snapped = true;
+        } else {
+          // sufficiently above platform: in the air
+          this._airTime += delta;
+          if (this._airTime >= this._airThreshold) this.onGround = false;
+        }
       } else {
-        // sufficiently above platform: in the air
-        this._airTime += delta;
-        if (this._airTime >= this._airThreshold) this.onGround = false;
+        // We were previously below the platform — do NOT teleport to top.
+        // If we are intersecting the platform from below (hitting its underside),
+        // push the player slightly downward to just below the platform bottom to
+        // prevent getting stuck inside it.
+        const playerTop = this.collider.max.y;
+        const platBottom = closestPlatBox.min.y;
+        if (playerTop > platBottom) {
+          // move player so their top sits just below the platform bottom
+          this.mesh.position.y = platBottom - playerHeight / 2 - penetrationAllowance;
+          this._updateCollider();
+          // cancel upward velocity so they don't immediately re-penetrate
+          if (this.velocity.y > 0) this.velocity.y = 0;
+          this.onGround = false;
+        } else {
+          // not intersecting vertically — still in the air
+          this._airTime += delta;
+          if (this._airTime >= this._airThreshold) this.onGround = false;
+        }
       }
     } else {
       // no platform under player
