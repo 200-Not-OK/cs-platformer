@@ -5,6 +5,11 @@ import { Player } from './player.js';
 import { LevelManager } from './levelManager.js';
 import { ThirdPersonCamera } from './thirdPersonCamera.js';
 import { FreeCamera } from './freeCamera.js';
+import { UIManager } from './uiManager.js';
+import { HUD } from './components/hud.js';
+import { Minimap } from './components/minimap.js';
+import { Objectives } from './components/objectives.js';
+import { SmallMenu } from './components/menu.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
 
 export class Game {
@@ -18,12 +23,12 @@ export class Game {
 
   // Level system
   this.levelManager = new LevelManager(this.scene);
-  this.level = this.levelManager.loadFirst();
+  this.level = null;
 
   // Player
   this.player = new Player(this.scene, { speed: 9, jumpStrength: 10, size: [1, 1, 1] });
-  // Set player position from levelData
-  const start = this.level.data.startPosition ?? [0, 2, 8];
+  // Set a safe default spawn until the initial level is loaded
+  const start = this.level?.data?.startPosition ?? [0, 2, 8];
   this.player.setPosition(new THREE.Vector3(...start));
 
     // Cameras
@@ -75,6 +80,14 @@ export class Game {
     // When switching to free camera, move it near player
     this._bindKeys();
 
+  // UI manager (modular UI per-level)
+  this.ui = new UIManager(document.getElementById('app'));
+  // register a default HUD — actual per-level UI will be loaded by loadLevel
+  this.ui.add('hud', HUD, { health: 100 });
+
+  // Load the initial level early so subsequent code can reference `this.level`
+  this.loadLevel(0);
+
     // debug toggles
     this.showColliders = true;
     this.level.toggleColliders(this.showColliders);
@@ -106,10 +119,10 @@ export class Game {
       }
     });
 
-    // loop
-    this.last = performance.now();
-    this._loop = this._loop.bind(this);
-    requestAnimationFrame(this._loop);
+  // loop
+  this.last = performance.now();
+  this._loop = this._loop.bind(this);
+  requestAnimationFrame(this._loop);
   }
 
   _bindKeys() {
@@ -180,6 +193,15 @@ export class Game {
     // update level (updates colliders/helpers)
     this.level.update();
 
+    // update UI each frame with some context (player model and simple state)
+    if (this.ui) {
+      const ctx = {
+        player: { health: this.player.health ?? 100 },
+        playerModel: this.player.mesh
+      };
+      this.ui.update(delta, ctx);
+    }
+
     // determine camera orientation for movement mapping
     let camOrientation, playerActive;
     if (this.activeCamera === this.thirdCam.getCamera()) {
@@ -201,6 +223,36 @@ export class Game {
 
     // render
     this.renderer.render(this.scene, this.activeCamera);
+  }
+
+  // Load level by index and swap UI based on level metadata
+  loadLevel(index) {
+    if (this.level) this.level.dispose();
+    this.level = this.levelManager.loadIndex(index);
+    // place player at start
+    const start = this.level.data.startPosition ?? [0, 2, 8];
+    this.player.setPosition(new THREE.Vector3(...start));
+    this.player.velocity.set(0, 0, 0);
+
+    // swap UI components according to level.data.ui (array of strings)
+    this.applyLevelUI(this.level.data);
+    return this.level;
+  }
+
+  applyLevelUI(levelData) {
+    // Clear existing UI and re-add defaults according to level metadata
+    if (!this.ui) return;
+    this.ui.clear();
+    const uiList = (levelData && levelData.ui) ? levelData.ui : ['hud'];
+    for (const key of uiList) {
+      if (key === 'hud') this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
+      else if (key === 'minimap') this.ui.add('minimap', Minimap, {});
+      else if (key === 'objectives') this.ui.add('objectives', Objectives, { items: levelData.objectives ?? ['Reach the goal'] });
+      else if (key === 'menu') this.ui.add('menu', SmallMenu, { onResume: () => this.setPaused(false) });
+      else {
+        console.warn('Unknown UI key in level data:', key);
+      }
+    }
   }
 
   setPaused(v) {
