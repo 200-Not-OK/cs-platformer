@@ -29,6 +29,6 @@ export class Minimap extends UIComponent {
     const player = ctx.playerModel;
     if (!player || !player.position) return;
     const p = player.position;
-    this.posEl.textContent = `x:${p.x.toFixed(1)} z:${p.z.toFixed(1)}`;
+    this.posEl.textContent = `x:${p.x.toFixed(1)} z:${p.z.toFixed(1)} y:${p.y.toFixed(1)}`;
   }
 }

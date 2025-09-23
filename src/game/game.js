@@ -26,7 +26,7 @@ export class Game {
   this.level = null;
 
   // Player
-  this.player = new Player(this.scene, { speed: 9, jumpStrength: 10, size: [1, 1, 1] });
+  this.player = new Player(this.scene, { speed: 9, jumpStrength: 12, size: [1, 1, 1] });
   // Set a safe default spawn until the initial level is loaded
   const start = this.level?.data?.startPosition ?? [0, 2, 8];
   this.player.setPosition(new THREE.Vector3(...start));
@@ -161,11 +161,9 @@ export class Game {
         // ensure player is active when in third- or first-person
         // (handled each frame in _loop by checking activeCamera)
       } else if (code === 'KeyN') {
-        // next level
-        this.level = this.levelManager.loadNext();
-        const start = this.level.data.startPosition ?? [0, 2, 8];
-        this.player.setPosition(new THREE.Vector3(...start));
-        this.player.velocity.set(0, 0, 0);
+        // next level — use loadLevel so per-level UI is applied
+        const nextIndex = this.levelManager.currentIndex + 1;
+        this.loadLevel(nextIndex);
       } else if (code === 'KeyH') {
         // toggle collider visualization
         this.showColliders = !this.showColliders;

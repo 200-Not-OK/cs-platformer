@@ -7,7 +7,12 @@ export class FreeCamera {
     this.dom = domElement;
     this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
     this.camera.position.set(20, 20, 20);
-    this.pitch = 0; this.yaw = -Math.PI / 4;
+    // By default spawn looking at the origin
+    this.camera.lookAt(new THREE.Vector3(0, 0, 0));
+    // Derive yaw/pitch from the look direction so mouse-look continues smoothly
+    const toOrigin = new THREE.Vector3().subVectors(new THREE.Vector3(0, 0, 0), this.camera.position).normalize();
+    this.pitch = Math.asin(THREE.MathUtils.clamp(toOrigin.y, -1, 1));
+    this.yaw = Math.atan2(toOrigin.x, toOrigin.z);
     this.sensitivity = 0.0025;
     this.moveSpeed = 15;
     this.lerp = 0.15;
@@ -56,10 +61,20 @@ export class FreeCamera {
   getCamera() { return this.camera; }
 
   // helper to position camera relative to player when switching into free mode
-  moveNearPlayer(player, offset = new THREE.Vector3(12, 8, 12)) {
+  moveNearPlayer(player, offset = new THREE.Vector3(12, 8, 12), lookAtOrigin = true) {
     const desired = new THREE.Vector3().copy(player.mesh.position).add(offset);
     this.camera.position.copy(desired);
-    this.camera.lookAt(player.mesh.position);
+    if (lookAtOrigin) {
+      this.camera.lookAt(new THREE.Vector3(0, 0, 0));
+      const toOrigin = new THREE.Vector3().subVectors(new THREE.Vector3(0, 0, 0), this.camera.position).normalize();
+      this.pitch = Math.asin(THREE.MathUtils.clamp(toOrigin.y, -1, 1));
+      this.yaw = Math.atan2(toOrigin.x, toOrigin.z);
+    } else {
+      this.camera.lookAt(player.mesh.position);
+      const toPlayer = new THREE.Vector3().subVectors(player.mesh.position, this.camera.position).normalize();
+      this.pitch = Math.asin(THREE.MathUtils.clamp(toPlayer.y, -1, 1));
+      this.yaw = Math.atan2(toPlayer.x, toPlayer.z);
+    }
   }
 
   getOrientation() {
