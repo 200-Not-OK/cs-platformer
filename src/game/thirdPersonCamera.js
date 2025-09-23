@@ -30,7 +30,7 @@ export class ThirdPersonCamera {
     // Always rotate by mouse movement (no mouseDown check)
     const d = this.input.consumeMouseDelta();
     this.yaw -= d.x * this.sensitivity;
-    this.pitch -= d.y * this.sensitivity;
+    this.pitch += d.y * this.sensitivity;
     this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
 
     // compute camera desired position relative to player

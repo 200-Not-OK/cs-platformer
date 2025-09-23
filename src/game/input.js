@@ -19,6 +19,12 @@ export class InputManager {
       this._last = null;
     });
     domElement.addEventListener('mousemove', (e) => {
+      // If pointer is locked, use movementX/movementY for smooth camera
+      if (document.pointerLockElement === domElement || document.pointerLockElement === document.body) {
+        this.mouseDelta.x += e.movementX;
+        this.mouseDelta.y += e.movementY;
+        return;
+      }
       if (this.alwaysTrackMouse) {
         if (this._last) {
           const dx = e.clientX - this._last.x;

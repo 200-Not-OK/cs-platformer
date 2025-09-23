@@ -14,7 +14,7 @@ export const levels = [
   {
     id: 'platformer',
     name: 'Platform Course',
-    startPosition: [-8, 2, 8],
+    startPosition: [-8, 2, 5],
     objects: [
       { type: 'box', position: [-8, 0, 0], size: [24, 1, 12], color: 0x2e8b57 },
       { type: 'box', position: [-2, 2, -4], size: [3, 1, 3], color: 0xcd853f },
