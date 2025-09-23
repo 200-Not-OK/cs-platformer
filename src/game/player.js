@@ -13,6 +13,8 @@ export class Player {
     this.scene.add(this.mesh);
     this.collider = new THREE.Box3();
     this.helper = new ColliderHelper(this.collider, 0xff0000);
+  // Collider size (may differ from visual model size): same height, half x/z
+    this.colliderSize = [this.size[0] * 0.5, this.size[1], this.size[2] * 0.5];
     this.scene.add(this.helper.mesh);
     this.velocity = new THREE.Vector3();
     this.onGround = false;
@@ -81,6 +83,8 @@ export class Player {
   const sizeVec = new THREE.Vector3();
   bbox.getSize(sizeVec);
   this.size = [sizeVec.x, sizeVec.y, sizeVec.z];
+  // Collider should use same height but half width/depth to avoid hand collisions
+  this.colliderSize = [sizeVec.x * 0.2, sizeVec.y, sizeVec.z * 0.5];
   // Center horizontally
   const centerX = (bbox.max.x + bbox.min.x) / 2;
   const centerZ = (bbox.max.z + bbox.min.z) / 2;
@@ -155,13 +159,23 @@ export class Player {
     // Use a stable collider computed from the known size and mesh.position.
     // This avoids per-frame fluctuations from skinned/animated models
     // which can change the bounding box slightly and cause snap-hover loops.
-    const sizeVec = new THREE.Vector3(this.size[0], this.size[1], this.size[2]);
+  // Use colliderSize (may be narrower than visual model) so hands don't collide
+    const sizeVec = new THREE.Vector3(this.colliderSize[0], this.colliderSize[1], this.colliderSize[2]);
     const half = sizeVec.clone().multiplyScalar(0.5);
     const center = new THREE.Vector3().copy(this.mesh.position);
     // If the model was offset during load (we moved feet to y=0), the mesh.position
     // is treated as the collider center already (setPosition uses collider center).
     this.collider.min.copy(center).sub(half);
     this.collider.max.copy(center).add(half);
+  }
+
+  // Public API: change collider size (x, y, z) where x/z are horizontal extents
+  // and y is height. This will immediately update the Box3 and the helper mesh.
+  setColliderSize(sizeArr) {
+    if (!sizeArr || sizeArr.length < 3) return;
+    this.colliderSize = [sizeArr[0], sizeArr[1], sizeArr[2]];
+    this._updateCollider();
+    if (this.helper) this.helper.update();
   }
 
   setPosition(vec3) {
@@ -178,10 +192,11 @@ export class Player {
     const prevPos = this.mesh.position.clone();
 
     // Apply horizontal movement per-axis so we can slide along obstacles.
+    const EPS = 1e-3;
     const intersects = (a, b) => (
-      a.min.x < b.max.x && a.max.x > b.min.x &&
-      a.min.y < b.max.y && a.max.y > b.min.y &&
-      a.min.z < b.max.z && a.max.z > b.min.z
+      a.min.x < b.max.x - EPS && a.max.x > b.min.x + EPS &&
+      a.min.y < b.max.y - EPS && a.max.y > b.min.y + EPS &&
+      a.min.z < b.max.z - EPS && a.max.z > b.min.z + EPS
     );
 
     // Try X axis
@@ -191,6 +206,10 @@ export class Player {
       let collidedX = false;
       for (let i = 0; i < platforms.length; i++) {
         const platBox = platforms[i].userData.collider;
+        // Compute vertical overlap between player collider and platform
+        const overlapY = Math.min(this.collider.max.y, platBox.max.y) - Math.max(this.collider.min.y, platBox.min.y);
+        const minOverlap = 0.02; // require >2cm overlap to be considered a blocking collision
+        if (overlapY <= minOverlap) continue;
         if (intersects(this.collider, platBox)) { collidedX = true; break; }
       }
       if (collidedX) {
@@ -207,6 +226,10 @@ export class Player {
       let collidedZ = false;
       for (let i = 0; i < platforms.length; i++) {
         const platBox = platforms[i].userData.collider;
+        // Compute vertical overlap between player collider and platform
+        const overlapY = Math.min(this.collider.max.y, platBox.max.y) - Math.max(this.collider.min.y, platBox.min.y);
+        const minOverlap = 0.02;
+        if (overlapY <= minOverlap) continue;
         if (intersects(this.collider, platBox)) { collidedZ = true; break; }
       }
       if (collidedZ) {
