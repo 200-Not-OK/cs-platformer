@@ -27,16 +27,11 @@ export class ThirdPersonCamera {
   }
 
   update() {
-    // consume mouse delta only when mouse is down
-    if (this.input.mouseDown) {
-      const d = this.input.consumeMouseDelta();
-      this.yaw -= d.x * this.sensitivity;
-      this.pitch -= d.y * this.sensitivity;
-      this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
-    } else {
-      // clear accumulated delta if not used
-      this.input.consumeMouseDelta();
-    }
+    // Always rotate by mouse movement (no mouseDown check)
+    const d = this.input.consumeMouseDelta();
+    this.yaw -= d.x * this.sensitivity;
+    this.pitch -= d.y * this.sensitivity;
+    this.pitch = Math.max(this.minPitch, Math.min(this.maxPitch, this.pitch));
 
     // compute camera desired position relative to player
     const offset = new THREE.Vector3(

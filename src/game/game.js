@@ -23,9 +23,11 @@ export class Game {
     this.level = this.levelManager.loadFirst();
 
     // Cameras
-    this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
-    this.freeCam = new FreeCamera(this.input, window);
-    this.activeCamera = this.thirdCam.getCamera();
+  this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
+  this.freeCam = new FreeCamera(this.input, window);
+  this.activeCamera = this.thirdCam.getCamera();
+  // Enable alwaysTrackMouse for third-person camera
+  this.input.alwaysTrackMouse = true;
 
     // When switching to free camera, move it near player
     this._bindKeys();
@@ -53,8 +55,10 @@ export class Game {
         if (this.activeCamera === this.thirdCam.getCamera()) {
           this.freeCam.moveNearPlayer(this.player);
           this.activeCamera = this.freeCam.getCamera();
+          this.input.alwaysTrackMouse = false; // only drag for free cam
         } else {
           this.activeCamera = this.thirdCam.getCamera();
+          this.input.alwaysTrackMouse = true; // always track for third-person
         }
       } else if (code === 'KeyN') {
         // next level
@@ -83,17 +87,19 @@ export class Game {
     this.level.update();
 
     // determine camera orientation for movement mapping
-    let camOrientation;
+    let camOrientation, playerActive;
     if (this.activeCamera === this.thirdCam.getCamera()) {
       this.thirdCam.update();
       camOrientation = this.thirdCam.getCameraOrientation();
+      playerActive = true;
     } else {
       this.freeCam.update(delta);
       camOrientation = this.freeCam.getOrientation();
+      playerActive = false;
     }
 
     // update player (movement read from input manager)
-    this.player.update(delta, this.input, camOrientation, this.level.getPlatforms());
+    this.player.update(delta, this.input, camOrientation, this.level.getPlatforms(), playerActive);
 
     // render
     this.renderer.render(this.scene, this.activeCamera);

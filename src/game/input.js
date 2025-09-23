@@ -4,11 +4,11 @@ export class InputManager {
     this.keys = {};
     this.mouseDelta = { x: 0, y: 0 };
     this.mouseDown = false;
+    this.alwaysTrackMouse = false; // set true for third-person camera
 
     domElement.addEventListener('keydown', (e) => { this.keys[e.code] = true; });
     domElement.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
 
-    // Mouse - we will use pointer lock only for free camera optionally; for orbit camera use drag
     this._last = null;
     domElement.addEventListener('mousedown', (e) => {
       this.mouseDown = true;
@@ -19,12 +19,22 @@ export class InputManager {
       this._last = null;
     });
     domElement.addEventListener('mousemove', (e) => {
-      if (!this._last) return;
-      const dx = e.clientX - this._last.x;
-      const dy = e.clientY - this._last.y;
-      this.mouseDelta.x += dx;
-      this.mouseDelta.y += dy;
-      this._last = { x: e.clientX, y: e.clientY };
+      if (this.alwaysTrackMouse) {
+        if (this._last) {
+          const dx = e.clientX - this._last.x;
+          const dy = e.clientY - this._last.y;
+          this.mouseDelta.x += dx;
+          this.mouseDelta.y += dy;
+        }
+        this._last = { x: e.clientX, y: e.clientY };
+      } else {
+        if (!this._last) return;
+        const dx = e.clientX - this._last.x;
+        const dy = e.clientY - this._last.y;
+        this.mouseDelta.x += dx;
+        this.mouseDelta.y += dy;
+        this._last = { x: e.clientX, y: e.clientY };
+      }
     });
 
     // small helper to consume mouse movement when used
