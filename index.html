@@ -6,6 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>cs-platformerv2</title>
     <style>
+      /* Reset layout so the game canvas fills the viewport with no scrollbars */
+  html, body, #app { height: 100%; width: 100%; margin: 0; padding: 0; }
+  body { overflow: hidden; }
+  /* UI root sits above the canvas so components are visible */
+  #app { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+      canvas { display: block; }
       /* Pause menu overlay */
       #pauseMenu {
         position: fixed;
@@ -33,6 +39,11 @@
       #pauseMenu p { margin: 0 0 18px 0; color: #ccc; }
       #pauseMenu button { padding: 8px 14px; border-radius: 6px; border: none; background: #2b6eff; color: white; cursor: pointer; }
       #pauseMenu button:active { transform: translateY(1px); }
+      /* UI component defaults */
+      .game-hud { font-size: 14px; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.6); }
+      .game-minimap { border-radius: 6px; overflow: hidden; }
+      .game-objectives { border-radius: 6px; }
+      .game-smallmenu button { padding: 8px 12px; border-radius: 6px; border: none; background: #2b6eff; color: white; cursor: pointer; }
     </style>
   </head>
   <body>
