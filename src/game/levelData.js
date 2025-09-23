@@ -7,7 +7,7 @@ export const levels = [
     objects: [
       // platform objects are generic "box" objects: position + size + optional color
       { type: 'box', position: [0, 0, 0], size: [20, 1, 20], color: 0x6b8e23 }, // ground
-      { type: 'box', position: [0, 2, -6], size: [4, 1, 4], color: 0x8b4513 },
+      { type: 'box', position: [0, 1.8, -6], size: [4, 1, 4], color: 0x8b4513 },
       { type: 'box', position: [6, 4, -10], size: [6, 1, 6], color: 0x8b4513 }
     ]
   },

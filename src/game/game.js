@@ -15,17 +15,20 @@ export class Game {
     // Input
     this.input = new InputManager(window);
 
-    // Player
-    this.player = new Player(this.scene, { speed: 9, jumpStrength: 10, size: [1, 1.8, 1] });
+  // Level system
+  this.levelManager = new LevelManager(this.scene);
+  this.level = this.levelManager.loadFirst();
 
-    // Level system
-    this.levelManager = new LevelManager(this.scene);
-    this.level = this.levelManager.loadFirst();
+  // Player
+  this.player = new Player(this.scene, { speed: 9, jumpStrength: 10, size: [1, 1, 1] });
+  // Set player position from levelData
+  const start = this.level.data.startPosition ?? [0, 2, 8];
+  this.player.setPosition(new THREE.Vector3(...start));
 
     // Cameras
     this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
     this.freeCam = new FreeCamera(this.input, window);
-    this.activeCamera = this.thirdCam.getCamera();
+    this.activeCamera = this.freeCam.getCamera();
     // Enable alwaysTrackMouse for third-person camera
     this.input.alwaysTrackMouse = true;
     // Request pointer lock for third-person camera
