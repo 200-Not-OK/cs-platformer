@@ -18,6 +18,8 @@ export class Player {
     this.onGround = false;
     this._airTime = 0; // time spent not snapping to ground
     this._airThreshold = 0.08; // seconds before considered truly in air
+    this._modelYawOffset = 0; // offset to align model forward with world forward
+    this._turnLerp = 0.14; // smoothing for rotation to face camera
     this._loadModel();
   }
 
@@ -45,8 +47,8 @@ export class Player {
       // Move player so bottom of collider sits on platform
       const playerHeight = this.collider.max.y - this.collider.min.y;
       this.mesh.position.y = highestY + playerHeight / 2;
-      this._updateCollider();
-      if (this.helper) this.helper.update();
+  this._updateCollider();
+  if (this.helper) this.helper.updateWithRotation(this.mesh.rotation);
     }
   }
 
@@ -79,7 +81,9 @@ export class Player {
   // We keep a stable size-based collider; ensure helper matches
   // the computed size
   this._updateCollider();
-  this.mesh.rotation.y = Math.PI;
+  // Model previously had a 180° flip; remove that so forward aligns with camera forward
+  this._modelYawOffset = 0;
+  this.mesh.rotation.y = this._modelYawOffset;
   this.mesh.scale.set(1, 1, 1);
   this.mesh.castShadow = true;
   this.helper.update();
@@ -114,8 +118,50 @@ export class Player {
   }
 
   moveAndCollide(movement, platforms, delta = 0) {
-    // Only handle vertical movement and snap to ground/platform
-    this.mesh.position.add(movement);
+    // Two-phase: handle horizontal movement first (prevent side penetration), then vertical + snapping
+    const prevPos = this.mesh.position.clone();
+
+    // Apply horizontal movement per-axis so we can slide along obstacles.
+    const intersects = (a, b) => (
+      a.min.x < b.max.x && a.max.x > b.min.x &&
+      a.min.y < b.max.y && a.max.y > b.min.y &&
+      a.min.z < b.max.z && a.max.z > b.min.z
+    );
+
+    // Try X axis
+    if (movement.x !== 0) {
+      this.mesh.position.x += movement.x;
+      this._updateCollider();
+      let collidedX = false;
+      for (let i = 0; i < platforms.length; i++) {
+        const platBox = platforms[i].userData.collider;
+        if (intersects(this.collider, platBox)) { collidedX = true; break; }
+      }
+      if (collidedX) {
+        // revert only X movement so we can slide along Z
+        this.mesh.position.x = prevPos.x;
+        this._updateCollider();
+      }
+    }
+
+    // Try Z axis
+    if (movement.z !== 0) {
+      this.mesh.position.z += movement.z;
+      this._updateCollider();
+      let collidedZ = false;
+      for (let i = 0; i < platforms.length; i++) {
+        const platBox = platforms[i].userData.collider;
+        if (intersects(this.collider, platBox)) { collidedZ = true; break; }
+      }
+      if (collidedZ) {
+        // revert only Z movement so we can slide along X
+        this.mesh.position.z = prevPos.z;
+        this._updateCollider();
+      }
+    }
+
+    // Apply vertical movement
+    this.mesh.position.y += movement.y;
     this._updateCollider();
 
     // Determine the highest platform directly under the player (by XZ) regardless of velocity.
@@ -123,17 +169,17 @@ export class Player {
     let closestY = -Infinity;
     platforms.forEach(plat => {
       const platBox = plat.userData.collider;
-      if (
-        this.mesh.position.x >= platBox.min.x && this.mesh.position.x <= platBox.max.x &&
-        this.mesh.position.z >= platBox.min.z && this.mesh.position.z <= platBox.max.z
-      ) {
+      // require XZ overlap between player's horizontal footprint and platform
+      const xOverlap = this.collider.max.x > platBox.min.x && this.collider.min.x < platBox.max.x;
+      const zOverlap = this.collider.max.z > platBox.min.z && this.collider.min.z < platBox.max.z;
+      if (xOverlap && zOverlap) {
         if (platBox.max.y > closestY) closestY = platBox.max.y;
       }
     });
 
-  const landThreshold = 0.06; // how close (in world units) bottom must be to platform top to land
+    const landThreshold = 0.06; // how close (in world units) bottom must be to platform top to land
     const penetrationAllowance = 0.01; // small allowance for penetration correction
-  let snapped = false;
+    let snapped = false;
     if (closestY > -Infinity) {
       // distance from player's bottom to platform top
       const distance = playerBottom - closestY;
@@ -156,8 +202,6 @@ export class Player {
         snapped = true;
       } else {
         // sufficiently above platform: in the air
-        // don't immediately mark as not-grounded; start air timer
-        // we'll only clear onGround if the player has been in the air for long enough
         this._airTime += delta;
         if (this._airTime >= this._airThreshold) this.onGround = false;
       }
@@ -170,7 +214,7 @@ export class Player {
     // reset air timer when snapped
     if (snapped) this._airTime = 0;
 
-    if (this.helper) this.helper.update();
+    if (this.helper) this.helper.updateWithRotation(this.mesh.rotation);
   }
 
   // delta = seconds, input = InputManager, cameraOrientation = { forward, right }
@@ -185,6 +229,21 @@ export class Player {
     move.normalize();
 
     const horiz = move.multiplyScalar(this.speed * delta);
+
+    // When third-person camera is active (player control active), rotate the player to face camera forward
+    if (active && cameraOrientation && cameraOrientation.forward) {
+      const f = cameraOrientation.forward.clone();
+      f.y = 0;
+      if (f.lengthSq() > 1e-6) {
+        f.normalize();
+        let desiredYaw = Math.atan2(f.x, f.z) + (this._modelYawOffset || 0);
+        let current = this.mesh.rotation.y || 0;
+        let diff = desiredYaw - current;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        this.mesh.rotation.y = current + diff * this._turnLerp;
+      }
+    }
 
     // Only apply gravity if not on ground
     if (!this.onGround) {

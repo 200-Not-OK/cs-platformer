@@ -19,6 +19,14 @@ export class ColliderHelper {
     this.mesh.scale.set(Math.max(size.x, 0.0001), Math.max(size.y, 0.0001), Math.max(size.z, 0.0001));
   }
 
+  // Allow optional rotation for helpers that should rotate with an object
+  updateWithRotation(rotation) {
+    this.update();
+    if (rotation) {
+      this.mesh.rotation.copy(rotation);
+    }
+  }
+
   setVisible(v) {
     this.mesh.visible = v;
   }
