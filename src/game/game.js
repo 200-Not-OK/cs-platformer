@@ -30,14 +30,37 @@ export class Game {
   this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
   this.firstCam = new FirstPersonCamera(this.player, this.input, window);
   this.freeCam = new FreeCamera(this.input, window);
-  this.activeCamera = this.freeCam.getCamera();
+  // Cache the underlying three.js camera objects so identity checks are reliable
+  this.thirdCameraObject = this.thirdCam.getCamera();
+  this.firstCameraObject = this.firstCam.getCamera();
+  this.freeCameraObject = this.freeCam.getCamera();
+  this.activeCamera = this.freeCameraObject;
     // Enable alwaysTrackMouse for third-person camera
     this.input.alwaysTrackMouse = true;
     // Request pointer lock for third-person camera
     window.addEventListener('click', () => {
       // request pointer lock when clicking while in first or third person
-      if ((this.activeCamera === this.thirdCam.getCamera() || this.activeCamera === this.firstCam.getCamera()) && document.pointerLockElement !== document.body) {
+      if ((this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) && document.pointerLockElement !== document.body) {
         document.body.requestPointerLock();
+      }
+    });
+
+    // When pointer lock is exited (usually via Escape), if we were in third/first person
+    // we should go directly to the pause menu. Some exits are intentional (we call
+    // document.exitPointerLock()); to avoid treating those as user Esc presses we
+    // use a suppression flag.
+    this._suppressPointerLockPause = false;
+    document.addEventListener('pointerlockchange', () => {
+      // Only react to lock being removed
+      if (document.pointerLockElement) return;
+      if (this._suppressPointerLockPause) {
+        // programmatic exit; clear flag and do nothing
+        this._suppressPointerLockPause = false;
+        return;
+      }
+      // If we were in first/third person, interpret the pointerlock exit as Esc -> pause
+      if (this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) {
+        this.setPaused(true);
       }
     });
 
@@ -53,6 +76,12 @@ export class Game {
     const grid = new THREE.GridHelper(200, 200, 0x444444, 0x222222);
     this.scene.add(grid);
 
+    // Pause state
+    this.paused = false;
+    this.pauseMenu = document.getElementById('pauseMenu');
+    const resumeBtn = document.getElementById('resumeBtn');
+    if (resumeBtn) resumeBtn.addEventListener('click', () => this.setPaused(false));
+
     // loop
     this.last = performance.now();
     this._loop = this._loop.bind(this);
@@ -62,26 +91,34 @@ export class Game {
   _bindKeys() {
     window.addEventListener('keydown', (e) => {
       const code = e.code;
+      // Always allow toggling pause via Escape
+      if (code === 'Escape') {
+        this.setPaused(!this.paused);
+        return;
+      }
+      // When paused ignore other keys
+      if (this.paused) return;
+
       if (code === 'KeyC') {
         // cycle cameras: free -> third -> first -> free
-        if (this.activeCamera === this.freeCam.getCamera()) {
+        if (this.activeCamera === this.freeCameraObject) {
           // free -> third
-          this.activeCamera = this.thirdCam.getCamera();
+          this.activeCamera = this.thirdCameraObject;
           this.input.alwaysTrackMouse = true;
           document.body.requestPointerLock();
           this.player.mesh.visible = true;
-        } else if (this.activeCamera === this.thirdCam.getCamera()) {
+        } else if (this.activeCamera === this.thirdCameraObject) {
           // third -> first
-          this.activeCamera = this.firstCam.getCamera();
+          this.activeCamera = this.firstCameraObject;
           this.input.alwaysTrackMouse = true;
           document.body.requestPointerLock();
           this.player.mesh.visible = false; // hide model in first-person to avoid clipping
         } else {
           // first (or other) -> free
           this.freeCam.moveNearPlayer(this.player);
-          this.activeCamera = this.freeCam.getCamera();
+          this.activeCamera = this.freeCameraObject;
           this.input.alwaysTrackMouse = false;
-          if (document.pointerLockElement) document.exitPointerLock();
+          if (document.pointerLockElement) { this._suppressPointerLockPause = true; document.exitPointerLock(); }
           this.player.mesh.visible = true; // restore visibility
         }
         // ensure player is active when in third- or first-person
@@ -110,6 +147,12 @@ export class Game {
     // clamp delta
     delta = Math.min(delta, 1 / 20);
 
+    // If paused: skip updates but still render the current frame.
+    if (this.paused) {
+      this.renderer.render(this.scene, this.activeCamera);
+      return;
+    }
+
     // update level (updates colliders/helpers)
     this.level.update();
 
@@ -134,5 +177,24 @@ export class Game {
 
     // render
     this.renderer.render(this.scene, this.activeCamera);
+  }
+
+  setPaused(v) {
+    const want = !!v;
+    if (this.paused === want) return;
+    this.paused = want;
+    // show/hide UI
+    if (this.pauseMenu) {
+      this.pauseMenu.style.display = want ? 'flex' : 'none';
+      this.pauseMenu.setAttribute('aria-hidden', (!want).toString());
+    }
+    // disable input handling when paused
+    if (this.input && this.input.setEnabled) {
+      this.input.setEnabled(!want);
+    }
+    // if pausing, exit pointer lock so user can interact with UI
+    if (want && document.pointerLockElement) {
+      try { document.exitPointerLock(); } catch (e) { /* ignore */ }
+    }
   }
 }
