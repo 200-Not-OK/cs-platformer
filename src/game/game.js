@@ -37,11 +37,19 @@ export class Game {
   this.activeCamera = this.freeCameraObject;
     // Enable alwaysTrackMouse for third-person camera
     this.input.alwaysTrackMouse = true;
-    // Request pointer lock for third-person camera
-    window.addEventListener('click', () => {
+    // Request pointer lock for third-person/first-person camera when the user clicks
+    // Ignore clicks originating from the pause menu so the Resume button's click
+    // doesn't accidentally trigger a second request or race with the resume flow.
+    window.addEventListener('click', (e) => {
+      if (this.pauseMenu && this.pauseMenu.contains && this.pauseMenu.contains(e.target)) return;
       // request pointer lock when clicking while in first or third person
       if ((this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) && document.pointerLockElement !== document.body) {
-        document.body.requestPointerLock();
+        try {
+          document.body.requestPointerLock();
+        } catch (err) {
+          // Some browsers may throw if the gesture was not accepted; swallow and warn
+          console.warn('requestPointerLock failed:', err);
+        }
       }
     });
 
@@ -80,7 +88,23 @@ export class Game {
     this.paused = false;
     this.pauseMenu = document.getElementById('pauseMenu');
     const resumeBtn = document.getElementById('resumeBtn');
-    if (resumeBtn) resumeBtn.addEventListener('click', () => this.setPaused(false));
+    if (resumeBtn) resumeBtn.addEventListener('click', (e) => {
+      // prevent the click from bubbling to the global click handler which would
+      // also try to request pointer lock and could race with this handler
+      e.stopPropagation();
+      e.preventDefault();
+      this.setPaused(false);
+      // After resuming, if we're in a camera mode that prefers pointer lock,
+      // request it using the same user gesture (the button click). Wrap in try/catch
+      // to avoid unhandled exceptions in browsers that refuse the request.
+      if (this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) {
+        try {
+          document.body.requestPointerLock();
+        } catch (err) {
+          console.warn('requestPointerLock on resume failed:', err);
+        }
+      }
+    });
 
     // loop
     this.last = performance.now();
