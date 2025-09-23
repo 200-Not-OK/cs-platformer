@@ -161,7 +161,6 @@ export class Game {
         // ensure player is active when in third- or first-person
         // (handled each frame in _loop by checking activeCamera)
       } else if (code === 'KeyN') {
-      } else if (code === 'KeyN') {
         // next level
         this.level = this.levelManager.loadNext();
         const start = this.level.data.startPosition ?? [0, 2, 8];
