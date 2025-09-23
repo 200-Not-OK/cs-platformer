@@ -1,5 +1,7 @@
+
 import * as THREE from 'three';
 import { ColliderHelper } from './colliderHelper.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 export class Player {
   constructor(scene, options = {}) {
@@ -9,24 +11,41 @@ export class Player {
     this.gravity = options.gravity ?? -30;
     this.size = options.size ?? [1, 1, 1];
 
-    this.mesh = this._createMesh();
-    this.scene.add(this.mesh);
 
-    this.collider = new THREE.Box3().setFromObject(this.mesh);
-    this.helper = new ColliderHelper(this.collider, 0xff0000);
-    this.scene.add(this.helper.mesh);
+  this.mesh = new THREE.Group(); // placeholder until model loads
+  this.scene.add(this.mesh);
+
+
+  this.collider = new THREE.Box3();
+  this.helper = new ColliderHelper(this.collider, 0xff0000);
+  this.scene.add(this.helper.mesh);
+
 
     this.velocity = new THREE.Vector3();
     this.onGround = false;
+
+    this._loadModel();
   }
 
-  _createMesh() {
-    const geo = new THREE.BoxGeometry(...this.size);
-    const mat = new THREE.MeshStandardMaterial({ color: 0xff5555 });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(0, 2, 8);
-    mesh.castShadow = true;
-    return mesh;
+  async _loadModel() {
+    const loader = new GLTFLoader();
+    loader.load(
+      'src/assets/low_poly_school_boy_zombie_apocalypse_rigged/scene.gltf',
+      (gltf) => {
+        // Remove placeholder children
+        while (this.mesh.children.length > 0) {
+          this.mesh.remove(this.mesh.children[0]);
+        }
+        this.mesh.add(gltf.scene);
+        this.mesh.position.set(0, 2, 8);
+        this.mesh.castShadow = true;
+        this._updateCollider();
+      },
+      undefined,
+      (error) => {
+        console.error('Error loading player model:', error);
+      }
+    );
   }
 
   _updateCollider() {
