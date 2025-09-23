@@ -11,6 +11,8 @@ import { Minimap } from './components/minimap.js';
 import { Objectives } from './components/objectives.js';
 import { SmallMenu } from './components/menu.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
+import { LightManager } from './lightManager.js';
+import * as LightModules from './lights/index.js';
 
 export class Game {
   constructor() {
@@ -87,6 +89,11 @@ export class Game {
 
   // Load the initial level early so subsequent code can reference `this.level`
   this.loadLevel(0);
+
+  // Lighting manager (modular per-level lights)
+  this.lights = new LightManager(this.scene);
+  // Apply lights for current level (loadLevel already called)
+  this.applyLevelLights(this.level?.data);
 
     // debug toggles
     this.showColliders = true;
@@ -218,6 +225,9 @@ export class Game {
     // update player (movement read from input manager)
     this.player.update(delta, this.input, camOrientation, this.level.getPlatforms(), playerActive);
 
+  // update lights (allow dynamic lights to animate)
+  if (this.lights) this.lights.update(delta);
+
     // render
     this.renderer.render(this.scene, this.activeCamera);
   }
@@ -233,7 +243,29 @@ export class Game {
 
     // swap UI components according to level.data.ui (array of strings)
     this.applyLevelUI(this.level.data);
+    // swap lighting according to level.data.lights (array of descriptors)
+    this.applyLevelLights(this.level.data);
     return this.level;
+  }
+
+  applyLevelLights(levelData) {
+    if (!this.lights) return;
+    // Clear existing lights
+    this.lights.clear();
+    const list = (levelData && levelData.lights) ? levelData.lights : null;
+    if (!list) return;
+    // list is array of either string keys or objects { key, props }
+    for (const item of list) {
+      let key, props;
+      if (typeof item === 'string') { key = item; props = {}; }
+      else { key = item.key; props = item.props || {}; }
+      const Module = LightModules[key];
+      if (!Module) {
+        console.warn('Unknown light module key in level data:', key);
+        continue;
+      }
+      this.lights.add(key, Module, props);
+    }
   }
 
   applyLevelUI(levelData) {
