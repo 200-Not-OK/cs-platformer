@@ -5,6 +5,7 @@ import { Player } from './player.js';
 import { LevelManager } from './levelManager.js';
 import { ThirdPersonCamera } from './thirdPersonCamera.js';
 import { FreeCamera } from './freeCamera.js';
+import { FirstPersonCamera } from './firstPersonCamera.js';
 
 export class Game {
   constructor() {
@@ -26,14 +27,16 @@ export class Game {
   this.player.setPosition(new THREE.Vector3(...start));
 
     // Cameras
-    this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
-    this.freeCam = new FreeCamera(this.input, window);
-    this.activeCamera = this.freeCam.getCamera();
+  this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
+  this.firstCam = new FirstPersonCamera(this.player, this.input, window);
+  this.freeCam = new FreeCamera(this.input, window);
+  this.activeCamera = this.freeCam.getCamera();
     // Enable alwaysTrackMouse for third-person camera
     this.input.alwaysTrackMouse = true;
     // Request pointer lock for third-person camera
     window.addEventListener('click', () => {
-      if (this.activeCamera === this.thirdCam.getCamera() && document.pointerLockElement !== document.body) {
+      // request pointer lock when clicking while in first or third person
+      if ((this.activeCamera === this.thirdCam.getCamera() || this.activeCamera === this.firstCam.getCamera()) && document.pointerLockElement !== document.body) {
         document.body.requestPointerLock();
       }
     });
@@ -60,19 +63,30 @@ export class Game {
     window.addEventListener('keydown', (e) => {
       const code = e.code;
       if (code === 'KeyC') {
-        // toggle between third-person and free cam
-        if (this.activeCamera === this.thirdCam.getCamera()) {
+        // cycle cameras: free -> third -> first -> free
+        if (this.activeCamera === this.freeCam.getCamera()) {
+          // free -> third
+          this.activeCamera = this.thirdCam.getCamera();
+          this.input.alwaysTrackMouse = true;
+          document.body.requestPointerLock();
+          this.player.mesh.visible = true;
+        } else if (this.activeCamera === this.thirdCam.getCamera()) {
+          // third -> first
+          this.activeCamera = this.firstCam.getCamera();
+          this.input.alwaysTrackMouse = true;
+          document.body.requestPointerLock();
+          this.player.mesh.visible = false; // hide model in first-person to avoid clipping
+        } else {
+          // first (or other) -> free
           this.freeCam.moveNearPlayer(this.player);
           this.activeCamera = this.freeCam.getCamera();
-          this.input.alwaysTrackMouse = false; // only drag for free cam
-          if (document.pointerLockElement) {
-            document.exitPointerLock();
-          }
-        } else {
-          this.activeCamera = this.thirdCam.getCamera();
-          this.input.alwaysTrackMouse = true; // always track for third-person
-          document.body.requestPointerLock();
+          this.input.alwaysTrackMouse = false;
+          if (document.pointerLockElement) document.exitPointerLock();
+          this.player.mesh.visible = true; // restore visibility
         }
+        // ensure player is active when in third- or first-person
+        // (handled each frame in _loop by checking activeCamera)
+      } else if (code === 'KeyN') {
       } else if (code === 'KeyN') {
         // next level
         this.level = this.levelManager.loadNext();
@@ -104,6 +118,10 @@ export class Game {
     if (this.activeCamera === this.thirdCam.getCamera()) {
       this.thirdCam.update();
       camOrientation = this.thirdCam.getCameraOrientation();
+      playerActive = true;
+    } else if (this.activeCamera === this.firstCam.getCamera()) {
+      this.firstCam.update();
+      camOrientation = this.firstCam.getCameraOrientation();
       playerActive = true;
     } else {
       this.freeCam.update(delta);
