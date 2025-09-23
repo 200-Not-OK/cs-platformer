@@ -26,13 +26,9 @@ export function createSceneAndRenderer() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   document.body.appendChild(renderer.domElement);
 
-  // Lights
-  const dir = new THREE.DirectionalLight(0xffffff, 1);
-  dir.position.set(10, 20, 10);
-  scene.add(dir);
-
-  const amb = new THREE.AmbientLight(0x404040, 1.2);
-  scene.add(amb);
+  // Lighting is provided by a modular LightManager per-level (default lights
+  // are added by levels that opt-in). Keep the scene prepared but don't add
+  // any hard-coded lights here so levels have full control.
 
   // Resize handler
   window.addEventListener('resize', () => {

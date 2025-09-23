@@ -5,6 +5,7 @@ export const levels = [
     name: 'Intro Level',
     startPosition: [0, 2, 8],
     ui: ['hud', 'minimap'],
+    lights: [ 'BasicLights' ],
     objects: [
       // platform objects are generic "box" objects: position + size + optional color
       { type: 'box', position: [0, 0, 0], size: [50, 1, 50], color: 0x6b8e23 }, // ground
@@ -24,6 +25,7 @@ export const levels = [
     name: 'Platform Course',
     startPosition: [-8, 2, 5],
     ui: ['hud', 'objectives', 'minimap'],
+    lights: [ 'BasicLights', { key: 'PointPulse', props: { position: [6, 4, -10], color: 0xffcc88, intensity: 1.2, speed: 3 } } ],
     objects: [
       { type: 'box', position: [-8, 0, 0], size: [24, 1, 12], color: 0x2e8b57 },
       { type: 'box', position: [-2, 2, -4], size: [3, 1, 3], color: 0xcd853f },
