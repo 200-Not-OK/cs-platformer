@@ -20,6 +20,15 @@ export class Player {
     this._airThreshold = 0.08; // seconds before considered truly in air
     this._modelYawOffset = 0; // offset to align model forward with world forward
     this._turnLerp = 0.14; // smoothing for rotation to face camera
+    // Animation
+    this.mixer = null;
+    this.actions = {
+      idle: null,
+      walk: null,
+      jump: null,
+    };
+    this.currentAction = null;
+    this._jumpPlaying = false;
     this._loadModel();
   }
 
@@ -55,7 +64,9 @@ export class Player {
   async _loadModel() {
     const loader = new GLTFLoader();
     loader.load(
-      'src/assets/low_poly_school_boy_zombie_apocalypse_rigged/scene.gltf',
+      //'src/assets/low_poly_school_boy_zombie_apocalypse_rigged/scene.gltf',
+      'src/assets/low_poly_male/scene.gltf',
+      //'src/assets/low_poly_female/scene.gltf',
       (gltf) => {
         // Remove placeholder children
         while (this.mesh.children.length > 0) {
@@ -78,6 +89,48 @@ export class Player {
   const centerY = (bbox.max.y + bbox.min.y) / 2;
   gltf.scene.position.y -= centerY;
   this.mesh.add(gltf.scene);
+
+  // Setup animations if present
+  if (gltf.animations && gltf.animations.length > 0) {
+    this.mixer = new THREE.AnimationMixer(gltf.scene);
+    const clips = gltf.animations;
+    console.log('Player model animations:', clips.map(c => c.name));
+    // helper to find by name (case-insensitive contains)
+    const findClip = (names) => {
+      if (!names) return null;
+      for (const n of names) {
+        const lower = n.toLowerCase();
+        for (const c of clips) {
+          if (c.name && c.name.toLowerCase().includes(lower)) return c;
+        }
+      }
+      return null;
+    };
+
+  // try common names for idle/walk/jump
+  // NOTE: Do NOT fallback to clips[0] for idle; if there's no explicit idle
+  // animation we want the model to remain static when idle.
+  const idleClip = findClip(['idle', 'stand', 'rest']) || null;
+  const walkClip = findClip(['walk', 'run', 'strafe']) || clips[0] || null;
+    const jumpClip = findClip(['jump', 'leap']) || clips[2] || null;
+
+    if (idleClip) this.actions.idle = this.mixer.clipAction(idleClip);
+    if (walkClip) this.actions.walk = this.mixer.clipAction(walkClip);
+    if (jumpClip) this.actions.jump = this.mixer.clipAction(jumpClip);
+
+    // Configure looping modes
+    if (this.actions.idle) this.actions.idle.setLoop(THREE.LoopRepeat);
+    if (this.actions.walk) this.actions.walk.setLoop(THREE.LoopRepeat);
+    if (this.actions.jump) this.actions.jump.setLoop(THREE.LoopOnce); // play once
+
+    // start idle by default
+    if (this.actions.idle) {
+      this.actions.idle.play();
+      this.currentAction = this.actions.idle;
+    }
+  } else {
+    console.warn('Player model has no animation clips');
+  }
   // We keep a stable size-based collider; ensure helper matches
   // the computed size
   this._updateCollider();
@@ -260,6 +313,73 @@ export class Player {
 
     const movementThisFrame = new THREE.Vector3(horiz.x, this.velocity.y * delta, horiz.z);
     this.moveAndCollide(movementThisFrame, platforms, delta);
+
+    // Update animations
+    try {
+      if (this.mixer) this.mixer.update(delta);
+    } catch (e) {
+      console.warn('Animation mixer update failed:', e);
+    }
+
+    // Determine which action should play: jump > walk > idle
+    const moving = horiz.lengthSq() > 1e-6;
+
+    // If we just started a jump (left ground and jump action exists), play jump
+    if (!this.onGround && !this._jumpPlaying && this.actions.jump) {
+      // play jump once and mark it playing; when finished we'll clear the flag
+      this._playAction(this.actions.jump, 0.1, false);
+      this._jumpPlaying = true;
+      // ensure jump finisher resets to idle/walk when done
+      const jumpAction = this.actions.jump;
+      const onFinished = () => {
+        this._jumpPlaying = false;
+        jumpAction.getMixer().removeEventListener('finished', onFinished);
+      };
+      jumpAction.getMixer().addEventListener('finished', onFinished);
+    }
+
+    if (this._jumpPlaying) return; // let jump animation play through
+
+    if (moving) {
+      if (this.actions.walk && this.currentAction !== this.actions.walk) {
+        this._playAction(this.actions.walk, 0.15, true);
+      }
+    } else {
+      // Not moving: if we have an idle action, play it. Otherwise, stop any
+      // walk action so the model becomes static.
+      if (this.actions.idle) {
+        if (this.currentAction !== this.actions.idle) {
+          this._playAction(this.actions.idle, 0.2, true);
+        }
+      } else {
+        // No idle animation available — fade out the walk animation if it's playing
+        if (this.currentAction && this.currentAction === this.actions.walk) {
+          try {
+            // fade out gracefully
+            this.currentAction.fadeOut(0.2);
+          } catch (e) {
+            // fallback: stop immediately
+            try { this.currentAction.stop(); } catch (e2) { /* ignore */ }
+          }
+          this.currentAction = null;
+        }
+      }
+    }
+  }
+
+  _playAction(action, fadeDuration = 0.2, loop = true) {
+    if (!action) return;
+    try {
+      if (this.currentAction && this.currentAction !== action) {
+        this.currentAction.crossFadeTo(action, fadeDuration, false);
+      }
+      action.reset();
+      if (loop) action.setLoop(THREE.LoopRepeat);
+      action.play();
+      this.currentAction = action;
+    } catch (e) {
+      console.warn('Failed to play action:', e);
+    }
   }
 
   toggleHelperVisible(visible) {
