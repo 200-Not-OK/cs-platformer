@@ -23,11 +23,17 @@ export class Game {
     this.level = this.levelManager.loadFirst();
 
     // Cameras
-  this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
-  this.freeCam = new FreeCamera(this.input, window);
-  this.activeCamera = this.thirdCam.getCamera();
-  // Enable alwaysTrackMouse for third-person camera
-  this.input.alwaysTrackMouse = true;
+    this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
+    this.freeCam = new FreeCamera(this.input, window);
+    this.activeCamera = this.thirdCam.getCamera();
+    // Enable alwaysTrackMouse for third-person camera
+    this.input.alwaysTrackMouse = true;
+    // Request pointer lock for third-person camera
+    window.addEventListener('click', () => {
+      if (this.activeCamera === this.thirdCam.getCamera() && document.pointerLockElement !== document.body) {
+        document.body.requestPointerLock();
+      }
+    });
 
     // When switching to free camera, move it near player
     this._bindKeys();
@@ -56,9 +62,13 @@ export class Game {
           this.freeCam.moveNearPlayer(this.player);
           this.activeCamera = this.freeCam.getCamera();
           this.input.alwaysTrackMouse = false; // only drag for free cam
+          if (document.pointerLockElement) {
+            document.exitPointerLock();
+          }
         } else {
           this.activeCamera = this.thirdCam.getCamera();
           this.input.alwaysTrackMouse = true; // always track for third-person
+          document.body.requestPointerLock();
         }
       } else if (code === 'KeyN') {
         // next level
