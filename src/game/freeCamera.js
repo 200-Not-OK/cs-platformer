@@ -7,7 +7,6 @@ export class FreeCamera {
     this.dom = domElement;
     this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
     this.camera.position.set(20, 20, 20);
-    this.camera.lookAt(0, 0, 0);
     this.pitch = 0; this.yaw = -Math.PI / 4;
     this.sensitivity = 0.0025;
     this.moveSpeed = 15;
