@@ -58,14 +58,19 @@ export class WalkerEnemy extends EnemyBase {
       }
     }
 
-    // Basic player tracking when nearby
+    // Basic player tracking when nearby -> face player while chasing
     if (player && player.mesh) {
       const toPlayer = player.mesh.position.clone().sub(this.mesh.position);
-      const near = toPlayer.length() < (this.options.chaseRange ?? 4);
-      if (near) {
-        const chaseDir = toPlayer.normalize();
-        this.setDesiredMovement(chaseDir.clone().multiplyScalar(this.speed * 1.2));
+      // consider horizontal distance only for chase/range and facing
+      const toPlayerXZ = new THREE.Vector3(toPlayer.x, 0, toPlayer.z);
+      const near = toPlayerXZ.length() < (this.options.chaseRange ?? 4);
+      if (near && toPlayerXZ.lengthSq() > 1e-6) {
+        const chaseDirXZ = toPlayerXZ.clone().normalize();
+        this.setDesiredMovement(chaseDirXZ.clone().multiplyScalar(this.speed * 1.2));
         isMoving = true;
+        // face the player (yaw only)
+        const yaw = Math.atan2(chaseDirXZ.x, chaseDirXZ.z);
+        this.mesh.rotation.y = yaw;
       }
     }
 
