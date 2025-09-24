@@ -13,12 +13,30 @@ import { SmallMenu } from './components/menu.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
+import { enableDebug, disableDebug } from './collisionSystem.js';
 
 export class Game {
   constructor() {
     const { scene, renderer } = createSceneAndRenderer();
     this.scene = scene;
     this.renderer = renderer;
+
+    // enable collision debug visuals/logging (remove for production)
+    enableDebug(this.scene);
+
+    // simple toggle accessible from browser console via window.toggleCollisionDebug()
+    window.__collisionDebugOn = true;
+    window.toggleCollisionDebug = () => {
+      if (window.__collisionDebugOn) {
+        disableDebug();
+        window.__collisionDebugOn = false;
+        console.log('collision debug disabled');
+      } else {
+        enableDebug(this.scene);
+        window.__collisionDebugOn = true;
+        console.log('collision debug enabled');
+      }
+    };
 
     // Input
     this.input = new InputManager(window);

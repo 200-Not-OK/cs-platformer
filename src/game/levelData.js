@@ -3,7 +3,7 @@ export const levels = [
   {
     id: 'intro',
     name: 'Intro Level',
-    startPosition: [0, 2, 8],
+    startPosition: [0, 3, 8],
     ui: ['hud', 'minimap'],
     lights: [ 'BasicLights' ],
     objects: [
@@ -23,7 +23,7 @@ export const levels = [
   {
     id: 'platformer',
     name: 'Platform Course',
-    startPosition: [-8, 2, 5],
+    startPosition: [-8, 2.1, 5],
     ui: ['hud', 'objectives', 'minimap'],
     lights: [ 'BasicLights', { key: 'PointPulse', props: { position: [6, 4, -10], color: 0xffcc88, intensity: 1.2, speed: 3 } } ],
     objects: [

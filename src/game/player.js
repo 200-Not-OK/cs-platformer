@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { ColliderHelper } from './colliderHelper.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { resolveMovement, meshesToColliders } from './collisionSystem.js';
 
 export class Player {
   constructor(scene, options = {}) {
@@ -13,13 +14,18 @@ export class Player {
     this.scene.add(this.mesh);
     this.collider = new THREE.Box3();
     this.helper = new ColliderHelper(this.collider, 0xff0000);
-  // Collider size (may differ from visual model size): same height, half x/z
+    // Collider size (may differ from visual model size): same height, half x/z
     this.colliderSize = [this.size[0] * 0.5, this.size[1], this.size[2] * 0.5];
     this.scene.add(this.helper.mesh);
     this.velocity = new THREE.Vector3();
     this.onGround = false;
     this._airTime = 0; // time spent not snapping to ground
     this._airThreshold = 0.08; // seconds before considered truly in air
+    // ground grace: short time window to keep ground contact after transient lateral nudges
+    this._lastGround = null; // previously stood-on platform Box3
+    this._lastGroundY = -Infinity;
+    this._groundGrace = 0.12; // seconds
+    this._groundGraceRemaining = 0;
     this._modelYawOffset = 0; // offset to align model forward with world forward
     this._turnLerp = 0.14; // smoothing for rotation to face camera
     // Animation
@@ -37,221 +43,160 @@ export class Player {
     this._loadModel();
   }
 
-  // Helper: Raycast down from player center to find the highest platform below
-  snapToGround(platforms) {
-    this._updateCollider();
-    const rayOrigin = new THREE.Vector3(
-      this.mesh.position.x,
-      this.collider.max.y + 0.01,
-      this.mesh.position.z
-    );
-    let highestY = -Infinity;
-    platforms.forEach(plat => {
-      const platBox = plat.userData.collider;
-      if (
-        rayOrigin.x >= platBox.min.x && rayOrigin.x <= platBox.max.x &&
-        rayOrigin.z >= platBox.min.z && rayOrigin.z <= platBox.max.z
-      ) {
-        if (platBox.max.y > highestY && platBox.max.y <= rayOrigin.y) {
-          highestY = platBox.max.y;
-        }
-      }
-    });
-    if (highestY > -Infinity) {
-      // Move player so bottom of collider sits on platform
-      const playerHeight = this.collider.max.y - this.collider.min.y;
-      this.mesh.position.y = highestY + playerHeight / 2;
-  this._updateCollider();
-  if (this.helper) this.helper.updateWithRotation(this.mesh.rotation);
-    }
-  }
-
-  async _loadModel() {
+  _loadModel() {
     const loader = new GLTFLoader();
     loader.load(
-      //'src/assets/low_poly_school_boy_zombie_apocalypse_rigged/scene.gltf',
       'src/assets/low_poly_male/scene.gltf',
-      //'src/assets/low_poly_female/scene.gltf',
       (gltf) => {
         // Remove placeholder children
-        while (this.mesh.children.length > 0) {
-          this.mesh.remove(this.mesh.children[0]);
+        while (this.mesh.children.length > 0) this.mesh.remove(this.mesh.children[0]);
+
+        // Compute bounding box for the whole scene
+        const bbox = new THREE.Box3().setFromObject(gltf.scene);
+        const sizeVec = new THREE.Vector3();
+        bbox.getSize(sizeVec);
+        this.size = [sizeVec.x, sizeVec.y, sizeVec.z];
+        // collider: same height, narrower x/z
+        this.colliderSize = [sizeVec.x * 0.2, sizeVec.y, sizeVec.z * 0.5];
+
+        // center model horizontally/vertically
+        const centerX = (bbox.max.x + bbox.min.x) / 2;
+        const centerZ = (bbox.max.z + bbox.min.z) / 2;
+        const centerY = (bbox.max.y + bbox.min.y) / 2;
+        gltf.scene.position.x -= centerX;
+        gltf.scene.position.z -= centerZ;
+        gltf.scene.position.y -= centerY;
+        this.mesh.add(gltf.scene);
+
+        // animations
+        if (gltf.animations && gltf.animations.length > 0) {
+          this.mixer = new THREE.AnimationMixer(gltf.scene);
+          const clips = gltf.animations;
+          const findClip = (names) => {
+            if (!names) return null;
+            for (const n of names) {
+              const lower = n.toLowerCase();
+              for (const c of clips) {
+                if (c.name && c.name.toLowerCase().includes(lower)) return c;
+              }
+            }
+            return null;
+          };
+          const idleClip = findClip(['idle', 'stand', 'rest']) || null;
+          const walkClip = findClip(['walk', 'run', 'strafe']) || clips[0] || null;
+          const jumpClip = findClip(['jump', 'leap']) || null;
+          if (idleClip) this.actions.idle = this.mixer.clipAction(idleClip);
+          if (walkClip) this.actions.walk = this.mixer.clipAction(walkClip);
+          if (jumpClip) this.actions.jump = this.mixer.clipAction(jumpClip);
+          if (this.actions.idle) this.actions.idle.setLoop(THREE.LoopRepeat);
+          if (this.actions.walk) this.actions.walk.setLoop(THREE.LoopRepeat);
+          if (this.actions.jump) this.actions.jump.setLoop(THREE.LoopOnce);
+          if (this.actions.idle) { this.actions.idle.play(); this.currentAction = this.actions.idle; }
         }
-  // Compute bounding box for the whole scene
-  const bbox = new THREE.Box3().setFromObject(gltf.scene);
-  // Set player size to bounding box size for physics
-  const sizeVec = new THREE.Vector3();
-  bbox.getSize(sizeVec);
-  this.size = [sizeVec.x, sizeVec.y, sizeVec.z];
-  // Collider should use same height but half width/depth to avoid hand collisions
-  this.colliderSize = [sizeVec.x * 0.2, sizeVec.y, sizeVec.z * 0.5];
-  // Center horizontally
-  const centerX = (bbox.max.x + bbox.min.x) / 2;
-  const centerZ = (bbox.max.z + bbox.min.z) / 2;
-  gltf.scene.position.x -= centerX;
-  gltf.scene.position.z -= centerZ;
-  // Center vertically: move model so its center is at y=0. This makes
-  // `this.mesh.position` represent the collider/model center and avoids
-  // a half-height visual offset where feet appear at the collider center.
-  const centerY = (bbox.max.y + bbox.min.y) / 2;
-  gltf.scene.position.y -= centerY;
-  this.mesh.add(gltf.scene);
 
-  // Setup animations if present
-  if (gltf.animations && gltf.animations.length > 0) {
-    this.mixer = new THREE.AnimationMixer(gltf.scene);
-    const clips = gltf.animations;
-    console.log('Player model animations:', clips.map(c => c.name));
-    // helper to find by name (case-insensitive contains)
-    const findClip = (names) => {
-      if (!names) return null;
-      for (const n of names) {
-        const lower = n.toLowerCase();
-        for (const c of clips) {
-          if (c.name && c.name.toLowerCase().includes(lower)) return c;
-        }
-      }
-      return null;
-    };
-
-  // try common names for idle/walk/jump
-  // NOTE: Do NOT fallback to clips[0] for idle; if there's no explicit idle
-  // animation we want the model to remain static when idle.
-  const idleClip = findClip(['idle', 'stand', 'rest']) || null;
-  const walkClip = findClip(['walk', 'run', 'strafe']) || clips[0] || null;
-    const jumpClip = findClip(['jump', 'leap']) || clips[2] || null;
-
-    if (idleClip) this.actions.idle = this.mixer.clipAction(idleClip);
-    if (walkClip) this.actions.walk = this.mixer.clipAction(walkClip);
-    if (jumpClip) this.actions.jump = this.mixer.clipAction(jumpClip);
-
-    // Configure looping modes
-    if (this.actions.idle) this.actions.idle.setLoop(THREE.LoopRepeat);
-    if (this.actions.walk) this.actions.walk.setLoop(THREE.LoopRepeat);
-    if (this.actions.jump) this.actions.jump.setLoop(THREE.LoopOnce); // play once
-
-    // start idle by default
-    if (this.actions.idle) {
-      this.actions.idle.play();
-      this.currentAction = this.actions.idle;
-    }
-  } else {
-    console.warn('Player model has no animation clips');
-  }
-  // We keep a stable size-based collider; ensure helper matches
-  // the computed size
-  this._updateCollider();
-  // Model previously had a 180° flip; remove that so forward aligns with camera forward
-  this._modelYawOffset = 0;
-  this.mesh.rotation.y = this._modelYawOffset;
-  this.mesh.scale.set(1, 1, 1);
-  this.mesh.castShadow = true;
-  this.helper.update();
+        // update collider/helper
+        this._updateCollider();
+        if (this.helper) this.helper.update();
       },
       undefined,
-      (error) => {
-        console.error('Error loading player model:', error);
-      }
+      (err) => console.error('Error loading player model:', err)
     );
   }
 
-  _updateCollider() {
-    // Use a stable collider computed from the known size and mesh.position.
-    // This avoids per-frame fluctuations from skinned/animated models
-    // which can change the bounding box slightly and cause snap-hover loops.
-  // Use colliderSize (may be narrower than visual model) so hands don't collide
-    const sizeVec = new THREE.Vector3(this.colliderSize[0], this.colliderSize[1], this.colliderSize[2]);
-    const half = sizeVec.clone().multiplyScalar(0.5);
-    const center = new THREE.Vector3().copy(this.mesh.position);
-    // If the model was offset during load (we moved feet to y=0), the mesh.position
-    // is treated as the collider center already (setPosition uses collider center).
-    this.collider.min.copy(center).sub(half);
-    this.collider.max.copy(center).add(half);
-  }
+    // Recompute this.collider from current mesh.position and this.colliderSize
+    _updateCollider() {
+      const half = new THREE.Vector3(
+        (this.colliderSize[0] ?? 1) * 0.5,
+        (this.colliderSize[1] ?? 1) * 0.5,
+        (this.colliderSize[2] ?? 1) * 0.5
+      );
+      const center = this.mesh.position.clone();
+      this.collider.min.copy(center).sub(half);
+      this.collider.max.copy(center).add(half);
+    }
 
-  // Public API: change collider size (x, y, z) where x/z are horizontal extents
-  // and y is height. This will immediately update the Box3 and the helper mesh.
-  setColliderSize(sizeArr) {
-    if (!sizeArr || sizeArr.length < 3) return;
-    this.colliderSize = [sizeArr[0], sizeArr[1], sizeArr[2]];
-    this._updateCollider();
-    if (this.helper) this.helper.update();
-  }
+    // Set the visual/physical position of the player. Accepts a THREE.Vector3.
+    // This sets the mesh position directly and updates the collider/helper.
+    setPosition(vec3) {
+      if (!vec3 || !vec3.isVector3) return;
+      this.mesh.position.copy(vec3);
+      this._updateCollider();
+      if (this.helper) this.helper.updateWithRotation(this.mesh.rotation);
+    }
 
-  setPosition(vec3) {
-  // Interpret incoming position as the feet/bottom position for spawning.
-  // Many level `startPosition` values are easier to reason about as the
-  // player's foot placement. Convert to collider center using known size.
-  const halfHeight = (this.size && this.size[1]) ? this.size[1] / 2 : 0.5;
-  this.mesh.position.set(vec3.x, vec3.y + halfHeight, vec3.z);
-  this._updateCollider();
-  }
+    // Update collider size (array [x,y,z]) and refresh helper
+    setColliderSize(sizeArr) {
+      if (!sizeArr || sizeArr.length < 3) return;
+      this.colliderSize = [sizeArr[0], sizeArr[1], sizeArr[2]];
+      this._updateCollider();
+      if (this.helper) this.helper.update();
+    }
 
   moveAndCollide(movement, platforms, delta = 0) {
     // Two-phase: handle horizontal movement first (prevent side penetration), then vertical + snapping
     const prevPos = this.mesh.position.clone();
 
-    // Apply horizontal movement per-axis so we can slide along obstacles.
-    const EPS = 1e-3;
-    const intersects = (a, b) => (
-      a.min.x < b.max.x - EPS && a.max.x > b.min.x + EPS &&
-      a.min.y < b.max.y - EPS && a.max.y > b.min.y + EPS &&
-      a.min.z < b.max.z - EPS && a.max.z > b.min.z + EPS
-    );
+    // advance/decay ground-grace timer
+    this._groundGraceRemaining = Math.max(0, (this._groundGraceRemaining || 0) - (delta || 0));
 
-    // Try X axis
-    if (movement.x !== 0) {
-      this.mesh.position.x += movement.x;
-      this._updateCollider();
-      let collidedX = false;
-      for (let i = 0; i < platforms.length; i++) {
-        const platBox = platforms[i].userData.collider;
-        // Compute vertical overlap between player collider and platform
-        const overlapY = Math.min(this.collider.max.y, platBox.max.y) - Math.max(this.collider.min.y, platBox.min.y);
-        const minOverlap = 0.02; // require >2cm overlap to be considered a blocking collision
-        if (overlapY <= minOverlap) continue;
-        if (intersects(this.collider, platBox)) { collidedX = true; break; }
-      }
-      if (collidedX) {
-        // revert only X movement so we can slide along Z
-        this.mesh.position.x = prevPos.x;
-        this._updateCollider();
+    // Remember the platform (if any) directly under the player before movement.
+    // This helps when a side collision during horizontal movement briefly
+    // breaks XZ overlap and would otherwise make us lose ground contact.
+    const playerHeight = (this.size && this.size[1]) ? this.size[1] : (this.collider.max.y - this.collider.min.y);
+    const halfSize = new THREE.Vector3(this.colliderSize[0] * 0.5, this.colliderSize[1] * 0.5, this.colliderSize[2] * 0.5);
+    const prevCenter = prevPos.clone();
+    const prevMin = prevCenter.clone().sub(halfSize);
+    const prevMax = prevCenter.clone().add(halfSize);
+    let prevClosestY = -Infinity;
+    let prevClosestPlatBox = null;
+    // Allow a small tolerance for XZ overlap so tiny separations caused by
+    // side-collisions don't immediately drop our remembered platform.
+    const XZ_TOLERANCE = 0.04; // units
+    for (const plat of platforms) {
+      const p = plat.userData.collider;
+      const overlapX = Math.min(prevMax.x, p.max.x) - Math.max(prevMin.x, p.min.x);
+      const overlapZ = Math.min(prevMax.z, p.max.z) - Math.max(prevMin.z, p.min.z);
+      const xOverlap = overlapX > -XZ_TOLERANCE;
+      const zOverlap = overlapZ > -XZ_TOLERANCE;
+      if (xOverlap && zOverlap) {
+        if (p.max.y > prevClosestY) {
+          prevClosestY = p.max.y;
+          prevClosestPlatBox = p;
+        }
       }
     }
 
-    // Try Z axis
-    if (movement.z !== 0) {
-      this.mesh.position.z += movement.z;
-      this._updateCollider();
-      let collidedZ = false;
-      for (let i = 0; i < platforms.length; i++) {
-        const platBox = platforms[i].userData.collider;
-        // Compute vertical overlap between player collider and platform
-        const overlapY = Math.min(this.collider.max.y, platBox.max.y) - Math.max(this.collider.min.y, platBox.min.y);
-        const minOverlap = 0.02;
-        if (overlapY <= minOverlap) continue;
-        if (intersects(this.collider, platBox)) { collidedZ = true; break; }
-      }
-      if (collidedZ) {
-        // revert only Z movement so we can slide along X
-        this.mesh.position.z = prevPos.z;
-        this._updateCollider();
-      }
-    }
+    // Use the centralized resolver: convert platforms to colliders and resolve movement
+    const colliders = meshesToColliders(platforms);
+    const prevBottomY = prevPos.y - playerHeight / 2;
+    const resolverResult = resolveMovement(this.collider.clone(), movement.clone(), colliders, {
+      prevBottomY,
+      landThreshold: 0.06,
+      penetrationAllowance: 0.01
+    });
 
-    // Apply vertical movement
-    this.mesh.position.y += movement.y;
+    // Apply resolved offset to the player's mesh
+    this.mesh.position.add(resolverResult.offset);
     this._updateCollider();
 
-    // Determine the highest platform directly under the player (by XZ) regardless of velocity.
+    // If there was a horizontal collision (resolver reported collidedWith and horizontal movement non-zero),
+    // refresh ground grace so short lateral collisions don't drop ground contact.
+    if (resolverResult.collidedWith && (movement.x !== 0 || movement.z !== 0)) {
+      this._groundGraceRemaining = this._groundGrace;
+    }
+
+  // Determine the highest platform directly under the player (by XZ) regardless of velocity.
     const playerBottom = this.collider.min.y;
     let closestY = -Infinity;
     let closestPlatBox = null;
+    const XZ_TOLERANCE_CUR = 0.04; // same tolerance for current detection
     platforms.forEach(plat => {
       const platBox = plat.userData.collider;
-      // require XZ overlap between player's horizontal footprint and platform
-      const xOverlap = this.collider.max.x > platBox.min.x && this.collider.min.x < platBox.max.x;
-      const zOverlap = this.collider.max.z > platBox.min.z && this.collider.min.z < platBox.max.z;
+      // compute numeric overlaps and accept tiny negative overlaps within tolerance
+      const overlapX = Math.min(this.collider.max.x, platBox.max.x) - Math.max(this.collider.min.x, platBox.min.x);
+      const overlapZ = Math.min(this.collider.max.z, platBox.max.z) - Math.max(this.collider.min.z, platBox.min.z);
+      const xOverlap = overlapX > -XZ_TOLERANCE_CUR;
+      const zOverlap = overlapZ > -XZ_TOLERANCE_CUR;
       if (xOverlap && zOverlap) {
         if (platBox.max.y > closestY) {
           closestY = platBox.max.y;
@@ -259,6 +204,23 @@ export class Player {
         }
       }
     });
+
+    // If we lost XZ overlap due to a lateral collision, prefer the platform that
+    // was under us before movement if it was actually the one we were standing on.
+    // Also allow a short grace window where we keep the previously-known ground
+    // to avoid multi-frame jitter causing us to fall through platforms.
+    const prevBottom = prevPos.y - playerHeight / 2;
+    if (!closestPlatBox) {
+      const preferPrev = prevClosestPlatBox && prevBottom >= prevClosestY - 0.06;
+      const preferLast = this._lastGround && this._groundGraceRemaining > 0 && this._lastGroundY > -Infinity;
+      if (preferPrev) {
+        closestPlatBox = prevClosestPlatBox;
+        closestY = prevClosestY;
+      } else if (preferLast) {
+        closestPlatBox = this._lastGround;
+        closestY = this._lastGroundY;
+      }
+    }
 
     const landThreshold = 0.06; // how close (in world units) bottom must be to platform top to land
     const penetrationAllowance = 0.01; // small allowance for penetration correction
@@ -281,6 +243,10 @@ export class Player {
           this.velocity.y = 0;
           this.onGround = true;
           snapped = true;
+          // remember this platform as last ground and reset grace timer
+          this._lastGround = closestPlatBox;
+          this._lastGroundY = closestY;
+          this._groundGraceRemaining = this._groundGrace;
         } else if (distance < -penetrationAllowance) {
           // penetrating from above (rare): correct by moving player up
           this.mesh.position.y = closestY + playerHeight / 2;
@@ -288,6 +254,10 @@ export class Player {
           this.velocity.y = 0;
           this.onGround = true;
           snapped = true;
+          // remember this platform as last ground and reset grace timer
+          this._lastGround = closestPlatBox;
+          this._lastGroundY = closestY;
+          this._groundGraceRemaining = this._groundGrace;
         } else {
           // sufficiently above platform: in the air
           this._airTime += delta;
@@ -315,8 +285,24 @@ export class Player {
       }
     } else {
       // no platform under player
-      this._airTime += delta;
-      if (this._airTime >= this._airThreshold) this.onGround = false;
+      // keep last ground briefly if within grace window
+      if (this._lastGround && this._groundGraceRemaining > 0) {
+        // snap back to last ground if within reasonable vertical distance
+        const distanceToLast = playerBottom - this._lastGroundY;
+        if (Math.abs(distanceToLast) <= landThreshold + 0.1) {
+          this.mesh.position.y = this._lastGroundY + playerHeight / 2;
+          this._updateCollider();
+          this.velocity.y = 0;
+          this.onGround = true;
+          snapped = true;
+        } else {
+          this._airTime += delta;
+          if (this._airTime >= this._airThreshold) this.onGround = false;
+        }
+      } else {
+        this._airTime += delta;
+        if (this._airTime >= this._airThreshold) this.onGround = false;
+      }
     }
 
     // reset air timer when snapped
