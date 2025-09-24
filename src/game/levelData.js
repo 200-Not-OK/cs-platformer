@@ -35,5 +35,70 @@ export const levels = [
       { type: 'box', position: [10, 6, -10], size: [4, 1, 4], color: 0xcd853f },
       { type: 'box', position: [14, 8, -12], size: [4, 1, 4], color: 0xcd853f }
     ]
+  },
+  {
+    startPosition: [0, 2.2, 0],
+    objects: [
+      { type: 'box', position: [0, 0, 0], size: [12, 1, 12], color: 0x2e8b57 },
+      {
+        type: "box",
+        position: [
+          9.5032122761911,
+          0.5,
+          1.46934356463235
+        ],
+        size: [
+          12,
+          1,
+          12
+        ],
+        rotation: [
+          0,
+          0,
+          0
+        ],
+        color: 8947848
+      },
+      {
+        type: "box",
+        position: [
+          20.637467556218695,
+          0.5,
+          -0.07630135161289786
+        ],
+        size: [
+          12,
+          1,
+          12
+        ],
+        rotation: [
+          0,
+          0,
+          0
+        ],
+        color: 8947848
+      },
+      {
+        type: "box",
+        position: [
+          32.83976284262407,
+          0.5,
+          -0.16751440984365829
+        ],
+        size: [
+          12,
+          1,
+          12
+        ],
+        rotation: [
+          0,
+          0,
+          0
+        ],
+        color: 8947848
+      }
+    ],
+    enemies: [],
+    lights: ["BasicLights" ],
   }
 ];

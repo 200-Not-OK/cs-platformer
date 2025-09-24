@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Level Editor - CS Platformer</title>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #111;
+            font-family: system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+        }
+        
+        #editor-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+        
+        .status-overlay {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 1000;
+        }
+        
+        /* Hide scrollbars but keep functionality */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.3);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="editor-container">
+        <div class="status-overlay" id="status">
+            Level Editor - Ready to Create
+        </div>
+    </div>
+    
+    <script type="module" src="./src/editor/standalone.js"></script>
+</body>
+</html>
