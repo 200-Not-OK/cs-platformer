@@ -46,7 +46,7 @@ export class Game {
   this.level = null;
 
   // Player
-  this.player = new Player(this.scene, { speed: 9, jumpStrength: 12, size: [1, 1, 1] });
+  this.player = new Player(this.scene, { speed: 9, jumpStrength: 12, size: [1, 1.5, 1] });
   // Set a safe default spawn until the initial level is loaded
   const start = this.level?.data?.startPosition ?? [0, 2, 8];
   this.player.setPosition(new THREE.Vector3(...start));
@@ -212,8 +212,8 @@ export class Game {
       return;
     }
 
-    // update level (updates colliders/helpers)
-    this.level.update();
+  // update level (updates colliders/helpers and enemies)
+  this.level.update(delta, this.player, this.level.getPlatforms());
 
     // update UI each frame with some context (player model and simple state)
     if (this.ui) {

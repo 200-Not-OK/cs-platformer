@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ColliderHelper } from './colliderHelper.js';
+import { EnemyManager } from './EnemyManager.js';
 
 // A generic Level that builds meshes from levelData objects array.
 export class Level {
@@ -10,6 +11,7 @@ export class Level {
     this.colliders = []; // box3 for each mesh
     this.helpers = []; // collider helpers
     this.showColliders = showColliders;
+    this.enemyManager = new EnemyManager(this.scene);
     this._buildFromData();
   }
 
@@ -35,15 +37,28 @@ export class Level {
       }
       // extendable: add other object types here (spheres, triggers, etc.)
     }
+
+    // Spawn enemies if defined in level data
+    if (this.data.enemies && Array.isArray(this.data.enemies)) {
+      for (const ed of this.data.enemies) {
+        try {
+          this.enemyManager.spawn(ed.type, ed);
+        } catch (e) {
+          console.warn('Failed to spawn enemy', ed, e);
+        }
+      }
+    }
   }
 
-  update() {
+  update(delta = 1/60, player = null, platforms = []) {
     for (let i = 0; i < this.objects.length; i++) {
       const mesh = this.objects[i];
       mesh.userData.collider.setFromObject(mesh);
       this.helpers[i].update();
       this.helpers[i].setVisible(this.showColliders);
     }
+    // update enemies
+    if (this.enemyManager) this.enemyManager.update(delta, player, platforms.length ? platforms : this.getPlatforms());
   }
 
   toggleColliders(v) {
@@ -58,6 +73,7 @@ export class Level {
     this.objects = [];
     this.helpers = [];
     this.colliders = [];
+    if (this.enemyManager) { this.enemyManager.dispose(); this.enemyManager = null; }
   }
 
   getPlatforms() {

@@ -6,6 +6,9 @@ export const levels = [
     startPosition: [0, 3, 8],
     ui: ['hud', 'minimap'],
     lights: [ 'BasicLights' ],
+    enemies: [
+      { type: 'walker', position: [5, 3, 8], modelUrl: 'src/assets/low_poly_female/scene.gltf', patrolPoints: [[7,2,-8,0.5], [13,2,-8,0.5]], speed: 2.4, chaseRange: 5 }
+    ],
     objects: [
       // platform objects are generic "box" objects: position + size + optional color
       { type: 'box', position: [0, 0, 0], size: [50, 1, 50], color: 0x6b8e23 }, // ground
