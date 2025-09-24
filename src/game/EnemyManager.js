@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { WalkerEnemy } from './enemies/WalkerEnemy.js';
+import { RunnerEnemy } from './enemies/RunnerEnemy.js';
+import { JumperEnemy } from './enemies/JumperEnemy.js';
+import { FlyerEnemy } from './enemies/FlyerEnemy.js';
 
 export class EnemyManager {
   constructor(scene) {
@@ -7,6 +10,9 @@ export class EnemyManager {
     this.enemies = [];
     this.typeRegistry = {
       walker: WalkerEnemy,
+      runner: RunnerEnemy,
+      jumper: JumperEnemy,
+      flyer: FlyerEnemy,
       // register more types here
     };
   }
