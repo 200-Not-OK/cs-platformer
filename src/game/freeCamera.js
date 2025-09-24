@@ -24,8 +24,11 @@ export class FreeCamera {
   }
 
   update(delta) {
-    // handle mouse look when mouse down
-    if (this.input.mouseDown) {
+    // handle mouse look when mouse down. if input.ignoreMouse is set (e.g. editor gizmo active)
+    // consume the mouse delta but do not apply it to camera orientation.
+    if (this.input.ignoreMouse) {
+      this.input.consumeMouseDelta();
+    } else if (this.input.mouseDown) {
       const d = this.input.consumeMouseDelta();
       this.yaw -= d.x * this.sensitivity;
       this.pitch -= d.y * this.sensitivity;

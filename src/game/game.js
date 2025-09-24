@@ -14,6 +14,7 @@ import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
 import { enableDebug, disableDebug } from './collisionSystem.js';
+import { LevelEditor } from './editor/levelEditor.js';
 
 export class Game {
   constructor() {
@@ -112,6 +113,9 @@ export class Game {
   this.lights = new LightManager(this.scene);
   // Apply lights for current level (loadLevel already called)
   this.applyLevelLights(this.level?.data);
+
+  // In-game level editor (toggle with E)
+  this.levelEditor = new LevelEditor(this);
 
     // debug toggles
     this.showColliders = true;
@@ -245,6 +249,8 @@ export class Game {
 
   // update lights (allow dynamic lights to animate)
   if (this.lights) this.lights.update(delta);
+  // update level editor gizmo/helpers
+  if (this.levelEditor) this.levelEditor.update(delta);
 
     // render
     this.renderer.render(this.scene, this.activeCamera);
