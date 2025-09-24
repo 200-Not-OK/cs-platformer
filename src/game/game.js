@@ -47,10 +47,8 @@ export class Game {
   this.level = null;
 
   // Player
-  this.player = new Player(this.scene, { speed: 9, jumpStrength: 12, size: [1, 1.5, 1] });
-  // Set a safe default spawn until the initial level is loaded
-  const start = this.level?.data?.startPosition ?? [0, 2, 8];
-  this.player.setPosition(new THREE.Vector3(...start));
+  this.player = new Player(this.scene, { speed: 11, jumpStrength: 12, size: [1, 1.5, 1] });
+  // Player position will be set by loadLevel() call
 
     // Cameras
   this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
@@ -260,10 +258,14 @@ export class Game {
   loadLevel(index) {
     if (this.level) this.level.dispose();
     this.level = this.levelManager.loadIndex(index);
-    // place player at start
-    const start = this.level.data.startPosition ?? [0, 2, 8];
-    this.player.setPosition(new THREE.Vector3(...start));
-    this.player.velocity.set(0, 0, 0);
+    
+    // Ensure geometry is fully created before positioning player
+    // Small delay to allow physics/collision system to register new geometry
+    setTimeout(() => {
+      const start = this.level.data.startPosition;
+      this.player.setPosition(new THREE.Vector3(...start));
+      this.player.velocity.set(0, 0, 0);
+    }, 50); // 50ms delay should be sufficient
 
     // swap UI components according to level.data.ui (array of strings)
     this.applyLevelUI(this.level.data);
