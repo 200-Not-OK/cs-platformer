@@ -51,8 +51,7 @@ export class Player {
   _loadModel() {
     const loader = new GLTFLoader();
     loader.load(
-      //'src/assets/low_poly_male/scene.gltf',
-      'src/assets/low_poly_female/scene.gltf',
+      'src/assets/low_poly_male/scene.gltf',
       (gltf) => {
         // Remove placeholder children
         while (this.mesh.children.length > 0) this.mesh.remove(this.mesh.children[0]);
