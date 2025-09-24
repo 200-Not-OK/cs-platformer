@@ -28,6 +28,9 @@ export class Player {
     this._groundGraceRemaining = 0;
     this._modelYawOffset = 0; // offset to align model forward with world forward
     this._turnLerp = 0.14; // smoothing for rotation to face camera
+  // Sprinting
+  this.sprintMultiplier = options.sprintMultiplier ?? 1.6; // speed factor while holding Shift
+  this.isSprinting = false;
     // Animation
     this.mixer = null;
     this.actions = {
@@ -305,7 +308,11 @@ export class Player {
       const r = camOrientation?.right ? new THREE.Vector3(camOrientation.right.x, 0, camOrientation.right.z).normalize() : new THREE.Vector3(1, 0, 0);
       targetVel.addScaledVector(f, moveForward);
       targetVel.addScaledVector(r, moveRight);
-      if (targetVel.lengthSq() > 0) targetVel.normalize().multiplyScalar(this.speed);
+      // Sprint if Shift is held
+      const sprint = (input && input.isKey) ? (input.isKey('ShiftLeft') || input.isKey('ShiftRight')) : false;
+      this.isSprinting = sprint;
+      const speedScale = sprint ? this.sprintMultiplier : 1;
+      if (targetVel.lengthSq() > 0) targetVel.normalize().multiplyScalar(this.speed * speedScale);
     }
 
     // Smooth horizontal velocity (_hVelocity holds x/z components)
