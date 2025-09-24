@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ColliderHelper } from './colliderHelper.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { resolveMovement, meshesToColliders } from './collisionSystem.js';
+import { resolveMovement, meshesToColliders, enableDebug } from './collisionSystem.js';
 
 export class Player {
   constructor(scene, options = {}) {
@@ -40,6 +40,8 @@ export class Player {
     // Horizontal movement smoothing
     this._hVelocity = new THREE.Vector3(); // horizontal velocity (x,z)
     this._hAccel = options.hAcceleration ?? 40; // units per second^2-ish smoothing factor
+    // debug flag (can be toggled from game via window.__collisionDebugOn)
+    //this.debug = (typeof window !== 'undefined' && !!window.__collisionDebugOn) || false;
     this._loadModel();
   }
 
@@ -331,8 +333,37 @@ export class Player {
 
     // Compose movement for this frame (units = world units)
     const movementThisFrame = new THREE.Vector3(this._hVelocity.x * delta, this.velocity.y * delta, this._hVelocity.z * delta);
-    // Apply collision-aware movement
-    this.moveAndCollide(movementThisFrame, platforms, delta);
+    // Use central resolver: convert platform meshes to Box3 colliders and call resolveMovement
+    const colliders = meshesToColliders(platforms || []);
+    // compute previous bottom Y from current collider size/position
+    const size = new THREE.Vector3();
+    this.collider.getSize(size);
+    const prevBottomY = this.mesh.position.y - (size.y * 0.5);
+    if (this.debug) {
+      try { enableDebug(this.scene); } catch (e) { /* ignore if already enabled */ }
+    }
+    const res = resolveMovement(this.collider.clone(), movementThisFrame, colliders, { prevBottomY, landThreshold: 0.06, penetrationAllowance: 0.01, minVerticalOverlap: 0.02, debug: this.debug });
+
+    // Apply the resolved offset to the player
+    this.mesh.position.add(res.offset);
+    this._updateCollider();
+
+    // Update on-ground and velocity state per resolver result
+    if (res.onGround) {
+      this.onGround = true;
+      this.velocity.y = 0;
+      this._airTime = 0;
+      if (res.groundCollider) {
+        this._lastGround = res.groundCollider;
+        this._lastGroundY = res.groundCollider.max.y;
+        this._groundGraceRemaining = this._groundGrace;
+      }
+    } else {
+      // if we collided with an underside and were moving upward, cancel upward velocity
+      if (res.collided && this.velocity.y > 0) this.velocity.y = 0;
+      this._airTime += delta;
+      if (this._airTime >= this._airThreshold) this.onGround = false;
+    }
 
     // Update animations
     try {

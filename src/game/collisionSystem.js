@@ -49,13 +49,18 @@ export function disableDebug() {
 // Uses axis-separation: X, Z, then Y. Returns an object with resolved center
 // offset (vector), updated onGround boolean, and collided boolean.
 export function resolveMovement(box, movement, colliders, options = {}) {
-  // Iterative minimum-translation separation resolver.
-  // This moves the box by `movement` and, if intersections occur, separates
-  // the box by the minimal translation along the minimal-penetration axis.
-  // This avoids snapping to far-away colliders and large teleports.
+  // Two-phase resolver inspired by per-player logic:
+  // 1) Apply horizontal movement axis-by-axis (X then Z). If an axis causes
+  //    penetration with a collider that has meaningful vertical overlap, revert
+  //    that axis so the mover can slide along obstacles.
+  // 2) Apply vertical movement and then perform landing/underside handling:
+  //    find the highest platform under the mover's XZ footprint and snap or
+  //    correct based on whether the mover came from above.
 
-  const prevBottomY = options.prevBottomY ?? -Infinity;
-  const landThresholdOpt = options.landThreshold ?? 0.06;
+  const prevBottomY = (typeof options.prevBottomY !== 'undefined') ? options.prevBottomY : (box.getCenter(new THREE.Vector3()).y - (new THREE.Vector3().copy(box.getSize(new THREE.Vector3())).y * 0.5));
+  const landThreshold = options.landThreshold ?? 0.06;
+  const penetrationAllowance = options.penetrationAllowance ?? 0.01;
+  const minVerticalOverlap = options.minVerticalOverlap ?? 0.02; // require >2cm vertical overlap to block horizontal movement
 
   // compute half-size and original center
   const size = new THREE.Vector3();
@@ -63,8 +68,8 @@ export function resolveMovement(box, movement, colliders, options = {}) {
   const half = size.clone().multiplyScalar(0.5);
   const originalCenter = box.getCenter(new THREE.Vector3());
 
-  // start with desired center
-  const center = originalCenter.clone().add(movement);
+  // working center that we'll modify
+  const center = originalCenter.clone();
   const testBox = new THREE.Box3();
   const setBoxFromCenter = (c) => {
     testBox.min.copy(c).sub(half);
@@ -76,167 +81,161 @@ export function resolveMovement(box, movement, colliders, options = {}) {
   let groundOther = null;
   let collidedOther = null;
 
-  // iterative separation loop
-  const maxIters = 6;
-  for (let iter = 0; iter < maxIters; iter++) {
+  // Watch helper: if a watch point is provided (options.watch or window.__collisionWatch)
+  // and the center is within radius, we'll produce an obvious log and optionally break
+  const watch = options.watch ?? (typeof window !== 'undefined' ? window.__collisionWatch : null);
+  const watchRadius = (watch && typeof watch.r === 'number') ? watch.r : 0.5;
+  const isInWatch = (c) => {
+    if (!watch) return false;
+    const dx = c.x - watch.x;
+    const dz = c.z - watch.z;
+    return (dx * dx + dz * dz) <= (watchRadius * watchRadius);
+  };
+
+  // Helper to update debug meshes
+  const updateDebug = () => {
+    if (!(debugEnabled || options.debug)) return;
+    if (debugTestMesh) {
+      const s = new THREE.Vector3();
+      testBox.getSize(s);
+      debugTestMesh.scale.set(s.x || 1, s.y || 1, s.z || 1);
+      const c = testBox.getCenter(new THREE.Vector3());
+      debugTestMesh.position.copy(c);
+    }
+    if (debugOtherMesh && collidedOther) {
+      const s2 = new THREE.Vector3();
+      collidedOther.getSize(s2);
+      debugOtherMesh.scale.set(s2.x || 1, s2.y || 1, s2.z || 1);
+      const co = collidedOther.getCenter(new THREE.Vector3());
+      debugOtherMesh.position.copy(co);
+    }
+  };
+
+  // Phase 1: horizontal movement per-axis (X then Z)
+  const axes = ['x', 'z'];
+  for (const ax of axes) {
+    const deltaAxis = movement[ax] ?? 0;
+    if (!deltaAxis) continue;
+    center[ax] += deltaAxis;
     setBoxFromCenter(center);
-    let any = false;
+    let blocked = false;
     for (const other of colliders) {
       if (!other) continue;
-      // skip self (same box reference)
       if (other === box) continue;
       if (!intersectsBox(testBox, other)) continue;
-
-      // we have an intersection; compute penetration depths on each axis
-      collided = true;
-      collidedOther = other;
-      any = true;
-
-      const penX = Math.min(testBox.max.x, other.max.x) - Math.max(testBox.min.x, other.min.x);
-      const penY = Math.min(testBox.max.y, other.max.y) - Math.max(testBox.min.y, other.min.y);
-      const penZ = Math.min(testBox.max.z, other.max.z) - Math.max(testBox.min.z, other.min.z);
-
-      // Debug logging of candidate penetrations and chosen axis
-      if (debugEnabled || options.debug) {
-        console.log('[resolveMovement] iter', iter, 'penetrations', { penX, penY, penZ });
+      // Compute vertical overlap to decide if this horizontal intersection should block movement
+      const overlapY = Math.min(testBox.max.y, other.max.y) - Math.max(testBox.min.y, other.min.y);
+      if (overlapY > minVerticalOverlap) {
+        blocked = true;
+        collided = true;
+        collidedOther = other;
+        break;
       }
-
-      // choose axis with smallest positive penetration
-      // But if we appear to have come from above (prevBottomY >= other.max.y - landThresholdOpt),
-      // bias against selecting Y so we don't drop the player when they were previously on the platform.
-      const biasAgainstY = (prevBottomY >= other.max.y - landThresholdOpt) ? 3.0 : 1.0;
-      const minVerticalPen = options.minVerticalPen ?? 0.05; // ignore very small vertical penetrations
-      const wPenX = Math.abs(penX);
-      let wPenY = Math.abs(penY) * biasAgainstY;
-      const wPenZ = Math.abs(penZ);
-      // If vertical penetration is extremely small, prefer horizontal separation
-      if (Math.abs(penY) < minVerticalPen) {
-        if (debugEnabled || options.debug) console.log('[resolveMovement] ignoring small penY', penY, 'minVerticalPen', minVerticalPen);
-        wPenY = Infinity;
-      }
-      let axis = 'x';
-      let minPen = wPenX;
-      if (wPenY < minPen) { axis = 'y'; minPen = wPenY; }
-      if (wPenZ < minPen) { axis = 'z'; minPen = wPenZ; }
-      if (debugEnabled || options.debug) console.log('[resolveMovement] chosen axis', axis, 'weightedPens', { wPenX, wPenY, wPenZ, biasAgainstY });
-
-  // compute separation translation along chosen axis
-      if (axis === 'x') {
-        const otherCenterX = (other.min.x + other.max.x) * 0.5;
-        // compute raw translation
-        let tx = 0;
-        if (center.x < otherCenterX) {
-          // push left so testBox.max.x == other.min.x
-          tx = other.min.x - testBox.max.x - EPS;
-        } else {
-          // push right so testBox.min.x == other.max.x
-          tx = other.max.x - testBox.min.x + EPS;
-        }
-        // Cap horizontal correction so we don't teleport far — allow at most the attempted movement plus a small cushion
-        const attempted = movement.x ?? 0;
-        const cushion = 0.04;
-        const allowed = Math.abs(attempted) + cushion;
-        let appliedTx = tx;
-        if (Math.abs(appliedTx) > allowed) appliedTx = Math.sign(appliedTx) * allowed;
-        center.x += appliedTx;
-        if (debugEnabled || options.debug) console.log('[resolveMovement] axis=x applied tx', appliedTx, 'attempted', attempted, 'allowed', allowed);
-
-        // If applied translation did not fully resolve intersection with this collider,
-        // compute remaining penetration on X and apply a minimal extra separation to avoid oscillation.
-        const tmpBox = new THREE.Box3();
-        tmpBox.min.copy(center).sub(half);
-        tmpBox.max.copy(center).add(half);
-        if (intersectsBox(tmpBox, other)) {
-          // remaining penetration on X
-          const remPenX = Math.min(tmpBox.max.x, other.max.x) - Math.max(tmpBox.min.x, other.min.x);
-          if (remPenX > 1e-5) {
-            const extra = remPenX + EPS;
-            const sign = (appliedTx >= 0) ? 1 : -1;
-            center.x += sign * extra * (appliedTx === 0 ? Math.sign(tx) || 1 : Math.sign(appliedTx));
-            if (debugEnabled || options.debug) console.log('[resolveMovement] axis=x extra separation', extra);
-            // we've applied an extra correction — finish early to avoid repeating the same extra over multiple iterations
-            iter = maxIters;
-            break;
-          }
-        }
-      } else if (axis === 'z') {
-        const otherCenterZ = (other.min.z + other.max.z) * 0.5;
-        let tz = 0;
-        if (center.z < otherCenterZ) {
-          tz = other.min.z - testBox.max.z - EPS;
-        } else {
-          tz = other.max.z - testBox.min.z + EPS;
-        }
-        const attemptedZ = movement.z ?? 0;
-        const cushionZ = 0.04;
-        const allowedZ = Math.abs(attemptedZ) + cushionZ;
-        let appliedTz = tz;
-        if (Math.abs(appliedTz) > allowedZ) appliedTz = Math.sign(appliedTz) * allowedZ;
-        center.z += appliedTz;
-        if (debugEnabled || options.debug) console.log('[resolveMovement] axis=z applied tz', appliedTz, 'attemptedZ', attemptedZ, 'allowedZ', allowedZ);
-
-        const tmpBoxZ = new THREE.Box3();
-        tmpBoxZ.min.copy(center).sub(half);
-        tmpBoxZ.max.copy(center).add(half);
-        if (intersectsBox(tmpBoxZ, other)) {
-          const remPenZ = Math.min(tmpBoxZ.max.z, other.max.z) - Math.max(tmpBoxZ.min.z, other.min.z);
-          if (remPenZ > 1e-5) {
-            const extraZ = remPenZ + EPS;
-            const signZ = (appliedTz >= 0) ? 1 : -1;
-            center.z += signZ * extraZ * (appliedTz === 0 ? Math.sign(tz) || 1 : Math.sign(appliedTz));
-            if (debugEnabled || options.debug) console.log('[resolveMovement] axis=z extra separation', extraZ);
-            // finish early to avoid repeated extra corrections across iterations
-            iter = maxIters;
-            break;
-          }
-        }
-  } else { // y axis
-        // vertical handling: decide landing vs underside using prevBottomY
-        const otherCenterY = (other.min.y + other.max.y) * 0.5;
-        if (center.y < otherCenterY) {
-          // our center is below their center -> we are beneath them; push down
-          const ty = other.min.y - testBox.max.y - EPS;
-          center.y += ty;
-        } else {
-          // we are above; consider landing only if prevBottomY suggests we came from above
-          if (prevBottomY >= other.max.y - landThresholdOpt) {
-            const ty = other.max.y - testBox.min.y + EPS;
-            center.y += ty;
-            onGround = true;
-            groundOther = other;
-          } else {
-            // if we were below previously, push below the underside
-            const ty = other.min.y - testBox.max.y - EPS;
-            center.y += ty;
-          }
-        }
-      }
-
-      // after handling one intersection, break to re-evaluate (iterative separation)
-      // update debug meshes to visualize testBox and the current other
-      if (debugEnabled || options.debug) {
-        if (debugTestMesh) {
-          const size = new THREE.Vector3();
-          testBox.getSize(size);
-          debugTestMesh.scale.set(size.x || 1, size.y || 1, size.z || 1);
-          const centerBox = testBox.getCenter(new THREE.Vector3());
-          debugTestMesh.position.copy(centerBox);
-        }
-        if (debugOtherMesh) {
-          const size2 = new THREE.Vector3();
-          other.getSize(size2);
-          debugOtherMesh.scale.set(size2.x || 1, size2.y || 1, size2.z || 1);
-          const centerOther = other.getCenter(new THREE.Vector3());
-          debugOtherMesh.position.copy(centerOther);
-        }
-      }
-
-      break;
     }
-    if (!any) break;
+    if (blocked) {
+      if (debugEnabled || options.debug) {
+        console.log('[resolveMovement] horizontal blocked', { axis: ax, attempted: deltaAxis, center: center.clone(), overlapThreshold: minVerticalOverlap, collider: collidedOther });
+      }
+      // revert this axis only
+      center[ax] = originalCenter[ax];
+      setBoxFromCenter(center);
+    }
+    updateDebug();
   }
 
+  // Phase 2: vertical movement
+  center.y += movement.y ?? 0;
+  setBoxFromCenter(center);
+
+  // If we're in the watched region, emit a clear log and optionally pause execution
+  if (isInWatch(center)) {
+    console.log('[resolveMovement] WATCH REGION HIT at center', center.clone(), 'watch', watch);
+    if (watch && watch.break) {
+      // Pause execution so you can inspect the scene, colliders, and logs
+      debugger;
+    }
+  }
+
+  // Determine the highest platform directly under the player (by XZ) regardless of velocity.
+  const playerBottom = testBox.min.y;
+  let closestY = -Infinity;
+  let closestPlatBox = null;
+  const playerTop = originalCenter.y + half.y;
+  const ABOVE_TOL = options.aboveTolerance ?? 0.05; // small tolerance for slightly-above-top platforms
+  for (const other of colliders) {
+    if (!other) continue;
+    if (other === box) continue;
+    // require XZ overlap between mover's horizontal footprint and platform
+    const xOverlap = testBox.max.x > other.min.x && testBox.min.x < other.max.x;
+    const zOverlap = testBox.max.z > other.min.z && testBox.min.z < other.max.z;
+    if (!xOverlap || !zOverlap) continue;
+    // Skip platforms that are clearly above the player's head — they should not be
+    // considered as landing candidates. This prevents floating platforms above
+    // from stealing the 'closest platform' when the player is actually standing on
+    // another platform below.
+    if (other.max.y > playerTop + ABOVE_TOL) {
+      if (debugEnabled || options.debug) console.log('[resolveMovement] skipping platform above player top', { platformTop: other.max.y, playerTop, other });
+      continue;
+    }
+    if (other.max.y > closestY) {
+      closestY = other.max.y;
+      closestPlatBox = other;
+    }
+  }
+
+  if (closestY > -Infinity && closestPlatBox) {
+    const distance = playerBottom - closestY;
+    const prevBottom = (typeof options.prevBottomY !== 'undefined') ? options.prevBottomY : (originalCenter.y - half.y);
+    if (debugEnabled || options.debug) {
+      console.log('[resolveMovement] vertical check', { prevBottom, closestY, distance, landThreshold });
+    }
+    if (prevBottom >= closestY - landThreshold) {
+      if (distance <= landThreshold) {
+        // snap to top
+        center.y = closestY + half.y;
+        setBoxFromCenter(center);
+        onGround = true;
+        groundOther = closestPlatBox;
+        collided = collided || false;
+        if (debugEnabled || options.debug) console.log('[resolveMovement] snapped to top', { platformTop: closestY, playerBottom, playerCenter: center.clone() });
+      } else if (distance < -penetrationAllowance) {
+        // penetrating from above: correct upward
+        center.y = closestY + half.y;
+        setBoxFromCenter(center);
+        onGround = true;
+        groundOther = closestPlatBox;
+        if (debugEnabled || options.debug) console.log('[resolveMovement] corrected penetrating from above', { platformTop: closestY, distance });
+      } else {
+        // sufficiently above platform: in the air (no snap)
+        onGround = false;
+        if (debugEnabled || options.debug) console.log('[resolveMovement] above platform, not snapping', { distance });
+      }
+    } else {
+      // previously below platform — do NOT teleport to top.
+      const playerTop = testBox.max.y;
+      const platBottom = closestPlatBox.min.y;
+      if (playerTop > platBottom) {
+        // move player so their top sits just below the platform bottom
+        center.y = platBottom - half.y - penetrationAllowance;
+        setBoxFromCenter(center);
+        onGround = false;
+        // mark collision with underside
+        collided = true;
+        collidedOther = closestPlatBox;
+        if (debugEnabled || options.debug) console.log('[resolveMovement] hit underside, pushed down', { platBottom, playerTop });
+      } else {
+        onGround = false;
+      }
+    }
+  } else {
+    onGround = false;
+    if (debugEnabled || options.debug) console.log('[resolveMovement] no platform under player for current XZ footprint');
+  }
+
+  updateDebug();
+
   const resolvedOffset = center.clone().sub(originalCenter);
+  if (debugEnabled || options.debug) console.log('[resolveMovement] result', { offset: resolvedOffset.clone(), onGround, collided, groundCollider: groundOther, collidedWith: collidedOther });
   return {
     offset: resolvedOffset,
     onGround,

@@ -22,7 +22,7 @@ export class Game {
     this.renderer = renderer;
 
     // enable collision debug visuals/logging (remove for production)
-    enableDebug(this.scene);
+    //enableDebug(this.scene);
 
     // simple toggle accessible from browser console via window.toggleCollisionDebug()
     window.__collisionDebugOn = true;
