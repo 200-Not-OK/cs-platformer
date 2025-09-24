@@ -136,67 +136,58 @@ export class Player {
     // Two-phase: handle horizontal movement first (prevent side penetration), then vertical + snapping
     const prevPos = this.mesh.position.clone();
 
-    // advance/decay ground-grace timer
-    this._groundGraceRemaining = Math.max(0, (this._groundGraceRemaining || 0) - (delta || 0));
+    // Apply horizontal movement per-axis so we can slide along obstacles.
+    const intersects = (a, b) => (
+      a.min.x < b.max.x && a.max.x > b.min.x &&
+      a.min.y < b.max.y && a.max.y > b.min.y &&
+      a.min.z < b.max.z && a.max.z > b.min.z
+    );
 
-    // Remember the platform (if any) directly under the player before movement.
-    // This helps when a side collision during horizontal movement briefly
-    // breaks XZ overlap and would otherwise make us lose ground contact.
-    const playerHeight = (this.size && this.size[1]) ? this.size[1] : (this.collider.max.y - this.collider.min.y);
-    const halfSize = new THREE.Vector3(this.colliderSize[0] * 0.5, this.colliderSize[1] * 0.5, this.colliderSize[2] * 0.5);
-    const prevCenter = prevPos.clone();
-    const prevMin = prevCenter.clone().sub(halfSize);
-    const prevMax = prevCenter.clone().add(halfSize);
-    let prevClosestY = -Infinity;
-    let prevClosestPlatBox = null;
-    // Allow a small tolerance for XZ overlap so tiny separations caused by
-    // side-collisions don't immediately drop our remembered platform.
-    const XZ_TOLERANCE = 0.04; // units
-    for (const plat of platforms) {
-      const p = plat.userData.collider;
-      const overlapX = Math.min(prevMax.x, p.max.x) - Math.max(prevMin.x, p.min.x);
-      const overlapZ = Math.min(prevMax.z, p.max.z) - Math.max(prevMin.z, p.min.z);
-      const xOverlap = overlapX > -XZ_TOLERANCE;
-      const zOverlap = overlapZ > -XZ_TOLERANCE;
-      if (xOverlap && zOverlap) {
-        if (p.max.y > prevClosestY) {
-          prevClosestY = p.max.y;
-          prevClosestPlatBox = p;
-        }
+    // Try X axis
+    if (movement.x !== 0) {
+      this.mesh.position.x += movement.x;
+      this._updateCollider();
+      let collidedX = false;
+      for (let i = 0; i < platforms.length; i++) {
+        const platBox = platforms[i].userData.collider;
+        if (intersects(this.collider, platBox)) { collidedX = true; break; }
+      }
+      if (collidedX) {
+        // revert only X movement so we can slide along Z
+        this.mesh.position.x = prevPos.x;
+        this._updateCollider();
       }
     }
 
-    // Use the centralized resolver: convert platforms to colliders and resolve movement
-    const colliders = meshesToColliders(platforms);
-    const prevBottomY = prevPos.y - playerHeight / 2;
-    const resolverResult = resolveMovement(this.collider.clone(), movement.clone(), colliders, {
-      prevBottomY,
-      landThreshold: 0.06,
-      penetrationAllowance: 0.01
-    });
-
-    // Apply resolved offset to the player's mesh
-    this.mesh.position.add(resolverResult.offset);
-    this._updateCollider();
-
-    // If there was a horizontal collision (resolver reported collidedWith and horizontal movement non-zero),
-    // refresh ground grace so short lateral collisions don't drop ground contact.
-    if (resolverResult.collidedWith && (movement.x !== 0 || movement.z !== 0)) {
-      this._groundGraceRemaining = this._groundGrace;
+    // Try Z axis
+    if (movement.z !== 0) {
+      this.mesh.position.z += movement.z;
+      this._updateCollider();
+      let collidedZ = false;
+      for (let i = 0; i < platforms.length; i++) {
+        const platBox = platforms[i].userData.collider;
+        if (intersects(this.collider, platBox)) { collidedZ = true; break; }
+      }
+      if (collidedZ) {
+        // revert only Z movement so we can slide along X
+        this.mesh.position.z = prevPos.z;
+        this._updateCollider();
+      }
     }
 
-  // Determine the highest platform directly under the player (by XZ) regardless of velocity.
+    // Apply vertical movement
+    this.mesh.position.y += movement.y;
+    this._updateCollider();
+
+    // Determine the highest platform directly under the player (by XZ) regardless of velocity.
     const playerBottom = this.collider.min.y;
     let closestY = -Infinity;
     let closestPlatBox = null;
-    const XZ_TOLERANCE_CUR = 0.04; // same tolerance for current detection
     platforms.forEach(plat => {
       const platBox = plat.userData.collider;
-      // compute numeric overlaps and accept tiny negative overlaps within tolerance
-      const overlapX = Math.min(this.collider.max.x, platBox.max.x) - Math.max(this.collider.min.x, platBox.min.x);
-      const overlapZ = Math.min(this.collider.max.z, platBox.max.z) - Math.max(this.collider.min.z, platBox.min.z);
-      const xOverlap = overlapX > -XZ_TOLERANCE_CUR;
-      const zOverlap = overlapZ > -XZ_TOLERANCE_CUR;
+      // require XZ overlap between player's horizontal footprint and platform
+      const xOverlap = this.collider.max.x > platBox.min.x && this.collider.min.x < platBox.max.x;
+      const zOverlap = this.collider.max.z > platBox.min.z && this.collider.min.z < platBox.max.z;
       if (xOverlap && zOverlap) {
         if (platBox.max.y > closestY) {
           closestY = platBox.max.y;
@@ -204,23 +195,6 @@ export class Player {
         }
       }
     });
-
-    // If we lost XZ overlap due to a lateral collision, prefer the platform that
-    // was under us before movement if it was actually the one we were standing on.
-    // Also allow a short grace window where we keep the previously-known ground
-    // to avoid multi-frame jitter causing us to fall through platforms.
-    const prevBottom = prevPos.y - playerHeight / 2;
-    if (!closestPlatBox) {
-      const preferPrev = prevClosestPlatBox && prevBottom >= prevClosestY - 0.06;
-      const preferLast = this._lastGround && this._groundGraceRemaining > 0 && this._lastGroundY > -Infinity;
-      if (preferPrev) {
-        closestPlatBox = prevClosestPlatBox;
-        closestY = prevClosestY;
-      } else if (preferLast) {
-        closestPlatBox = this._lastGround;
-        closestY = this._lastGroundY;
-      }
-    }
 
     const landThreshold = 0.06; // how close (in world units) bottom must be to platform top to land
     const penetrationAllowance = 0.01; // small allowance for penetration correction
@@ -243,10 +217,6 @@ export class Player {
           this.velocity.y = 0;
           this.onGround = true;
           snapped = true;
-          // remember this platform as last ground and reset grace timer
-          this._lastGround = closestPlatBox;
-          this._lastGroundY = closestY;
-          this._groundGraceRemaining = this._groundGrace;
         } else if (distance < -penetrationAllowance) {
           // penetrating from above (rare): correct by moving player up
           this.mesh.position.y = closestY + playerHeight / 2;
@@ -254,10 +224,6 @@ export class Player {
           this.velocity.y = 0;
           this.onGround = true;
           snapped = true;
-          // remember this platform as last ground and reset grace timer
-          this._lastGround = closestPlatBox;
-          this._lastGroundY = closestY;
-          this._groundGraceRemaining = this._groundGrace;
         } else {
           // sufficiently above platform: in the air
           this._airTime += delta;
@@ -285,137 +251,14 @@ export class Player {
       }
     } else {
       // no platform under player
-      // keep last ground briefly if within grace window
-      if (this._lastGround && this._groundGraceRemaining > 0) {
-        // snap back to last ground if within reasonable vertical distance
-        const distanceToLast = playerBottom - this._lastGroundY;
-        if (Math.abs(distanceToLast) <= landThreshold + 0.1) {
-          this.mesh.position.y = this._lastGroundY + playerHeight / 2;
-          this._updateCollider();
-          this.velocity.y = 0;
-          this.onGround = true;
-          snapped = true;
-        } else {
-          this._airTime += delta;
-          if (this._airTime >= this._airThreshold) this.onGround = false;
-        }
-      } else {
-        this._airTime += delta;
-        if (this._airTime >= this._airThreshold) this.onGround = false;
-      }
+      this._airTime += delta;
+      if (this._airTime >= this._airThreshold) this.onGround = false;
     }
 
     // reset air timer when snapped
     if (snapped) this._airTime = 0;
 
     if (this.helper) this.helper.updateWithRotation(this.mesh.rotation);
-  }
-
-  // delta = seconds, input = InputManager, cameraOrientation = { forward, right }
-  update(delta, input, cameraOrientation, platforms, active = true) {
-    if (!active) return; // do not move player if free cam
-
-    const move = new THREE.Vector3();
-    if (input.isKey('KeyW')) move.add(cameraOrientation.forward);
-    if (input.isKey('KeyS')) move.sub(cameraOrientation.forward);
-    if (input.isKey('KeyA')) move.sub(cameraOrientation.right);
-    if (input.isKey('KeyD')) move.add(cameraOrientation.right);
-    move.normalize();
-
-  // Desired horizontal displacement for this frame (without smoothing)
-  const desired = move.clone().multiplyScalar(this.speed);
-
-  // Smooth horizontal velocity: accelerate _hVelocity towards desired
-  // using a simple critically-damped style update: v += (desired - v) * (1 - exp(-k*dt))
-  const k = Math.max(0.0, this._hAccel);
-  const lerpFactor = 1 - Math.exp(-k * delta);
-  this._hVelocity.lerp(desired, lerpFactor);
-  // displacement this frame
-  const horiz = this._hVelocity.clone().multiplyScalar(delta);
-
-    // When third-person camera is active (player control active), rotate the player to face camera forward
-    if (active && cameraOrientation && cameraOrientation.forward) {
-      const f = cameraOrientation.forward.clone();
-      f.y = 0;
-      if (f.lengthSq() > 1e-6) {
-        f.normalize();
-        let desiredYaw = Math.atan2(f.x, f.z) + (this._modelYawOffset || 0);
-        let current = this.mesh.rotation.y || 0;
-        let diff = desiredYaw - current;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-        this.mesh.rotation.y = current + diff * this._turnLerp;
-      }
-    }
-
-    // Only apply gravity if not on ground
-    if (!this.onGround) {
-      this.velocity.y += this.gravity * delta;
-    } else {
-      this.velocity.y = 0;
-    }
-
-    // Jump
-    if (input.isKey('Space') && this.onGround) {
-      this.velocity.y = this.jumpStrength;
-      this.onGround = false;
-    }
-
-  const movementThisFrame = new THREE.Vector3(horiz.x, this.velocity.y * delta, horiz.z);
-    this.moveAndCollide(movementThisFrame, platforms, delta);
-
-    // Update animations
-    try {
-      if (this.mixer) this.mixer.update(delta);
-    } catch (e) {
-      console.warn('Animation mixer update failed:', e);
-    }
-
-    // Determine which action should play: jump > walk > idle
-  // Determine moving state based on smoothed horizontal velocity magnitude
-  const moving = this._hVelocity.lengthSq() > 1e-6;
-
-    // If we just started a jump (left ground and jump action exists), play jump
-    if (!this.onGround && !this._jumpPlaying && this.actions.jump) {
-      // play jump once and mark it playing; when finished we'll clear the flag
-      this._playAction(this.actions.jump, 0.1, false);
-      this._jumpPlaying = true;
-      // ensure jump finisher resets to idle/walk when done
-      const jumpAction = this.actions.jump;
-      const onFinished = () => {
-        this._jumpPlaying = false;
-        jumpAction.getMixer().removeEventListener('finished', onFinished);
-      };
-      jumpAction.getMixer().addEventListener('finished', onFinished);
-    }
-
-    if (this._jumpPlaying) return; // let jump animation play through
-
-    if (moving) {
-      if (this.actions.walk && this.currentAction !== this.actions.walk) {
-        this._playAction(this.actions.walk, 0.15, true);
-      }
-    } else {
-      // Not moving: if we have an idle action, play it. Otherwise, stop any
-      // walk action so the model becomes static.
-      if (this.actions.idle) {
-        if (this.currentAction !== this.actions.idle) {
-          this._playAction(this.actions.idle, 0.2, true);
-        }
-      } else {
-        // No idle animation available — fade out the walk animation if it's playing
-        if (this.currentAction && this.currentAction === this.actions.walk) {
-          try {
-            // fade out gracefully
-            this.currentAction.fadeOut(0.2);
-          } catch (e) {
-            // fallback: stop immediately
-            try { this.currentAction.stop(); } catch (e2) { /* ignore */ }
-          }
-          this.currentAction = null;
-        }
-      }
-    }
   }
 
   _playAction(action, fadeDuration = 0.2, loop = true) {
@@ -435,5 +278,108 @@ export class Player {
 
   toggleHelperVisible(visible) {
     this.helper.setVisible(visible);
+  }
+
+  // Per-frame update called from Game._loop
+  update(delta, input, camOrientation = null, platforms = [], playerActive = true) {
+    // decay ground-grace timer
+    this._groundGraceRemaining = Math.max(0, (this._groundGraceRemaining || 0) - (delta || 0));
+
+    // Read input to form desired horizontal movement in camera space
+    let moveForward = 0;
+    let moveRight = 0;
+    if (input && input.isKey) {
+      if (input.isKey('KeyW')) moveForward += 1;
+      if (input.isKey('KeyS')) moveForward -= 1;
+      if (input.isKey('KeyD')) moveRight += 1;
+      if (input.isKey('KeyA')) moveRight -= 1;
+    }
+
+    // Build world-space horizontal target velocity
+    const targetVel = new THREE.Vector3(0, 0, 0);
+    if (playerActive && (moveForward !== 0 || moveRight !== 0)) {
+      // camOrientation is expected to provide forward and right vectors
+      const f = camOrientation?.forward ? new THREE.Vector3(camOrientation.forward.x, 0, camOrientation.forward.z).normalize() : new THREE.Vector3(0, 0, -1);
+      const r = camOrientation?.right ? new THREE.Vector3(camOrientation.right.x, 0, camOrientation.right.z).normalize() : new THREE.Vector3(1, 0, 0);
+      targetVel.addScaledVector(f, moveForward);
+      targetVel.addScaledVector(r, moveRight);
+      if (targetVel.lengthSq() > 0) targetVel.normalize().multiplyScalar(this.speed);
+    }
+
+    // Smooth horizontal velocity (_hVelocity holds x/z components)
+    const currH = new THREE.Vector3(this._hVelocity.x, 0, this._hVelocity.z);
+    const dv = targetVel.clone().sub(currH);
+    const maxDelta = this._hAccel * delta;
+    if (dv.length() > maxDelta) dv.setLength(maxDelta);
+    currH.add(dv);
+    this._hVelocity.x = currH.x; this._hVelocity.z = currH.z;
+
+    // Apply gravity (vertical velocity in this.velocity.y)
+    if (!this.onGround) {
+      this.velocity.y += this.gravity * delta;
+    } else {
+      // keep vertical velocity non-positive on ground
+      this.velocity.y = Math.min(0, this.velocity.y);
+    }
+
+    // Jump (allow jump during short ground-grace window)
+    if (input && input.isKey && input.isKey('Space') && (this.onGround || this._groundGraceRemaining > 0)) {
+      this.velocity.y = this.jumpStrength;
+      this.onGround = false;
+      this._groundGraceRemaining = 0;
+    }
+
+    // Compose movement for this frame (units = world units)
+    const movementThisFrame = new THREE.Vector3(this._hVelocity.x * delta, this.velocity.y * delta, this._hVelocity.z * delta);
+    // Apply collision-aware movement
+    this.moveAndCollide(movementThisFrame, platforms, delta);
+
+    // Update animations
+    try {
+      if (this.mixer) this.mixer.update(delta);
+    } catch (e) {
+      console.warn('Animation mixer update failed:', e);
+    }
+
+    // Determine which action should play: jump > walk > idle
+    const moving = (this._hVelocity.x * this._hVelocity.x + this._hVelocity.z * this._hVelocity.z) > 1e-6;
+
+    // If we just started a jump (left ground and jump action exists), play jump
+    if (!this.onGround && !this._jumpPlaying && this.actions.jump) {
+      this._playAction(this.actions.jump, 0.1, false);
+      this._jumpPlaying = true;
+      const jumpAction = this.actions.jump;
+      const onFinished = () => {
+        this._jumpPlaying = false;
+        try { jumpAction.getMixer().removeEventListener('finished', onFinished); } catch (e) { /* ignore */ }
+      };
+      try { jumpAction.getMixer().addEventListener('finished', onFinished); } catch (e) { /* ignore */ }
+    }
+
+    if (this._jumpPlaying) return;
+
+    if (moving) {
+      if (this.actions.walk && this.currentAction !== this.actions.walk) {
+        this._playAction(this.actions.walk, 0.15, true);
+      }
+      // rotate model to face horizontal velocity
+      const dir = new THREE.Vector3(this._hVelocity.x, 0, this._hVelocity.z);
+      if (dir.lengthSq() > 1e-6) {
+        const desiredYaw = Math.atan2(dir.x, dir.z);
+        this.mesh.rotation.y = THREE.MathUtils.lerp(this.mesh.rotation.y, desiredYaw + (this._modelYawOffset || 0), this._turnLerp || 0.14);
+        if (this.helper) this.helper.updateWithRotation(this.mesh.rotation);
+      }
+    } else {
+      if (this.actions.idle) {
+        if (this.currentAction !== this.actions.idle) {
+          this._playAction(this.actions.idle, 0.2, true);
+        }
+      } else {
+        if (this.currentAction && this.currentAction === this.actions.walk) {
+          try { this.currentAction.fadeOut(0.2); } catch (e) { try { this.currentAction.stop(); } catch (e2) {} }
+          this.currentAction = null;
+        }
+      }
+    }
   }
 }
