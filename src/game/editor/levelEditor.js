@@ -557,7 +557,7 @@ export class LevelEditor {
     const id = this.nextId++;
     const data = {
       position: [position.x, position.y + 0.5, position.z],
-      size: [2, 1, 2],
+      size: [12, 1, 12],
       rotation: [0, 0, 0],
       color: 0x888888
     };
