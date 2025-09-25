@@ -23,6 +23,7 @@ export class StandaloneLevelEditor {
     
     // Data storage
     this.platforms = [];
+    this.slopes = [];
     this.walls = [];
     this.enemies = [];
     this.lights = [];
@@ -81,8 +82,13 @@ export class StandaloneLevelEditor {
     const lookDirection = new THREE.Vector3().subVectors(new THREE.Vector3(0, 0, 0), this.camera.position).normalize();
     this.cameraYaw = Math.atan2(lookDirection.x, lookDirection.z);
     this.cameraPitch = Math.asin(THREE.MathUtils.clamp(lookDirection.y, -1, 1));
-    this.sensitivity = 0.002;
-    this.moveSpeed = 15;
+    this.sensitivity = 0.004;
+    this.moveSpeed = 20;
+    
+    // Zoom controls
+    this.zoomSpeed = 1.5;
+    this.minDistance = 5;
+    this.maxDistance = 200;
     
     // Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -166,6 +172,7 @@ export class StandaloneLevelEditor {
     
     this.modes = [
       { key: 'platform', label: 'Platform (Q)', color: '#4CAF50' },
+      { key: 'slope', label: 'Slope/Stairs (G)', color: '#8BC34A' },
       { key: 'wall', label: 'Wall (F)', color: '#795548' },
       { key: 'walker', label: 'Walker Enemy (R)', color: '#F44336' },
       { key: 'runner', label: 'Runner Enemy', color: '#FF5722' },
@@ -276,8 +283,9 @@ export class StandaloneLevelEditor {
     instructions.style.color = '#888';
     instructions.innerHTML = `
       <strong>Controls:</strong><br>
-      • WASD: Move camera<br>
+      • WASD: Move camera (horizontal)<br>
       • Mouse: Look around<br>
+      • Mouse Wheel: Zoom in/out<br>
       • Click: Place objects<br>
       • Click object: Select<br>
       • Delete: Remove selected<br>
@@ -291,6 +299,7 @@ export class StandaloneLevelEditor {
       <br><strong>Mode Shortcuts:</strong><br>
       • E: Select mode<br>
       • Q: Platform mode<br>
+      • G: Slope/Stairs mode<br>
       • F: Wall mode (drag to draw)<br>
       • R: Walker Enemy mode<br>
       • T: Light mode<br>
@@ -334,6 +343,11 @@ export class StandaloneLevelEditor {
       if (e.code === 'KeyQ') {
         e.preventDefault();
         this._setMode('platform');
+        this._updateModeButtons();
+      }
+      if (e.code === 'KeyG') {
+        e.preventDefault();
+        this._setMode('slope');
         this._updateModeButtons();
       }
       if (e.code === 'KeyF') {
@@ -382,11 +396,11 @@ export class StandaloneLevelEditor {
         }
         if (e.code === 'PageUp') {
           e.preventDefault();
-          this._moveSelectedObjects(0, 1, 0);
+          this._moveSelectedObjects(0, 0.5, 0);
         }
         if (e.code === 'PageDown') {
           e.preventDefault();
-          this._moveSelectedObjects(0, -1, 0);
+          this._moveSelectedObjects(0, -0.5, 0);
         }
       }
       
@@ -437,6 +451,69 @@ export class StandaloneLevelEditor {
         } else if (this.isMultiSelecting) {
           this._updateSelectionBox(e);
         }
+      }
+    });
+    
+    // Mouse wheel zoom
+    this.renderer.domElement.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      console.log('Wheel event detected:', e.deltaY); // Debug log
+      
+      // Calculate zoom direction and amount
+      const zoomDirection = e.deltaY > 0 ? 1 : -1;
+      const zoomAmount = 2.0; // Increased for more noticeable movement
+      
+      // Get camera forward direction
+      const forward = new THREE.Vector3(0, 0, -1);
+      forward.applyQuaternion(this.camera.quaternion);
+      
+      // Raycast from center of screen to find what we're looking at
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera); // Center of screen
+      
+      // Get all meshes in the scene for raycasting
+      const meshes = [];
+      this.scene.traverse((child) => {
+        if (child.isMesh) {
+          meshes.push(child);
+        }
+      });
+      
+      // Find intersection point
+      const intersects = raycaster.intersectObjects(meshes);
+      let targetPoint;
+      
+      if (intersects.length > 0) {
+        // Zoom toward the intersected object
+        targetPoint = intersects[0].point;
+        console.log('Zooming toward object at:', targetPoint); // Debug log
+      } else {
+        // No intersection, zoom toward a point ahead of the camera
+        targetPoint = this.camera.position.clone().add(forward.multiplyScalar(20));
+        console.log('No intersection, zooming forward to:', targetPoint); // Debug log
+      }
+      
+      // Calculate movement vector toward target
+      const direction = targetPoint.clone().sub(this.camera.position).normalize();
+      const moveDistance = zoomAmount * -zoomDirection; // Fixed direction
+      
+      // Move camera toward/away from target
+      const movement = direction.multiplyScalar(moveDistance);
+      const newPosition = this.camera.position.clone().add(movement);
+      
+      console.log('Moving camera from:', this.camera.position, 'to:', newPosition); // Debug log
+      
+      // Apply the movement with better distance checking
+      const distanceToTarget = newPosition.distanceTo(targetPoint);
+      const currentDistanceFromOrigin = this.camera.position.length();
+      const newDistanceFromOrigin = newPosition.length();
+      
+      // More lenient distance check - only prevent if we're getting too close to the target or too far from scene
+      if (distanceToTarget > 2 && newDistanceFromOrigin < 500) { // Much more lenient limits
+        this.camera.position.copy(newPosition);
+        console.log('Camera moved successfully'); // Debug log
+      } else {
+        console.log(`Movement blocked - distanceToTarget: ${distanceToTarget}, newDistanceFromOrigin: ${newDistanceFromOrigin}`); // Debug log
       }
     });
     
@@ -517,6 +594,7 @@ export class StandaloneLevelEditor {
   _getAllSelectableObjects() {
     return [
       ...this.platforms.map(p => ({ ...p, type: 'platform' })),
+      ...this.slopes.map(s => ({ ...s, type: 'slope' })),
       ...this.walls.map(w => ({ ...w, type: 'wall' })),
       ...this.enemies.map(e => ({ ...e, type: 'enemy' })),
       ...this.lights.map(l => ({ ...l, type: 'light', mesh: l.helper })),
@@ -546,6 +624,11 @@ export class StandaloneLevelEditor {
         // Find safe position to avoid overlaps
         const safePlatformPos = this._findSafeGridPosition(position, 10, 1, 10, 'platform');
         this._createPlatform(safePlatformPos);
+        break;
+      case 'slope':
+        // Find safe position to avoid overlaps
+        const safeSlopePos = this._findSafeGridPosition(position, 10, 1, 10, 'slope');
+        this._createSlope(safeSlopePos);
         break;
       case 'wall':
         // Find safe position to avoid overlaps
@@ -873,6 +956,39 @@ export class StandaloneLevelEditor {
     };
     
     this.platforms.push(platformData);
+    this._updateStatus();
+  }
+  
+  _createSlope(position, customSize = [10, 1, 10], customRotation = [0, 0, 0]) {
+    const id = this.nextId++;
+    
+    const material = new THREE.MeshLambertMaterial({ color: 0x8bc34a }); // Light green for slopes
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
+    
+    mesh.position.copy(position);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { id, type: 'slope' };
+    
+    this.scene.add(mesh);
+    
+    const slopeData = {
+      id,
+      mesh,
+      data: {
+        position: [position.x, position.y, position.z],
+        size: [...customSize],
+        rotation: [...customRotation],
+        color: 0x8bc34a,
+        slopeDirection: 'north' // Direction the slope faces (low to high)
+      }
+    };
+    
+    this.slopes.push(slopeData);
+    
+    // Create the geometry with the correct size and rotation
+    this._recreateSlopeGeometry(slopeData);
+    
     this._updateStatus();
   }
   
@@ -1221,7 +1337,7 @@ export class StandaloneLevelEditor {
     
     if (objectsToDelete.length === 0) return;
     
-    const arrays = [this.platforms, this.walls, this.enemies, this.lights, this.patrolPoints];
+    const arrays = [this.platforms, this.slopes, this.walls, this.enemies, this.lights, this.patrolPoints];
     
     // Delete each object
     objectsToDelete.forEach(({ obj }) => {
@@ -1288,6 +1404,55 @@ export class StandaloneLevelEditor {
     console.log(`Moved ${objectsToMove.length} object(s) by (${deltaX}, ${deltaY}, ${deltaZ})`);
   }
   
+  _recreateSlopeGeometry(slopeObj) {
+    if (!slopeObj || !slopeObj.mesh) return;
+    
+    const data = slopeObj.data;
+    const halfW = data.size[0] / 2;
+    const halfD = data.size[2] / 2;
+    const height = data.size[1];
+    
+    // Dispose old geometry
+    slopeObj.mesh.geometry.dispose();
+    
+    // Create new geometry with updated size
+    const geometry = new THREE.BufferGeometry();
+    
+    // Define vertices for a wedge/ramp shape with custom size
+    const vertices = new Float32Array([
+      // Bottom face (flat on ground)
+      -halfW, 0, -halfD,   halfW, 0, -halfD,   halfW, 0,  halfD,
+      -halfW, 0, -halfD,   halfW, 0,  halfD,  -halfW, 0,  halfD,
+      
+      // Top face (slanted)
+      -halfW, height,  halfD,   halfW, height,  halfD,   halfW, 0, -halfD,
+      -halfW, height,  halfD,   halfW, 0, -halfD,  -halfW, 0, -halfD,
+      
+      // Side faces
+      -halfW, 0, -halfD,  -halfW, 0,  halfD,  -halfW, height,  halfD,  // Left
+      -halfW, 0, -halfD,  -halfW, height,  halfD,  -halfW, 0, -halfD,
+      
+       halfW, 0, -halfD,   halfW, height,  halfD,   halfW, 0,  halfD,  // Right
+       halfW, 0, -halfD,   halfW, 0, -halfD,   halfW, height,  halfD,
+      
+      // Back face (high end)
+      -halfW, 0,  halfD,   halfW, 0,  halfD,   halfW, height,  halfD,
+      -halfW, 0,  halfD,   halfW, height,  halfD,  -halfW, height,  halfD,
+      
+      // Front face (low end) - triangle  
+      -halfW, 0, -halfD,   halfW, 0, -halfD,   0, 0, -halfD,
+    ]);
+    
+    geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    geometry.computeVertexNormals();
+    
+    // Apply the new geometry
+    slopeObj.mesh.geometry = geometry;
+    
+    // Apply rotation
+    slopeObj.mesh.rotation.set(data.rotation[0], data.rotation[1], data.rotation[2]);
+  }
+  
   _copySelected() {
     if (!this.selected) return;
     
@@ -1318,10 +1483,13 @@ export class StandaloneLevelEditor {
     // Apply grid snapping to ensure it stays on grid
     let pastePosition = this._snapToGrid(originalPosition);
     
-    // Find safe position to avoid overlaps for platforms and walls
+    // Find safe position to avoid overlaps for platforms, slopes, and walls
     if (this.clipboard.type === 'platform') {
       const size = this.clipboard.data.size;
       pastePosition = this._findSafeGridPosition(pastePosition, size[0], size[1], size[2], 'platform');
+    } else if (this.clipboard.type === 'slope') {
+      const size = this.clipboard.data.size;
+      pastePosition = this._findSafeGridPosition(pastePosition, size[0], size[1], size[2], 'slope');
     } else if (this.clipboard.type === 'wall') {
       const size = this.clipboard.data.size;
       pastePosition = this._findSafeGridPosition(pastePosition, size[0], size[1], size[2], 'wall');
@@ -1331,6 +1499,9 @@ export class StandaloneLevelEditor {
     switch (this.clipboard.type) {
       case 'platform':
         this._createPlatformFromData(pastePosition, this.clipboard.data);
+        break;
+      case 'slope':
+        this._createSlopeFromData(pastePosition, this.clipboard.data);
         break;
       case 'wall':
         this._createWallFromData(pastePosition, this.clipboard.data);
@@ -1374,6 +1545,39 @@ export class StandaloneLevelEditor {
     };
     
     this.platforms.push(platformData);
+    this._updateStatus();
+  }
+  
+  _createSlopeFromData(position, data) {
+    const id = this.nextId++;
+    
+    const material = new THREE.MeshLambertMaterial({ color: data.color });
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
+    
+    mesh.position.copy(position);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { id, type: 'slope' };
+    
+    this.scene.add(mesh);
+    
+    const slopeData = {
+      id,
+      mesh,
+      data: {
+        position: [position.x, position.y, position.z],
+        size: [...data.size],
+        rotation: [...data.rotation],
+        color: data.color,
+        slopeDirection: data.slopeDirection || 'north'
+      }
+    };
+    
+    this.slopes.push(slopeData);
+    
+    // Create the geometry with the correct size and rotation
+    this._recreateSlopeGeometry(slopeData);
+    
     this._updateStatus();
   }
   
@@ -1556,6 +1760,13 @@ export class StandaloneLevelEditor {
       html += `W: <input type="number" value="${data.size[0]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
       html += `H: <input type="number" value="${data.size[1]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
       html += `D: <input type="number" value="${data.size[2]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
+    } else if (this.selectedType === 'slope') {
+      html += '<strong>Size:</strong><br>';
+      html += `W: <input type="number" value="${data.size[0]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
+      html += `H: <input type="number" value="${data.size[1]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
+      html += `D: <input type="number" value="${data.size[2]}" step="1" min="1" style="width: 60px; margin: 2px;"><br><br>`;
+      html += '<strong>Rotation (Y-axis):</strong><br>';
+      html += `<input type="number" value="${data.rotation[1] * 180 / Math.PI}" step="90" min="0" max="270" style="width: 80px; margin: 2px;"> degrees<br>`;
     } else if (this.selectedType === 'light') {
       html += `<strong>Intensity:</strong><br>`;
       html += `<input type="number" value="${data.intensity}" step="0.1" min="0" style="width: 80px; margin: 2px;"><br>`;
@@ -1594,6 +1805,17 @@ export class StandaloneLevelEditor {
       // Recreate geometry with new size
       this.selected.mesh.geometry.dispose();
       this.selected.mesh.geometry = new THREE.BoxGeometry(...data.size);
+    } else if (this.selectedType === 'slope' && inputs.length >= 7) {
+      data.size[0] = parseFloat(inputs[3].value);
+      data.size[1] = parseFloat(inputs[4].value);
+      data.size[2] = parseFloat(inputs[5].value);
+      
+      // Update rotation (convert degrees to radians)
+      const rotationDegrees = parseFloat(inputs[6].value);
+      data.rotation[1] = rotationDegrees * Math.PI / 180;
+      
+      // Recreate slope geometry with new size and rotation
+      this._recreateSlopeGeometry(this.selected);
     } else if (this.selectedType === 'light' && inputs.length >= 4) {
       data.intensity = parseFloat(inputs[3].value);
       if (this.selected.light) {
@@ -1610,6 +1832,7 @@ export class StandaloneLevelEditor {
   _updateStatus() {
     const counts = {
       platforms: this.platforms.length,
+      slopes: this.slopes.length,
       walls: this.walls.length,
       enemies: this.enemies.length,
       lights: this.lights.length,
@@ -1621,7 +1844,7 @@ export class StandaloneLevelEditor {
   
   _clearScene() {
     // Remove all objects
-    [...this.platforms, ...this.walls, ...this.enemies, ...this.lights, ...this.patrolPoints].forEach(item => {
+    [...this.platforms, ...this.slopes, ...this.walls, ...this.enemies, ...this.lights, ...this.patrolPoints].forEach(item => {
       if (item.mesh) this.scene.remove(item.mesh);
       if (item.light) this.scene.remove(item.light);
       if (item.helper) this.scene.remove(item.helper);
@@ -1629,6 +1852,7 @@ export class StandaloneLevelEditor {
     
     // Clear arrays
     this.platforms = [];
+    this.slopes = [];
     this.walls = [];
     this.enemies = [];
     this.lights = [];
@@ -1652,6 +1876,15 @@ export class StandaloneLevelEditor {
           position: p.data.position,
           size: p.data.size,
           color: p.data.color
+        })),
+        // Slopes
+        ...this.slopes.map(s => ({
+          type: 'slope',
+          position: s.data.position,
+          size: s.data.size,
+          rotation: s.data.rotation,
+          color: s.data.color,
+          slopeDirection: s.data.slopeDirection
         })),
         // Walls  
         ...this.walls.map(w => ({
@@ -1714,7 +1947,7 @@ export class StandaloneLevelEditor {
     // Clear existing scene
     this._clearScene();
     
-    // Load platforms
+    // Load platforms and slopes
     if (levelData.objects) {
       levelData.objects.forEach(obj => {
         if (obj.type === 'box') {
@@ -1730,6 +1963,19 @@ export class StandaloneLevelEditor {
           platform.mesh.geometry.dispose();
           platform.mesh.geometry = new THREE.BoxGeometry(...platform.data.size);
           platform.mesh.material.color.setHex(platform.data.color);
+        } else if (obj.type === 'slope') {
+          const position = new THREE.Vector3(...obj.position);
+          const size = obj.size || [10, 1, 10];
+          const rotation = obj.rotation || [0, 0, 0];
+          this._createSlope(position, size, rotation);
+          
+          // Update the last created slope with proper data
+          const slope = this.slopes[this.slopes.length - 1];
+          slope.data.color = obj.color || 0x8bc34a;
+          slope.data.slopeDirection = obj.slopeDirection || 'north';
+          
+          // Update mesh color
+          slope.mesh.material.color.setHex(slope.data.color);
         }
       });
     }
@@ -1776,13 +2022,19 @@ export class StandaloneLevelEditor {
       -Math.sin(this.cameraYaw)
     ).normalize();
     
+    // Create horizontal-only forward direction (ignoring pitch/vertical look)
+    const horizontalForward = new THREE.Vector3(
+      -Math.sin(this.cameraYaw),
+      0,
+      -Math.cos(this.cameraYaw)
+    ).normalize();
+    
     const moveVector = new THREE.Vector3();
-    if (this.keys['KeyW']) moveVector.add(forward);
-    if (this.keys['KeyS']) moveVector.sub(forward);
+    if (this.keys['KeyW']) moveVector.add(horizontalForward);
+    if (this.keys['KeyS']) moveVector.sub(horizontalForward);
     if (this.keys['KeyA']) moveVector.sub(right);
     if (this.keys['KeyD']) moveVector.add(right);
-    if (this.keys['KeyQ']) moveVector.y -= 1;
-    if (this.keys['KeyE']) moveVector.y += 1;
+    // Removed Q and E movement
     
     if (moveVector.length() > 0) {
       moveVector.normalize().multiplyScalar(this.moveSpeed * delta);
