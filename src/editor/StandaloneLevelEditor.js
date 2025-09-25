@@ -31,6 +31,10 @@ export class StandaloneLevelEditor {
     // Selection system
     this.selected = null;
     this.selectedType = null;
+    this.multiSelected = []; // Array of selected objects
+    this.isMultiSelecting = false;
+    this.selectionBox = null; // Visual selection box
+    this.selectionStart = null;
     
     // Interaction
     this.raycaster = new THREE.Raycaster();
@@ -41,6 +45,11 @@ export class StandaloneLevelEditor {
     this.mouseDown = false;
     this.mouseDelta = { x: 0, y: 0 };
     this.lastMousePos = { x: 0, y: 0 };
+    
+    // Wall drag state
+    this.isDragging = false;
+    this.dragStartPos = null;
+    this.dragPreviewWalls = [];
     
     // ID counter
     this.nextId = 1;
@@ -157,7 +166,7 @@ export class StandaloneLevelEditor {
     
     this.modes = [
       { key: 'platform', label: 'Platform (Q)', color: '#4CAF50' },
-      { key: 'wall', label: 'Wall (W)', color: '#795548' },
+      { key: 'wall', label: 'Wall (F)', color: '#795548' },
       { key: 'walker', label: 'Walker Enemy (R)', color: '#F44336' },
       { key: 'runner', label: 'Runner Enemy', color: '#FF5722' },
       { key: 'jumper', label: 'Jumper Enemy', color: '#E91E63' },
@@ -274,10 +283,15 @@ export class StandaloneLevelEditor {
       • Delete: Remove selected<br>
       • Ctrl+C: Copy selected<br>
       • Ctrl+V: Paste<br>
+      <br><strong>Multi-Select:</strong><br>
+      • Ctrl+Click: Add to selection<br>
+      • Drag empty space: Box select<br>
+      • Arrow Keys: Move selected<br>
+      • Page Up/Down: Move Y axis<br>
       <br><strong>Mode Shortcuts:</strong><br>
       • E: Select mode<br>
       • Q: Platform mode<br>
-      • W: Wall mode<br>
+      • F: Wall mode (drag to draw)<br>
       • R: Walker Enemy mode<br>
       • T: Light mode<br>
       • Y: Patrol Point mode
@@ -322,7 +336,7 @@ export class StandaloneLevelEditor {
         this._setMode('platform');
         this._updateModeButtons();
       }
-      if (e.code === 'KeyW') {
+      if (e.code === 'KeyF') {
         e.preventDefault();
         this._setMode('wall');
         this._updateModeButtons();
@@ -343,13 +357,41 @@ export class StandaloneLevelEditor {
         this._updateModeButtons();
       }
       
-      // Delete selected object
-      if (e.code === 'Delete' && this.selected) {
+      // Delete selected object(s)
+      if (e.code === 'Delete' && (this.selected || this.multiSelected.length > 0)) {
         this._deleteSelected();
       }
       
+      // Move selected objects with arrow keys
+      if (this.selected || this.multiSelected.length > 0) {
+        if (e.code === 'ArrowLeft') {
+          e.preventDefault();
+          this._moveSelectedObjects(-1, 0, 0);
+        }
+        if (e.code === 'ArrowRight') {
+          e.preventDefault();
+          this._moveSelectedObjects(1, 0, 0);
+        }
+        if (e.code === 'ArrowUp') {
+          e.preventDefault();
+          this._moveSelectedObjects(0, 0, -1);
+        }
+        if (e.code === 'ArrowDown') {
+          e.preventDefault();
+          this._moveSelectedObjects(0, 0, 1);
+        }
+        if (e.code === 'PageUp') {
+          e.preventDefault();
+          this._moveSelectedObjects(0, 1, 0);
+        }
+        if (e.code === 'PageDown') {
+          e.preventDefault();
+          this._moveSelectedObjects(0, -1, 0);
+        }
+      }
+      
       // Copy selected object (Ctrl+C)
-      if (e.code === 'KeyC' && e.ctrlKey && this.selected) {
+      if (e.code === 'KeyC' && e.ctrlKey && (this.selected || this.multiSelected.length > 0)) {
         e.preventDefault();
         this._copySelected();
       }
@@ -372,11 +414,14 @@ export class StandaloneLevelEditor {
       
       // Only handle placement/selection on left click
       if (e.button === 0) {
-        this._handleClick(e);
+        this._handleMouseDown(e);
       }
     });
     
-    window.addEventListener('mouseup', () => {
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) {
+        this._handleMouseUp(e);
+      }
       this.mouseDown = false;
     });
     
@@ -385,6 +430,13 @@ export class StandaloneLevelEditor {
         this.mouseDelta.x = e.clientX - this.lastMousePos.x;
         this.mouseDelta.y = e.clientY - this.lastMousePos.y;
         this.lastMousePos = { x: e.clientX, y: e.clientY };
+        
+        // Handle drag movement
+        if (this.isDragging && this.mode === 'wall') {
+          this._handleDrag(e);
+        } else if (this.isMultiSelecting) {
+          this._updateSelectionBox(e);
+        }
       }
     });
     
@@ -394,7 +446,7 @@ export class StandaloneLevelEditor {
     });
   }
   
-  _handleClick(event) {
+  _handleMouseDown(event) {
     // Update mouse coordinates
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -403,23 +455,45 @@ export class StandaloneLevelEditor {
     // Raycast
     this.raycaster.setFromCamera(this.mouse, this.camera);
     
-    if (this.mode === 'select') {
-      this._handleSelection();
+    if (this.mode === 'wall') {
+      // Start wall drag mode
+      this._startWallDrag();
+    } else if (this.mode === 'select') {
+      // Check if Ctrl is held for multi-selection
+      if (event.ctrlKey) {
+        this._handleSingleSelection(event);
+      } else {
+        // Start selection box if not clicking on an object
+        const allObjects = this._getAllSelectableObjects();
+        const meshes = allObjects.map(obj => obj.mesh).filter(mesh => mesh);
+        const intersects = this.raycaster.intersectObjects(meshes);
+        
+        if (intersects.length > 0) {
+          this._handleSingleSelection(event);
+        } else {
+          this._startSelectionBox(event);
+        }
+      }
     } else {
       this._handlePlacement();
     }
   }
   
-  _handleSelection() {
-    // Check for object selection
-    const allObjects = [
-      ...this.platforms.map(p => ({ ...p, type: 'platform' })),
-      ...this.walls.map(w => ({ ...w, type: 'wall' })),
-      ...this.enemies.map(e => ({ ...e, type: 'enemy' })),
-      ...this.lights.map(l => ({ ...l, type: 'light', mesh: l.helper })),
-      ...this.patrolPoints.map(pp => ({ ...pp, type: 'patrol' }))
-    ];
-    
+  _handleMouseUp(event) {
+    if (this.isDragging && this.mode === 'wall') {
+      this._finishWallDrag();
+    } else if (this.isMultiSelecting) {
+      this._finishSelectionBox(event);
+    }
+  }
+  
+  _handleClick(event) {
+    // Legacy method for non-drag interactions
+    this._handleMouseDown(event);
+  }
+  
+  _handleSingleSelection(event) {
+    const allObjects = this._getAllSelectableObjects();
     const meshes = allObjects.map(obj => obj.mesh).filter(mesh => mesh);
     const intersects = this.raycaster.intersectObjects(meshes);
     
@@ -427,11 +501,27 @@ export class StandaloneLevelEditor {
       const intersectedMesh = intersects[0].object;
       const obj = allObjects.find(o => o.mesh === intersectedMesh);
       if (obj) {
-        this._selectObject(obj, obj.type);
+        if (event.ctrlKey) {
+          // Add to multi-selection
+          this._toggleMultiSelection(obj, obj.type);
+        } else {
+          // Single selection
+          this._selectObject(obj, obj.type);
+        }
       }
-    } else {
+    } else if (!event.ctrlKey) {
       this._deselect();
     }
+  }
+  
+  _getAllSelectableObjects() {
+    return [
+      ...this.platforms.map(p => ({ ...p, type: 'platform' })),
+      ...this.walls.map(w => ({ ...w, type: 'wall' })),
+      ...this.enemies.map(e => ({ ...e, type: 'enemy' })),
+      ...this.lights.map(l => ({ ...l, type: 'light', mesh: l.helper })),
+      ...this.patrolPoints.map(pp => ({ ...pp, type: 'patrol' }))
+    ];
   }
   
   _handlePlacement() {
@@ -481,6 +571,172 @@ export class StandaloneLevelEditor {
         this._createLight(position);
         break;
     }
+  }
+  
+  _startWallDrag() {
+    // Get starting position
+    const intersects = this.raycaster.intersectObjects(this.scene.children, true);
+    let position;
+    
+    if (intersects.length > 0) {
+      position = intersects[0].point;
+    } else {
+      // Place at camera forward direction
+      const forward = new THREE.Vector3(0, 0, -10);
+      forward.applyQuaternion(this.camera.quaternion);
+      position = this.camera.position.clone().add(forward);
+    }
+    
+    this.dragStartPos = this._snapToGrid(position);
+    this.isDragging = true;
+    this.dragPreviewWalls = [];
+    
+    console.log('Started wall drag at:', this.dragStartPos);
+  }
+  
+  _handleDrag(event) {
+    if (!this.isDragging || !this.dragStartPos) return;
+    
+    // Update mouse coordinates
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    
+    // Raycast to get current position
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+    const intersects = this.raycaster.intersectObjects(this.scene.children, true);
+    let currentPos;
+    
+    if (intersects.length > 0) {
+      currentPos = intersects[0].point;
+    } else {
+      const forward = new THREE.Vector3(0, 0, -10);
+      forward.applyQuaternion(this.camera.quaternion);
+      currentPos = this.camera.position.clone().add(forward);
+    }
+    
+    currentPos = this._snapToGrid(currentPos);
+    
+    // Clear previous preview walls
+    this._clearPreviewWalls();
+    
+    // Create preview walls along the drag path
+    this._createPreviewWalls(this.dragStartPos, currentPos);
+  }
+  
+  _createPreviewWalls(startPos, endPos) {
+    const dx = endPos.x - startPos.x;
+    const dz = endPos.z - startPos.z;
+    
+    // Determine if we're drawing horizontally or vertically
+    const isHorizontal = Math.abs(dx) > Math.abs(dz);
+    
+    if (isHorizontal) {
+      // Draw horizontal line of walls
+      const minX = Math.min(startPos.x, endPos.x);
+      const maxX = Math.max(startPos.x, endPos.x);
+      const z = startPos.z;
+      
+      for (let x = minX; x <= maxX; x++) {
+        const previewPos = new THREE.Vector3(x, startPos.y, z);
+        this._createPreviewWall(previewPos);
+      }
+    } else {
+      // Draw vertical line of walls
+      const minZ = Math.min(startPos.z, endPos.z);
+      const maxZ = Math.max(startPos.z, endPos.z);
+      const x = startPos.x;
+      
+      for (let z = minZ; z <= maxZ; z++) {
+        const previewPos = new THREE.Vector3(x, startPos.y, z);
+        this._createPreviewWall(previewPos);
+      }
+    }
+  }
+  
+  _createPreviewWall(position) {
+    const geometry = new THREE.BoxGeometry(1, 4, 1);
+    const material = new THREE.MeshLambertMaterial({ 
+      color: 0x8b4513, 
+      transparent: true, 
+      opacity: 0.5 
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    // Auto-position on platforms like regular walls
+    let finalPosition = position.clone();
+    for (const platform of this.platforms) {
+      const platformPos = platform.mesh.position;
+      const platformSize = platform.data.size;
+      
+      const overlapX = Math.abs(finalPosition.x - platformPos.x) < (platformSize[0] / 2 + 0.5);
+      const overlapZ = Math.abs(finalPosition.z - platformPos.z) < (platformSize[2] / 2 + 0.5);
+      
+      if (overlapX && overlapZ) {
+        const platformTop = platformPos.y + platformSize[1] / 2;
+        finalPosition.y = platformTop + 2;
+        break;
+      }
+    }
+    
+    mesh.position.copy(finalPosition);
+    this.scene.add(mesh);
+    this.dragPreviewWalls.push(mesh);
+  }
+  
+  _clearPreviewWalls() {
+    this.dragPreviewWalls.forEach(wall => {
+      this.scene.remove(wall);
+      wall.geometry.dispose();
+      wall.material.dispose();
+    });
+    this.dragPreviewWalls = [];
+  }
+  
+  _finishWallDrag() {
+    if (!this.isDragging || !this.dragStartPos) return;
+    
+    // Convert preview walls to actual walls
+    this.dragPreviewWalls.forEach(previewWall => {
+      const position = previewWall.position.clone();
+      this._createWallAtPosition(position);
+    });
+    
+    // Clean up
+    this._clearPreviewWalls();
+    this.isDragging = false;
+    this.dragStartPos = null;
+    
+    console.log('Finished wall drag');
+  }
+  
+  _createWallAtPosition(position) {
+    // Create wall without overlap detection since we're placing manually
+    const id = this.nextId++;
+    const geometry = new THREE.BoxGeometry(1, 4, 1);
+    const material = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    mesh.position.copy(position);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { id, type: 'wall' };
+    
+    this.scene.add(mesh);
+    
+    const wallData = {
+      id,
+      mesh,
+      data: {
+        position: [position.x, position.y, position.z],
+        size: [1, 4, 1],
+        rotation: [0, 0, 0],
+        color: 0x8b4513
+      }
+    };
+    
+    this.walls.push(wallData);
+    this._updateStatus();
   }
   
   _snapToGrid(position) {
@@ -809,34 +1065,227 @@ export class StandaloneLevelEditor {
       this.selected.mesh.material.emissive = new THREE.Color(0x000000);
     }
     
+    // Clear multi-selection
+    this._clearMultiSelection();
+    
     this.selected = null;
     this.selectedType = null;
     this._updatePropertiesPanel();
   }
   
+  _toggleMultiSelection(obj, type) {
+    const index = this.multiSelected.findIndex(item => item.id === obj.id);
+    
+    if (index !== -1) {
+      // Remove from selection
+      this._removeFromMultiSelection(index);
+    } else {
+      // Add to selection
+      this._addToMultiSelection(obj, type);
+    }
+    
+    this._updatePropertiesPanel();
+  }
+  
+  _addToMultiSelection(obj, type) {
+    this.multiSelected.push({ obj, type });
+    
+    // Visual feedback
+    if (obj.mesh) {
+      obj.mesh.material = obj.mesh.material.clone();
+      obj.mesh.material.emissive = new THREE.Color(0x666600); // Yellow tint for multi-select
+    }
+  }
+  
+  _removeFromMultiSelection(index) {
+    const item = this.multiSelected[index];
+    
+    // Remove visual feedback
+    if (item.obj.mesh) {
+      item.obj.mesh.material = item.obj.mesh.material.clone();
+      item.obj.mesh.material.emissive = new THREE.Color(0x000000);
+    }
+    
+    this.multiSelected.splice(index, 1);
+  }
+  
+  _clearMultiSelection() {
+    this.multiSelected.forEach(item => {
+      if (item.obj.mesh) {
+        item.obj.mesh.material = item.obj.mesh.material.clone();
+        item.obj.mesh.material.emissive = new THREE.Color(0x000000);
+      }
+    });
+    this.multiSelected = [];
+  }
+  
+  _startSelectionBox(event) {
+    this.isMultiSelecting = true;
+    this.selectionStart = { x: event.clientX, y: event.clientY };
+    
+    // Clear previous selection if not holding Ctrl
+    if (!event.ctrlKey) {
+      this._deselect();
+    }
+    
+    // Create selection box visual
+    this._createSelectionBox();
+  }
+  
+  _createSelectionBox() {
+    if (this.selectionBox) {
+      document.body.removeChild(this.selectionBox);
+    }
+    
+    this.selectionBox = document.createElement('div');
+    this.selectionBox.style.position = 'absolute';
+    this.selectionBox.style.border = '2px dashed #00ff00';
+    this.selectionBox.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
+    this.selectionBox.style.pointerEvents = 'none';
+    this.selectionBox.style.zIndex = '1000';
+    document.body.appendChild(this.selectionBox);
+  }
+  
+  _updateSelectionBox(event) {
+    if (!this.isMultiSelecting || !this.selectionBox || !this.selectionStart) return;
+    
+    const currentX = event.clientX;
+    const currentY = event.clientY;
+    
+    const left = Math.min(this.selectionStart.x, currentX);
+    const top = Math.min(this.selectionStart.y, currentY);
+    const width = Math.abs(currentX - this.selectionStart.x);
+    const height = Math.abs(currentY - this.selectionStart.y);
+    
+    this.selectionBox.style.left = left + 'px';
+    this.selectionBox.style.top = top + 'px';
+    this.selectionBox.style.width = width + 'px';
+    this.selectionBox.style.height = height + 'px';
+  }
+  
+  _finishSelectionBox(event) {
+    if (!this.isMultiSelecting) return;
+    
+    // Get selection bounds
+    const currentX = event.clientX;
+    const currentY = event.clientY;
+    
+    const left = Math.min(this.selectionStart.x, currentX);
+    const top = Math.min(this.selectionStart.y, currentY);
+    const right = Math.max(this.selectionStart.x, currentX);
+    const bottom = Math.max(this.selectionStart.y, currentY);
+    
+    // Find objects within selection box
+    this._selectObjectsInBox(left, top, right, bottom);
+    
+    // Clean up
+    if (this.selectionBox) {
+      document.body.removeChild(this.selectionBox);
+      this.selectionBox = null;
+    }
+    
+    this.isMultiSelecting = false;
+    this.selectionStart = null;
+  }
+  
+  _selectObjectsInBox(left, top, right, bottom) {
+    const allObjects = this._getAllSelectableObjects();
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    
+    allObjects.forEach(obj => {
+      if (!obj.mesh) return;
+      
+      // Project object position to screen coordinates
+      const screenPos = obj.mesh.position.clone();
+      screenPos.project(this.camera);
+      
+      const screenX = (screenPos.x * 0.5 + 0.5) * rect.width + rect.left;
+      const screenY = (screenPos.y * -0.5 + 0.5) * rect.height + rect.top;
+      
+      // Check if object is within selection box
+      if (screenX >= left && screenX <= right && screenY >= top && screenY <= bottom) {
+        this._addToMultiSelection(obj, obj.type);
+      }
+    });
+  }
+  
   _deleteSelected() {
-    if (!this.selected) return;
+    const objectsToDelete = [];
+    
+    // Collect objects to delete
+    if (this.multiSelected.length > 0) {
+      objectsToDelete.push(...this.multiSelected.map(item => ({ obj: item.obj, type: item.type })));
+    } else if (this.selected) {
+      objectsToDelete.push({ obj: this.selected, type: this.selectedType });
+    }
+    
+    if (objectsToDelete.length === 0) return;
     
     const arrays = [this.platforms, this.walls, this.enemies, this.lights, this.patrolPoints];
     
-    for (const array of arrays) {
-      const index = array.findIndex(item => item.id === this.selected.id);
-      if (index !== -1) {
-        const item = array[index];
-        
-        // Remove from scene
-        if (item.mesh) this.scene.remove(item.mesh);
-        if (item.light) this.scene.remove(item.light);
-        if (item.helper) this.scene.remove(item.helper);
-        
-        // Remove from array
-        array.splice(index, 1);
-        break;
+    // Delete each object
+    objectsToDelete.forEach(({ obj }) => {
+      for (const array of arrays) {
+        const index = array.findIndex(item => item.id === obj.id);
+        if (index !== -1) {
+          const item = array[index];
+          
+          // Remove from scene
+          if (item.mesh) this.scene.remove(item.mesh);
+          if (item.light) this.scene.remove(item.light);
+          if (item.helper) this.scene.remove(item.helper);
+          
+          // Remove from array
+          array.splice(index, 1);
+          break;
+        }
       }
-    }
+    });
     
     this._deselect();
     this._updateStatus();
+    
+    console.log(`Deleted ${objectsToDelete.length} object(s)`);
+  }
+  
+  _moveSelectedObjects(deltaX, deltaY, deltaZ) {
+    const objectsToMove = [];
+    
+    // Collect objects to move
+    if (this.multiSelected.length > 0) {
+      objectsToMove.push(...this.multiSelected.map(item => item.obj));
+    } else if (this.selected) {
+      objectsToMove.push(this.selected);
+    }
+    
+    if (objectsToMove.length === 0) return;
+    
+    // Move each object
+    objectsToMove.forEach(obj => {
+      if (obj.mesh) {
+        // Update mesh position
+        obj.mesh.position.x += deltaX;
+        obj.mesh.position.y += deltaY;
+        obj.mesh.position.z += deltaZ;
+        
+        // Update data
+        obj.data.position[0] += deltaX;
+        obj.data.position[1] += deltaY;
+        obj.data.position[2] += deltaZ;
+        
+        // Update light position if it's a light object
+        if (obj.light) {
+          obj.light.position.copy(obj.mesh.position);
+        }
+      }
+    });
+    
+    // Update properties panel if single object is selected
+    if (this.selected && this.multiSelected.length === 0) {
+      this._updatePropertiesPanel();
+    }
+    
+    console.log(`Moved ${objectsToMove.length} object(s) by (${deltaX}, ${deltaY}, ${deltaZ})`);
   }
   
   _copySelected() {
@@ -1055,8 +1504,35 @@ export class StandaloneLevelEditor {
   }
   
   _updatePropertiesPanel() {
+    // Show multi-selection info
+    if (this.multiSelected.length > 0) {
+      let html = `<strong>MULTI-SELECTION (${this.multiSelected.length} objects)</strong><br><br>`;
+      
+      // Group by type
+      const typeGroups = {};
+      this.multiSelected.forEach(item => {
+        if (!typeGroups[item.type]) typeGroups[item.type] = 0;
+        typeGroups[item.type]++;
+      });
+      
+      html += '<strong>Selected Objects:</strong><br>';
+      Object.entries(typeGroups).forEach(([type, count]) => {
+        html += `${type}: ${count}<br>`;
+      });
+      
+      html += '<br><strong>Controls:</strong><br>';
+      html += '• Arrow Keys: Move X/Z<br>';
+      html += '• Page Up/Down: Move Y<br>';
+      html += '• Delete: Remove all<br>';
+      html += '• Ctrl+Click: Add/Remove from selection<br>';
+      html += '• Click empty space: Box select<br>';
+      
+      this.propertiesContent.innerHTML = html;
+      return;
+    }
+    
     if (!this.selected) {
-      this.propertiesContent.innerHTML = '<p style=\"color: #888; margin: 0;\">Select an object to edit its properties</p>';
+      this.propertiesContent.innerHTML = '<p style=\"color: #888; margin: 0;\">Select an object to edit its properties<br><br><strong>Multi-Select:</strong><br>• Ctrl+Click: Add to selection<br>• Drag empty space: Box select</p>';
       return;
     }
     
@@ -1278,8 +1754,8 @@ export class StandaloneLevelEditor {
   update() {
     const delta = 0.016; // Assume 60fps
     
-    // Camera movement (WASD + mouse look)
-    if (this.mouseDown) {
+    // Camera movement (WASD + mouse look) - disabled during multi-selection
+    if (this.mouseDown && !this.isMultiSelecting) {
       this.cameraYaw -= this.mouseDelta.x * this.sensitivity;
       this.cameraPitch -= this.mouseDelta.y * this.sensitivity;
       this.cameraPitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, this.cameraPitch));
