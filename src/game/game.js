@@ -58,7 +58,8 @@ export class Game {
   this.thirdCameraObject = this.thirdCam.getCamera();
   this.firstCameraObject = this.firstCam.getCamera();
   this.freeCameraObject = this.freeCam.getCamera();
-  this.activeCamera = this.freeCameraObject;
+  this.activeCamera = this.thirdCameraObject;
+  //this.activeCamera = this.freeCameraObject;
     // Enable alwaysTrackMouse for third-person camera
     this.input.alwaysTrackMouse = true;
     // Request pointer lock for third-person/first-person camera when the user clicks

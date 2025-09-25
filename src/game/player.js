@@ -62,7 +62,7 @@ export class Player {
         bbox.getSize(sizeVec);
         this.size = [sizeVec.x, sizeVec.y, sizeVec.z];
         // collider: same height, narrower x/z
-        this.colliderSize = [sizeVec.x * 0.2, sizeVec.y, sizeVec.z * 0.5];
+        this.colliderSize = [sizeVec.x * 0.3, sizeVec.y, sizeVec.z * 0.5];
 
         // center model horizontally/vertically
         const centerX = (bbox.max.x + bbox.min.x) / 2;
