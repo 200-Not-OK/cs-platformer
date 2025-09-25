@@ -403,8 +403,12 @@ export function resolveMovementWithSlopes(box, movement, meshes, options = {}) {
   for (const slope of allColliders.slopeColliders) {
     const testCenter = testBox.getCenter(new THREE.Vector3());
     const heightAt = slope.getHeightAt(testCenter.x, testCenter.z);
-    if (heightAt !== null && slope.canStandOn(testCenter.x, testCenter.z, playerBottom)) {
-      if (heightAt > closestY) {
+    if (heightAt !== null) {
+      // Use a more generous ground detection for slopes to help with transitions
+      const distance = Math.abs(playerBottom - heightAt);
+      const canStand = distance < 1.0; // More generous than canStandOn for ground detection
+      
+      if (canStand && heightAt > closestY) {
         closestY = heightAt;
         closestCollider = slope;
         isClosestSlope = true;

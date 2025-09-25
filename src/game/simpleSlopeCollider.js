@@ -58,7 +58,8 @@ export class SimpleSlopeCollider {
     
     // Player can stand if they're close to the slope surface
     const distance = Math.abs(playerBottom - slopeHeight);
-    return distance < 0.5; // Allow some tolerance
+    // More forgiving tolerance for smoother slope transitions
+    return distance < 0.8; // Increased tolerance for edge transitions
   }
   
   /**
@@ -78,14 +79,22 @@ export class SimpleSlopeCollider {
     );
     
     // If player is far from the slope, don't block movement
-    const maxBlockDistance = Math.max(this.boundingBox.max.x - this.boundingBox.min.x, this.boundingBox.max.z - this.boundingBox.min.z) * 0.6;
+    const maxBlockDistance = Math.max(this.boundingBox.max.x - this.boundingBox.min.x, this.boundingBox.max.z - this.boundingBox.min.z) * 0.7;
     if (distance > maxBlockDistance) {
       return false;
     }
     
-    // Bounding box intersection check
-    if (!this.intersectsBox(playerBox)) {
-      return false;
+    // Check current position height to understand transition context
+    const currentSlopeHeight = this.getHeightAt(playerCenter.x, playerCenter.z);
+    const newSlopeHeight = this.getHeightAt(newX, newZ);
+    
+    // If neither current nor new position is on the slope, use bounding box logic
+    if (currentSlopeHeight === null && newSlopeHeight === null) {
+      if (!this.intersectsBox(playerBox)) {
+        return false;
+      }
+      // Only block if significantly intersecting and player is below slope
+      return playerBottom < this.boundingBox.max.y - 0.3;
     }
     
     // If player is way above the slope, don't block
@@ -98,27 +107,65 @@ export class SimpleSlopeCollider {
       return true;
     }
     
-    // Check if the new position would be inside the slope bounds
-    const slopeHeight = this.getHeightAt(newX, newZ);
-    if (slopeHeight === null) {
-      // Outside slope bounds - only block if we're intersecting the bounding box
-      // and the height difference is significant
-      return this.intersectsBox(playerBox) && 
-             (playerBottom < this.boundingBox.max.y - 0.5);
+    // Handle edge transitions more smoothly
+    if (newSlopeHeight === null) {
+      // Moving off the slope - be more permissive to allow smooth transitions
+      if (currentSlopeHeight !== null) {
+        const currentHeightDiff = currentSlopeHeight - playerBottom;
+        // Allow movement off slope if currently on or near the slope surface
+        if (Math.abs(currentHeightDiff) < 1.2) {
+          return false;
+        }
+      }
+      
+      // Check if player is near the edge of the slope bounds
+      const slopeEdgeBuffer = 0.8; // Increased buffer for better edge detection
+      const nearEdgeX = (
+        Math.abs(newX - this.boundingBox.min.x) < slopeEdgeBuffer ||
+        Math.abs(newX - this.boundingBox.max.x) < slopeEdgeBuffer
+      );
+      const nearEdgeZ = (
+        Math.abs(newZ - this.boundingBox.min.z) < slopeEdgeBuffer ||
+        Math.abs(newZ - this.boundingBox.max.z) < slopeEdgeBuffer
+      );
+      
+      // Check if we're transitioning from outside to inside slope bounds
+      const currentX = playerCenter.x;
+      const currentZ = playerCenter.z;
+      const movingTowardsSlope = (
+        (currentX < this.boundingBox.min.x && newX > currentX) || // Moving right towards left edge
+        (currentX > this.boundingBox.max.x && newX < currentX) || // Moving left towards right edge
+        (currentZ < this.boundingBox.min.z && newZ > currentZ) || // Moving forward towards back edge
+        (currentZ > this.boundingBox.max.z && newZ < currentZ)    // Moving back towards front edge
+      );
+      
+      // If transitioning onto slope or near edge, and not significantly below, allow movement
+      if ((nearEdgeX || nearEdgeZ || movingTowardsSlope) && playerBottom >= this.boundingBox.min.y - 0.5) {
+        return false;
+      }
+      
+      // Outside slope bounds - only block if intersecting and significantly below
+      return this.intersectsBox(playerBox) && (playerBottom < this.boundingBox.max.y - 1.0);
     }
     
-    // Inside slope bounds - check if the height difference is reasonable for walking
-    const heightDifference = slopeHeight - playerBottom;
+    // Moving to a position on the slope
+    const heightDifference = newSlopeHeight - playerBottom;
     
     // If the slope surface is way above the player, block movement (too steep to walk over)
-    if (heightDifference > 1.2) {
+    if (heightDifference > 1.5) {
       return true;
     }
     
-    // If the player is significantly below the slope surface, it might be trying to walk through
-    // But allow some tolerance for normal slope walking where the player's bottom can be below the surface
-    if (heightDifference < -0.8) {
-      // Player is way below the slope surface - likely trying to walk through from below
+    // If the player is significantly below the slope surface, might be trying to walk through
+    if (heightDifference < -1.0) {
+      // But allow if this is a transition from being on the slope
+      if (currentSlopeHeight !== null) {
+        const currentHeightDiff = currentSlopeHeight - playerBottom;
+        // Allow if transitioning smoothly from current slope position
+        if (Math.abs(currentHeightDiff) < 0.8) {
+          return false;
+        }
+      }
       return true;
     }
     
