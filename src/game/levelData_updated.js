@@ -1,6 +1,16 @@
 // Data-driven level definitions (no hard-coded meshes). Add new objects here.
 export const levels = [
   {
+    id: 'platformer',
+    name: 'Platform Course',
+    startPosition: [0, 2.2, 0],
+    ui: ['hud', 'objectives', 'minimap'],
+    lights: [ 'BasicLights', { key: 'PointPulse', props: { position: [6, 4, -10], color: 0xffcc88, intensity: 1.2, speed: 3 } } ],
+    objects: [
+      { type: 'box', position: [0, 0, 0], size: [12, 1, 12], color: 0x2e8b57 },
+    ]
+  },
+  {
     id: 'intro',
     name: 'Intro Level',
     startPosition: [0, 3, 8],
@@ -31,7 +41,7 @@ export const levels = [
     {
       id: 'custom_level',
       name: 'Custom Level',
-      startPosition: [112, 5, 225],
+      startPosition: [0, 5, 0],
       ui: ['hud'],
       lights: ['BasicLights'],
       objects: [
