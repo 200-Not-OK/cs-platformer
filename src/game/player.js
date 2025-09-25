@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ColliderHelper } from './colliderHelper.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { resolveMovement, meshesToColliders, enableDebug } from './collisionSystem.js';
+import { resolveMovement, meshesToColliders, enableDebug, resolveMovementWithSlopes } from './collisionSystem.js';
 
 export class Player {
   constructor(scene, options = {}) {
@@ -44,7 +44,7 @@ export class Player {
     this._hVelocity = new THREE.Vector3(); // horizontal velocity (x,z)
     this._hAccel = options.hAcceleration ?? 40; // units per second^2-ish smoothing factor
     // debug flag (can be toggled from game via window.__collisionDebugOn)
-    //this.debug = (typeof window !== 'undefined' && !!window.__collisionDebugOn) || false;
+    this.debug = (typeof window !== 'undefined' && !!window.__collisionDebugOn) || true; // Temporarily enable debug
     this._loadModel();
   }
 
@@ -340,16 +340,14 @@ export class Player {
 
     // Compose movement for this frame (units = world units)
     const movementThisFrame = new THREE.Vector3(this._hVelocity.x * delta, this.velocity.y * delta, this._hVelocity.z * delta);
-    // Use central resolver: convert platform meshes to Box3 colliders and call resolveMovement
-    const colliders = meshesToColliders(platforms || []);
-    // compute previous bottom Y from current collider size/position
+    // Use enhanced resolver that can handle both Box3 and slope colliders
     const size = new THREE.Vector3();
     this.collider.getSize(size);
     const prevBottomY = this.mesh.position.y - (size.y * 0.5);
     if (this.debug) {
       try { enableDebug(this.scene); } catch (e) { /* ignore if already enabled */ }
     }
-    const res = resolveMovement(this.collider.clone(), movementThisFrame, colliders, { prevBottomY, landThreshold: 0.06, penetrationAllowance: 0.01, minVerticalOverlap: 0.02, debug: this.debug });
+    const res = resolveMovementWithSlopes(this.collider.clone(), movementThisFrame, platforms || [], { prevBottomY, landThreshold: 0.06, penetrationAllowance: 0.01, minVerticalOverlap: 0.02, debug: this.debug });
 
     // Apply the resolved offset to the player
     this.mesh.position.add(res.offset);
@@ -360,7 +358,15 @@ export class Player {
       this.onGround = true;
       this.velocity.y = 0;
       this._airTime = 0;
-      if (res.groundCollider) {
+      
+      if (res.onSlope && res.slopeCollider) {
+        // Player is on a slope
+        this._lastGround = res.slopeCollider;
+        this._lastGroundY = this.mesh.position.y - (size.y * 0.5); // Use current bottom Y
+        this._groundGraceRemaining = this._groundGrace;
+        console.log('Player on slope at height', this._lastGroundY);
+      } else if (res.groundCollider) {
+        // Player is on regular ground
         this._lastGround = res.groundCollider;
         this._lastGroundY = res.groundCollider.max.y;
         this._groundGraceRemaining = this._groundGrace;

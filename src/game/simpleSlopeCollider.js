@@ -70,6 +70,24 @@ export class SimpleSlopeCollider {
     const playerTop = playerBox.max.y;
     const playerCenter = new THREE.Vector3().lerpVectors(playerBox.min, playerBox.max, 0.5);
     
+    // Distance check: only consider collision if player is reasonably close to slope
+    const slopeCenter = new THREE.Vector3().lerpVectors(this.boundingBox.min, this.boundingBox.max, 0.5);
+    const distance = Math.sqrt(
+      Math.pow(newX - slopeCenter.x, 2) + 
+      Math.pow(newZ - slopeCenter.z, 2)
+    );
+    
+    // If player is far from the slope, don't block movement
+    const maxBlockDistance = Math.max(this.boundingBox.max.x - this.boundingBox.min.x, this.boundingBox.max.z - this.boundingBox.min.z) * 0.6;
+    if (distance > maxBlockDistance) {
+      return false;
+    }
+    
+    // Bounding box intersection check
+    if (!this.intersectsBox(playerBox)) {
+      return false;
+    }
+    
     // If player is way above the slope, don't block
     if (playerBottom > this.boundingBox.max.y + 1) {
       return false;
@@ -89,19 +107,22 @@ export class SimpleSlopeCollider {
              (playerBottom < this.boundingBox.max.y - 0.5);
     }
     
-    // Inside slope bounds - check if the height difference is too steep to walk over
+    // Inside slope bounds - check if the height difference is reasonable for walking
     const heightDifference = slopeHeight - playerBottom;
     
-    // If the slope surface is way above the player, block movement
-    if (heightDifference > 1.0) {
+    // If the slope surface is way above the player, block movement (too steep to walk over)
+    if (heightDifference > 1.2) {
       return true;
     }
     
-    // If the player would be inside the slope geometry, block
-    if (playerBottom < slopeHeight - 0.2) {
+    // If the player is significantly below the slope surface, it might be trying to walk through
+    // But allow some tolerance for normal slope walking where the player's bottom can be below the surface
+    if (heightDifference < -0.8) {
+      // Player is way below the slope surface - likely trying to walk through from below
       return true;
     }
     
+    // For reasonable height differences, allow movement (normal slope walking)
     return false;
   }
 }

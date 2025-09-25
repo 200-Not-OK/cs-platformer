@@ -21,28 +21,30 @@ export class Level {
   _buildFromData() {
     console.log('Building level from data, total objects:', this.data.objects.length);
     
-    // Add test slopes near spawn for easy testing
-    const testSlopes = [
-      {
-        type: 'slope',
-        position: [15, 0, 15],
-        size: [8, 3, 12],
-        rotation: [0, 0, 0],
-        color: 0xff6600,
-        slopeDirection: 'north'
-      },
-      {
-        type: 'slope', 
-        position: [-10, 0, 15],
-        size: [8, 3, 12],
-        rotation: [0, Math.PI, 0],
-        color: 0x6600ff,
-        slopeDirection: 'south'
-      }
-    ];
-    
-    testSlopes.forEach(slope => this.data.objects.push(slope));
-    console.log('Added test slopes for easier testing');
+    // Add test slopes near spawn for easy testing - only on intro level
+    if (this.data.id === 'intro') {
+      const testSlopes = [
+        {
+          type: 'slope',
+          position: [15, 0, 15],
+          size: [8, 3, 12],
+          rotation: [0, 0, 0],
+          color: 0xff6600,
+          slopeDirection: 'north'
+        },
+        {
+          type: 'slope', 
+          position: [-10, 0, 15],
+          size: [8, 3, 12],
+          rotation: [0, Math.PI, 0],
+          color: 0x6600ff,
+          slopeDirection: 'south'
+        }
+      ];
+      
+      testSlopes.forEach(slope => this.data.objects.push(slope));
+      console.log('Added test slopes for easier testing');
+    }
     
     for (const obj of this.data.objects) {
       if (obj.type === 'box') {
