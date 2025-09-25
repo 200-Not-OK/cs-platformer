@@ -45,6 +45,9 @@ export class StandaloneLevelEditor {
     // ID counter
     this.nextId = 1;
     
+    // Clipboard for copy/paste
+    this.clipboard = null;
+    
     // Create UI and bind events
     this._createUI();
     this._bindEvents();
@@ -90,11 +93,11 @@ export class StandaloneLevelEditor {
   
   _addBasicLighting() {
     // Ambient light
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+    const ambientLight = new THREE.AmbientLight(0x404040, 4);
     this.scene.add(ambientLight);
     
     // Directional light (sun)
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.3);
     directionalLight.position.set(50, 50, 50);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
@@ -108,7 +111,7 @@ export class StandaloneLevelEditor {
     this.scene.add(directionalLight);
     
     // Add a ground grid for reference
-    const gridHelper = new THREE.GridHelper(100, 100, 0x888888, 0x444444);
+    const gridHelper = new THREE.GridHelper(1500, 1500, 0x888888, 0x444444);
     this.scene.add(gridHelper);
   }
   
@@ -152,19 +155,21 @@ export class StandaloneLevelEditor {
     title.style.color = '#fff';
     section.appendChild(title);
     
-    const modes = [
-      { key: 'platform', label: 'Platform', color: '#4CAF50' },
-      { key: 'wall', label: 'Wall', color: '#795548' },
-      { key: 'walker', label: 'Walker Enemy', color: '#F44336' },
+    this.modes = [
+      { key: 'platform', label: 'Platform (Q)', color: '#4CAF50' },
+      { key: 'wall', label: 'Wall (W)', color: '#795548' },
+      { key: 'walker', label: 'Walker Enemy (R)', color: '#F44336' },
       { key: 'runner', label: 'Runner Enemy', color: '#FF5722' },
       { key: 'jumper', label: 'Jumper Enemy', color: '#E91E63' },
       { key: 'flyer', label: 'Flyer Enemy', color: '#9C27B0' },
-      { key: 'patrol', label: 'Patrol Point', color: '#673AB7' },
-      { key: 'light', label: 'Light', color: '#FFC107' },
-      { key: 'select', label: 'Select', color: '#2196F3' }
+      { key: 'patrol', label: 'Patrol Point (Y)', color: '#673AB7' },
+      { key: 'light', label: 'Light (T)', color: '#FFC107' },
+      { key: 'select', label: 'Select (E)', color: '#2196F3' }
     ];
     
-    modes.forEach(mode => {
+    this.modeButtons = [];
+    
+    this.modes.forEach(mode => {
       const button = document.createElement('button');
       button.textContent = mode.label;
       Object.assign(button.style, {
@@ -182,17 +187,25 @@ export class StandaloneLevelEditor {
       
       button.addEventListener('click', () => {
         this._setMode(mode.key);
-        // Update button colors
-        modes.forEach(m => {
-          const btn = section.querySelector(`button:nth-child(${modes.indexOf(m) + 2})`);
-          btn.style.background = this.mode === m.key ? m.color : '#333';
-        });
+        this._updateModeButtons();
       });
       
+      this.modeButtons.push(button);
       section.appendChild(button);
     });
     
     this.panel.appendChild(section);
+  }
+  
+  _updateModeButtons() {
+    if (this.modeButtons && this.modes) {
+      this.modes.forEach((mode, index) => {
+        const button = this.modeButtons[index];
+        if (button) {
+          button.style.background = this.mode === mode.key ? mode.color : '#333';
+        }
+      });
+    }
   }
   
   _createPropertiesPanel() {
@@ -259,7 +272,15 @@ export class StandaloneLevelEditor {
       • Click: Place objects<br>
       • Click object: Select<br>
       • Delete: Remove selected<br>
-      • Scroll: Adjust values
+      • Ctrl+C: Copy selected<br>
+      • Ctrl+V: Paste<br>
+      <br><strong>Mode Shortcuts:</strong><br>
+      • E: Select mode<br>
+      • Q: Platform mode<br>
+      • W: Wall mode<br>
+      • R: Walker Enemy mode<br>
+      • T: Light mode<br>
+      • Y: Patrol Point mode
     `;
     section.appendChild(instructions);
     
@@ -290,9 +311,53 @@ export class StandaloneLevelEditor {
     window.addEventListener('keydown', (e) => {
       this.keys[e.code] = true;
       
+      // Mode switching shortcuts
+      if (e.code === 'KeyE') {
+        e.preventDefault();
+        this._setMode('select');
+        this._updateModeButtons();
+      }
+      if (e.code === 'KeyQ') {
+        e.preventDefault();
+        this._setMode('platform');
+        this._updateModeButtons();
+      }
+      if (e.code === 'KeyW') {
+        e.preventDefault();
+        this._setMode('wall');
+        this._updateModeButtons();
+      }
+      if (e.code === 'KeyR') {
+        e.preventDefault();
+        this._setMode('walker');
+        this._updateModeButtons();
+      }
+      if (e.code === 'KeyT') {
+        e.preventDefault();
+        this._setMode('light');
+        this._updateModeButtons();
+      }
+      if (e.code === 'KeyY') {
+        e.preventDefault();
+        this._setMode('patrol');
+        this._updateModeButtons();
+      }
+      
       // Delete selected object
       if (e.code === 'Delete' && this.selected) {
         this._deleteSelected();
+      }
+      
+      // Copy selected object (Ctrl+C)
+      if (e.code === 'KeyC' && e.ctrlKey && this.selected) {
+        e.preventDefault();
+        this._copySelected();
+      }
+      
+      // Paste object (Ctrl+V)
+      if (e.code === 'KeyV' && e.ctrlKey && this.clipboard) {
+        e.preventDefault();
+        this._pasteFromClipboard();
       }
     });
     
@@ -388,10 +453,14 @@ export class StandaloneLevelEditor {
     
     switch (this.mode) {
       case 'platform':
-        this._createPlatform(position);
+        // Find safe position to avoid overlaps
+        const safePlatformPos = this._findSafeGridPosition(position, 10, 1, 10, 'platform');
+        this._createPlatform(safePlatformPos);
         break;
       case 'wall':
-        this._createWall(position);
+        // Find safe position to avoid overlaps
+        const safeWallPos = this._findSafeGridPosition(position, 1, 4, 1, 'wall');
+        this._createWall(safeWallPos);
         break;
       case 'walker':
         this._createEnemy(position, 'walker');
@@ -422,15 +491,12 @@ export class StandaloneLevelEditor {
       Math.round(position.z)
     );
     
-    // Check for overlaps and find a safe grid position if needed
-    const safePosition = this._findSafeGridPosition(gridPosition, 2, 1, 2); // Default platform size
-    
-    return safePosition;
+    return gridPosition;
   }
   
-  _findSafeGridPosition(position, width, height, depth) {
+  _findSafeGridPosition(position, width, height, depth, objectType = 'unknown') {
     // Check if the desired grid position is free
-    if (!this._hasOverlapAtPosition(position, width, height, depth)) {
+    if (!this._hasOverlapAtPosition(position, width, height, depth, objectType)) {
       return position; // Perfect - no overlap at desired position
     }
     
@@ -450,7 +516,7 @@ export class StandaloneLevelEditor {
             position.z + dz
           );
           
-          if (!this._hasOverlapAtPosition(testPos, width, height, depth)) {
+          if (!this._hasOverlapAtPosition(testPos, width, height, depth, objectType)) {
             return testPos; // Found a free grid position
           }
         }
@@ -460,10 +526,10 @@ export class StandaloneLevelEditor {
       const abovePos = new THREE.Vector3(position.x, position.y + radius, position.z);
       const belowPos = new THREE.Vector3(position.x, position.y - radius, position.z);
       
-      if (!this._hasOverlapAtPosition(abovePos, width, height, depth)) {
+      if (!this._hasOverlapAtPosition(abovePos, width, height, depth, objectType)) {
         return abovePos;
       }
-      if (position.y - radius >= 0 && !this._hasOverlapAtPosition(belowPos, width, height, depth)) {
+      if (position.y - radius >= 0 && !this._hasOverlapAtPosition(belowPos, width, height, depth, objectType)) {
         return belowPos;
       }
     }
@@ -473,7 +539,7 @@ export class StandaloneLevelEditor {
     return position;
   }
   
-  _hasOverlapAtPosition(position, width, height, depth) {
+  _hasOverlapAtPosition(position, width, height, depth, objectType = 'unknown') {
     const newBounds = {
       minX: position.x - width / 2,
       maxX: position.x + width / 2,
@@ -502,6 +568,22 @@ export class StandaloneLevelEditor {
       const overlapsY = newBounds.maxY > existingBounds.minY && newBounds.minY < existingBounds.maxY;
       const overlapsZ = newBounds.maxZ > existingBounds.minZ && newBounds.minZ < existingBounds.maxZ;
       
+      // Smart overlap detection based on object types
+      const existingType = structure.mesh.userData.type;
+      const isNewWall = objectType === 'wall' || (height > width && height > depth); // Tall objects are likely walls
+      const isExistingPlatform = existingType === 'platform' || (structureSize[1] < structureSize[0] && structureSize[1] < structureSize[2]); // Thin objects are likely platforms
+      
+      // Allow walls to be placed on platforms (they can share X,Z space)
+      if (isNewWall && isExistingPlatform) {
+        // Check if wall and platform overlap in X,Z but allow them to stack vertically
+        if (overlapsX && overlapsZ) {
+          // This is acceptable - wall can be placed on platform
+          // Don't check Y overlap for wall-on-platform placement
+          continue;
+        }
+      }
+      
+      // Standard overlap check for all other cases
       if (overlapsX && overlapsY && overlapsZ) {
         return true; // Overlap detected
       }
@@ -512,7 +594,7 @@ export class StandaloneLevelEditor {
   
   _createPlatform(position) {
     const id = this.nextId++;
-    const geometry = new THREE.BoxGeometry(12, 1, 12);
+    const geometry = new THREE.BoxGeometry(10, 1, 10);
     const material = new THREE.MeshLambertMaterial({ color: 0x2e8b57 });
     const mesh = new THREE.Mesh(geometry, material);
     
@@ -528,7 +610,7 @@ export class StandaloneLevelEditor {
       mesh,
       data: {
         position: [position.x, position.y, position.z],
-        size: [12, 1, 12],
+        size: [10, 1, 10],
         rotation: [0, 0, 0],
         color: 0x2e8b57
       }
@@ -540,11 +622,29 @@ export class StandaloneLevelEditor {
   
   _createWall(position) {
     const id = this.nextId++;
-    const geometry = new THREE.BoxGeometry(12, 4, 12); // Tall and narrow for walls
+    const geometry = new THREE.BoxGeometry(1, 4, 1); // Tall and narrow for walls
     const material = new THREE.MeshLambertMaterial({ color: 0x8b4513 }); // Brown color
     const mesh = new THREE.Mesh(geometry, material);
     
-    mesh.position.copy(position);
+    // Check if there's a platform at this X,Z position and auto-adjust wall height
+    let finalPosition = position.clone();
+    for (const platform of this.platforms) {
+      const platformPos = platform.mesh.position;
+      const platformSize = platform.data.size;
+      
+      // Check if wall position overlaps with platform in X,Z
+      const overlapX = Math.abs(finalPosition.x - platformPos.x) < (platformSize[0] / 2 + 0.5);
+      const overlapZ = Math.abs(finalPosition.z - platformPos.z) < (platformSize[2] / 2 + 0.5);
+      
+      if (overlapX && overlapZ) {
+        // Position wall on top of platform
+        const platformTop = platformPos.y + platformSize[1] / 2;
+        finalPosition.y = platformTop + 2; // Wall center is 2 units above platform top (wall height is 4)
+        break;
+      }
+    }
+    
+    mesh.position.copy(finalPosition);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.userData = { id, type: 'wall' };
@@ -555,7 +655,7 @@ export class StandaloneLevelEditor {
       id,
       mesh,
       data: {
-        position: [position.x, position.y, position.z],
+        position: [finalPosition.x, finalPosition.y, finalPosition.z],
         size: [1, 4, 1],
         rotation: [0, 0, 0],
         color: 0x8b4513
@@ -739,6 +839,221 @@ export class StandaloneLevelEditor {
     this._updateStatus();
   }
   
+  _copySelected() {
+    if (!this.selected) return;
+    
+    // Deep copy the selected object's data
+    this.clipboard = {
+      type: this.selectedType,
+      data: JSON.parse(JSON.stringify(this.selected.data))
+    };
+    
+    console.log(`Copied ${this.selectedType}:`, this.clipboard.data);
+    
+    // Visual feedback
+    if (this.statusElement) {
+      const originalText = this.statusElement.textContent;
+      this.statusElement.textContent = `Copied ${this.selectedType}! Press Ctrl+V to paste`;
+      setTimeout(() => {
+        this.statusElement.textContent = originalText;
+      }, 2000);
+    }
+  }
+  
+  _pasteFromClipboard() {
+    if (!this.clipboard) return;
+    
+    // Use the original position from the copied object
+    const originalPosition = new THREE.Vector3(...this.clipboard.data.position);
+    
+    // Apply grid snapping to ensure it stays on grid
+    let pastePosition = this._snapToGrid(originalPosition);
+    
+    // Find safe position to avoid overlaps for platforms and walls
+    if (this.clipboard.type === 'platform') {
+      const size = this.clipboard.data.size;
+      pastePosition = this._findSafeGridPosition(pastePosition, size[0], size[1], size[2], 'platform');
+    } else if (this.clipboard.type === 'wall') {
+      const size = this.clipboard.data.size;
+      pastePosition = this._findSafeGridPosition(pastePosition, size[0], size[1], size[2], 'wall');
+    }
+    
+    // Create the appropriate object type
+    switch (this.clipboard.type) {
+      case 'platform':
+        this._createPlatformFromData(pastePosition, this.clipboard.data);
+        break;
+      case 'wall':
+        this._createWallFromData(pastePosition, this.clipboard.data);
+        break;
+      case 'enemy':
+        this._createEnemyFromData(pastePosition, this.clipboard.data);
+        break;
+      case 'light':
+        this._createLightFromData(pastePosition, this.clipboard.data);
+        break;
+      case 'patrol':
+        this._createPatrolPointFromData(pastePosition, this.clipboard.data);
+        break;
+    }
+    
+    console.log(`Pasted ${this.clipboard.type} at original position:`, pastePosition);
+  }
+  
+  _createPlatformFromData(position, data) {
+    const id = this.nextId++;
+    const geometry = new THREE.BoxGeometry(...data.size);
+    const material = new THREE.MeshLambertMaterial({ color: data.color });
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    mesh.position.copy(position);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { id, type: 'platform' };
+    
+    this.scene.add(mesh);
+    
+    const platformData = {
+      id,
+      mesh,
+      data: {
+        position: [position.x, position.y, position.z],
+        size: [...data.size],
+        rotation: [...data.rotation],
+        color: data.color
+      }
+    };
+    
+    this.platforms.push(platformData);
+    this._updateStatus();
+  }
+  
+  _createWallFromData(position, data) {
+    const id = this.nextId++;
+    const geometry = new THREE.BoxGeometry(...data.size);
+    const material = new THREE.MeshLambertMaterial({ color: data.color });
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    mesh.position.copy(position);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData = { id, type: 'wall' };
+    
+    this.scene.add(mesh);
+    
+    const wallData = {
+      id,
+      mesh,
+      data: {
+        position: [position.x, position.y, position.z],
+        size: [...data.size],
+        rotation: [...data.rotation],
+        color: data.color
+      }
+    };
+    
+    this.walls.push(wallData);
+    this._updateStatus();
+  }
+  
+  _createEnemyFromData(position, data) {
+    const id = this.nextId++;
+    
+    // Use the same enemy configuration as the original create method
+    const enemyConfig = {
+      walker: { geometry: new THREE.ConeGeometry(0.5, 2), color: 0xff4444, speed: 2.4 },
+      runner: { geometry: new THREE.ConeGeometry(0.4, 1.8), color: 0xff5722, speed: 4.0 },
+      jumper: { geometry: new THREE.CylinderGeometry(0.4, 0.4, 1.5), color: 0xe91e63, speed: 2.0 },
+      flyer: { geometry: new THREE.OctahedronGeometry(0.6), color: 0x9c27b0, speed: 2.5 }
+    };
+    
+    const config = enemyConfig[data.type] || enemyConfig.walker;
+    const geometry = config.geometry;
+    const material = new THREE.MeshLambertMaterial({ color: config.color });
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    mesh.position.copy(position);
+    mesh.castShadow = true;
+    mesh.userData = { id, type: 'enemy', enemyType: data.type };
+    
+    this.scene.add(mesh);
+    
+    const enemyData = {
+      id,
+      mesh,
+      data: {
+        type: data.type,
+        position: [position.x, position.y, position.z],
+        rotation: [...data.rotation],
+        patrolPoints: [...data.patrolPoints],
+        speed: data.speed,
+        modelUrl: data.modelUrl
+      }
+    };
+    
+    this.enemies.push(enemyData);
+    this._updateStatus();
+  }
+  
+  _createLightFromData(position, data) {
+    const id = this.nextId++;
+    const light = new THREE.PointLight(data.color, data.intensity, 20);
+    light.position.copy(position);
+    light.castShadow = true;
+    
+    // Visual helper
+    const helper = new THREE.PointLightHelper(light, 0.5);
+    light.userData = { id, type: 'light' };
+    helper.userData = { id, type: 'light' };
+    
+    this.scene.add(light);
+    this.scene.add(helper);
+    
+    const lightData = {
+      id,
+      light,
+      helper,
+      data: {
+        type: data.type,
+        position: [position.x, position.y, position.z],
+        color: data.color,
+        intensity: data.intensity
+      }
+    };
+    
+    this.lights.push(lightData);
+    this._updateStatus();
+  }
+  
+  _createPatrolPointFromData(position, data) {
+    const id = this.nextId++;
+    const geometry = new THREE.SphereGeometry(0.3);
+    const material = new THREE.MeshBasicMaterial({ 
+      color: 0x673ab7,
+      transparent: true,
+      opacity: 0.8
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    mesh.position.copy(position);
+    mesh.userData = { id, type: 'patrol' };
+    
+    this.scene.add(mesh);
+    
+    const patrolData = {
+      id,
+      mesh,
+      data: {
+        position: [position.x, position.y, position.z],
+        waitTime: data.waitTime,
+        enemyId: data.enemyId // Preserve original enemy link
+      }
+    };
+    
+    this.patrolPoints.push(patrolData);
+    this._updateStatus();
+  }
+  
   _updatePropertiesPanel() {
     if (!this.selected) {
       this.propertiesContent.innerHTML = '<p style=\"color: #888; margin: 0;\">Select an object to edit its properties</p>';
@@ -750,16 +1065,21 @@ export class StandaloneLevelEditor {
     
     // Position controls
     html += '<strong>Position:</strong><br>';
-    html += `X: <input type="number" value="${data.position[0]}" step="0.1" style="width: 60px; margin: 2px;"><br>`;
-    html += `Y: <input type="number" value="${data.position[1]}" step="0.1" style="width: 60px; margin: 2px;"><br>`;
-    html += `Z: <input type="number" value="${data.position[2]}" step="0.1" style="width: 60px; margin: 2px;"><br><br>`;
+    html += `X: <input type="number" value="${data.position[0]}" step="1" style="width: 60px; margin: 2px;"><br>`;
+    html += `Y: <input type="number" value="${data.position[1]}" step="1" style="width: 60px; margin: 2px;"><br>`;
+    html += `Z: <input type="number" value="${data.position[2]}" step="1" style="width: 60px; margin: 2px;"><br><br>`;
     
     // Type-specific controls
     if (this.selectedType === 'platform') {
       html += '<strong>Size:</strong><br>';
-      html += `W: <input type="number" value="${data.size[0]}" step="0.1" min="0.1" style="width: 60px; margin: 2px;"><br>`;
-      html += `H: <input type="number" value="${data.size[1]}" step="0.1" min="0.1" style="width: 60px; margin: 2px;"><br>`;
-      html += `D: <input type="number" value="${data.size[2]}" step="0.1" min="0.1" style="width: 60px; margin: 2px;"><br>`;
+      html += `W: <input type="number" value="${data.size[0]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
+      html += `H: <input type="number" value="${data.size[1]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
+      html += `D: <input type="number" value="${data.size[2]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
+    } else if (this.selectedType === 'wall') {
+      html += '<strong>Size:</strong><br>';
+      html += `W: <input type="number" value="${data.size[0]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
+      html += `H: <input type="number" value="${data.size[1]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
+      html += `D: <input type="number" value="${data.size[2]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
     } else if (this.selectedType === 'light') {
       html += `<strong>Intensity:</strong><br>`;
       html += `<input type="number" value="${data.intensity}" step="0.1" min="0" style="width: 80px; margin: 2px;"><br>`;
@@ -790,7 +1110,7 @@ export class StandaloneLevelEditor {
     this.selected.mesh.position.set(...data.position);
     
     // Update type-specific properties
-    if (this.selectedType === 'platform' && inputs.length >= 6) {
+    if ((this.selectedType === 'platform' || this.selectedType === 'wall') && inputs.length >= 6) {
       data.size[0] = parseFloat(inputs[3].value);
       data.size[1] = parseFloat(inputs[4].value);
       data.size[2] = parseFloat(inputs[5].value);
