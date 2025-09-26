@@ -10,6 +10,7 @@ This is a **Three.js-based 3D platformer** with dual editor system and modular c
 - **Editor Systems**: Dual editors - in-game (`src/game/editor/`) and standalone (`src/editor/`)
 - **Component Systems**: Enemies, Lights, UI components with mount/unmount lifecycle
 - **Asset Pipeline**: GLTF models, JSON level data, Three.js scene management
+- **Cinematics System**: `CinematicsManager` handles dialogue and cutscenes
 
 ## Critical Workflows
 
@@ -24,6 +25,7 @@ npm run preview  # Preview built version
 - `window.__GAME__` exposes game instance to console
 - `window.toggleCollisionDebug()` toggles collision visualization wireframes
 - Level editor accessible via 'E' key in-game or standalone at `/editor.html`
+- Cinematics debugging: `CinematicsManager.isPlaying` indicates active cutscenes
 
 ## Key Architectural Patterns
 
@@ -45,19 +47,22 @@ export class MyComponent extends ComponentBase {
 - Debug wireframes via `ColliderHelper` class
 
 ### Level Data Structure
-Levels are JSON with hybrid GLTF + procedural schema:
+Levels are stored in `src/game/levelData.js` with hybrid GLTF + procedural schema:
 ```javascript
 {
-  "gltfUrl": "src/assets/levels/level.gltf", // Primary geometry from GLTF
-  "startPosition": [x, y, z],
-  "lights": ["BasicLights"], // Component names from lights/index.js
-  "ui": ["hud"],             // UI component names  
-  "enemies": [{ "type": "walker", "position": [x,y,z], "patrolPoints": [...] }],
-  "cinematics": {            // Level-specific cutscenes and dialogue
-    "onLevelStart": { "type": "dialogue", "lines": [...] }
+  id: 'level_name',
+  name: 'Display Name',
+  gltfUrl: 'src/assets/levels/level.gltf', // Primary geometry from GLTF
+  startPosition: [x, y, z],
+  lights: ['BasicLights'], // Component names from lights/index.js
+  ui: ['hud'],             // UI component names  
+  enemies: [{ type: 'walker', position: [x,y,z], patrolPoints: [...] }],
+  cinematics: {            // Level-specific cutscenes and dialogue
+    onLevelStart: { type: 'dialogue', character: 'narrator', lines: [...] },
+    onEnemyDefeat: { type: 'cutscene', cameraPath: [...], dialogue: [...] }
   },
-  "fallbackObjects": [       // Procedural geometry if GLTF fails
-    { "type": "box|slope|wall", "position": [x,y,z], "size": [w,h,d] }
+  fallbackObjects: [       // Procedural geometry if GLTF fails
+    { type: 'box', position: [x,y,z], size: [w,h,d], color: 0xcolor }
   ]
 }
 ```
@@ -84,6 +89,7 @@ Camera switching automatically handles pointer lock acquisition/release and paus
 - **Animations**: Three.js AnimationMixer with named actions (idle, walk, run, attack)
 - **Cinematics**: Level-specific dialogue and cutscenes via `CinematicsManager`
 - **Fallback System**: Procedural geometry when GLTF assets fail to load
+- **Async Level Loading**: `Level.create()` static factory pattern for GLTF + fallback loading
 
 ### Input Handling
 `InputManager` class with:
@@ -95,6 +101,7 @@ Camera switching automatically handles pointer lock acquisition/release and paus
 - **In-game editor**: Toggle with 'E', limited functionality, integrated with game loop
 - **Standalone editor**: Full-featured, independent Three.js scene, extensive UI panel
 - **Level export**: Multiple formats (JSON, levelData.js) with object merging utilities
+- **Pointer Lock Management**: Automatic acquisition for 3rd/1st person, pause menu on Esc
 
 ## Critical Integration Points
 
