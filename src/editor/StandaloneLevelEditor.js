@@ -17,7 +17,7 @@ export class StandaloneLevelEditor {
     this._initScene();
     
     // Editor state
-    this.mode = 'enemy'; // enemy | light | patrol | select
+    this.mode = 'select'; // enemy | light | patrol | select
     this.enabled = true;
     
     // Level management
@@ -486,6 +486,9 @@ export class StandaloneLevelEditor {
       box-sizing: border-box;
     `;
     
+    // Prevent right-click context menu on UI panel
+    panel.addEventListener('contextmenu', (e) => e.preventDefault());
+    
     document.body.appendChild(panel);
     this.panel = panel;
     
@@ -869,7 +872,7 @@ export class StandaloneLevelEditor {
     
     // Get the direction to zoom towards
     const zoomDirection = this.raycaster.ray.direction.clone();
-    const zoomAmount = event.deltaY > 0 ? 2 : -2;
+    const zoomAmount = event.deltaY > 0 ? -2 : 2; // Inverted: scroll down = zoom in, scroll up = zoom out
     
     // Move camera towards/away from the center point
     this.camera.position.add(zoomDirection.multiplyScalar(zoomAmount));
