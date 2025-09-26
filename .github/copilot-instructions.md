@@ -45,16 +45,20 @@ export class MyComponent extends ComponentBase {
 - Debug wireframes via `ColliderHelper` class
 
 ### Level Data Structure
-Levels are JSON with specific schema:
+Levels are JSON with hybrid GLTF + procedural schema:
 ```javascript
 {
+  "gltfUrl": "src/assets/levels/level.gltf", // Primary geometry from GLTF
   "startPosition": [x, y, z],
   "lights": ["BasicLights"], // Component names from lights/index.js
   "ui": ["hud"],             // UI component names  
-  "objects": [               // Collision geometry
+  "enemies": [{ "type": "walker", "position": [x,y,z], "patrolPoints": [...] }],
+  "cinematics": {            // Level-specific cutscenes and dialogue
+    "onLevelStart": { "type": "dialogue", "lines": [...] }
+  },
+  "fallbackObjects": [       // Procedural geometry if GLTF fails
     { "type": "box|slope|wall", "position": [x,y,z], "size": [w,h,d] }
-  ],
-  "enemies": [{ "type": "walker", "position": [x,y,z], "patrolPoints": [...] }]
+  ]
 }
 ```
 
@@ -75,9 +79,11 @@ Camera switching automatically handles pointer lock acquisition/release and paus
 - Editor tools separated: in-game vs standalone with different capabilities
 
 ### Asset Loading Patterns
-- **GLTF Models**: Loaded via Three.js GLTFLoader with bbox centering and scaling
+- **Level GLTF**: Primary level geometry loaded from `src/assets/levels/` with automatic collision detection
+- **Character GLTF**: Enemy/player models with bbox centering and scaling  
 - **Animations**: Three.js AnimationMixer with named actions (idle, walk, run, attack)
-- **Textures**: Automatic material assignment through GLTF pipeline
+- **Cinematics**: Level-specific dialogue and cutscenes via `CinematicsManager`
+- **Fallback System**: Procedural geometry when GLTF assets fail to load
 
 ### Input Handling
 `InputManager` class with:

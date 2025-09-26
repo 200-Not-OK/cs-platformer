@@ -9,19 +9,19 @@ export class LevelManager {
     this.currentIndex = 0;
   }
 
-  loadIndex(index) {
+  async loadIndex(index) {
     if (this.current) this.current.dispose();
     this.currentIndex = ((index % this.levels.length) + this.levels.length) % this.levels.length;
-    this.current = new Level(this.scene, this.levels[this.currentIndex]);
+    this.current = await Level.create(this.scene, this.levels[this.currentIndex]);
     return this.current;
   }
 
-  loadNext() {
-    return this.loadIndex(this.currentIndex + 1);
+  async loadNext() {
+    return await this.loadIndex(this.currentIndex + 1);
   }
 
-  loadFirst() {
-    return this.loadIndex(0);
+  async loadFirst() {
+    return await this.loadIndex(0);
   }
 
   getCurrentLevel() {
