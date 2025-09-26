@@ -7,9 +7,20 @@ export function loadGLTFModel(url) {
     const loader = new GLTFLoader();
     loader.load(
       url,
-      (gltf) => resolve(gltf),
-      undefined,
-      (error) => reject(error)
+      (gltf) => {
+        if (!gltf || !gltf.scene) {
+          reject(new Error(`Invalid GLTF loaded from ${url}: missing scene`));
+          return;
+        }
+        resolve(gltf);
+      },
+      (progress) => {
+        // Optional: log loading progress
+        // console.log('Loading progress:', progress);
+      },
+      (error) => {
+        reject(new Error(`Failed to load GLTF from ${url}: ${error.message || error}`));
+      }
     );
   });
 }

@@ -2,6 +2,9 @@
 
 Welcome to the CS Platformer v2 development environment! This comprehensive guide will help you understand the game architecture, use the level editor, create custom enemies, design lighting, and build your own levels.
 
+> **🆕 NEW: GLTF Level System + Cinematics**  
+> The level system now supports GLTF-based geometry and cinematics! See [LEVEL_SYSTEM_UPDATE.md](LEVEL_SYSTEM_UPDATE.md) for details.
+
 ## Table of Contents
 - [Quick Start](#quick-start)
 - [Project Architecture](#project-architecture)
