@@ -105,21 +105,17 @@ export class Game {
   // register a default HUD — actual per-level UI will be loaded by loadLevel
   this.ui.add('hud', HUD, { health: 100 });
 
-  // Load the initial level early so subsequent code can reference `this.level`
-  this.loadLevel(0);
-
   // Lighting manager (modular per-level lights)
   this.lights = new LightManager(this.scene);
-  // Apply lights for current level (loadLevel already called)
-  this.applyLevelLights(this.level?.data);
+
+  // Load the initial level early so subsequent code can reference `this.level`
+  this._initializeLevel();
 
   // In-game level editor (toggle with E)
   this.levelEditor = new LevelEditor(this);
 
-    // debug toggles
+    // debug toggles (will be applied once level loads)
     this.showColliders = true;
-    this.level.toggleColliders(this.showColliders);
-    this.player.toggleHelperVisible(this.showColliders);
 
     // small world grid
     const grid = new THREE.GridHelper(200, 200, 0x444444, 0x222222);
@@ -151,6 +147,13 @@ export class Game {
   this.last = performance.now();
   this._loop = this._loop.bind(this);
   requestAnimationFrame(this._loop);
+  }
+
+  // Initialize the first level asynchronously
+  async _initializeLevel() {
+    await this.loadLevel(0);
+    // Apply lights for current level   
+    this.applyLevelLights(this.level?.data);
   }
 
   _bindKeys() {
@@ -191,7 +194,7 @@ export class Game {
       } else if (code === 'KeyN') {
         // next level — use loadLevel so per-level UI is applied
         const nextIndex = this.levelManager.currentIndex + 1;
-        this.loadLevel(nextIndex);
+        this.loadLevel(nextIndex).catch(err => console.error('Failed to load level:', err));
       } else if (code === 'KeyH') {
         // toggle collider visualization
         this.showColliders = !this.showColliders;
@@ -256,17 +259,27 @@ export class Game {
   }
 
   // Load level by index and swap UI based on level metadata
-  loadLevel(index) {
+  async loadLevel(index) {
     if (this.level) this.level.dispose();
-    this.level = this.levelManager.loadIndex(index);
     
-    // Ensure geometry is fully created before positioning player
-    // Small delay to allow physics/collision system to register new geometry
-    setTimeout(() => {
-      const start = this.level.data.startPosition;
-      this.player.setPosition(new THREE.Vector3(...start));
-      this.player.velocity.set(0, 0, 0);
-    }, 50); // 50ms delay should be sufficient
+    console.log('Loading level...', index);
+    this.level = await this.levelManager.loadIndex(index);
+    
+    // Position player at start position
+    const start = this.level.data.startPosition;
+    this.player.setPosition(new THREE.Vector3(...start));
+    this.player.velocity.set(0, 0, 0);
+    
+    // Apply debug settings
+    if (this.level.toggleColliders) {
+      this.level.toggleColliders(this.showColliders);
+    }
+    this.player.toggleHelperVisible(this.showColliders);
+    
+    // Trigger level start cinematic
+    this.level.triggerLevelStartCinematic(this.activeCamera, this.player);
+    
+    console.log('Level loaded successfully');
 
     // swap UI components according to level.data.ui (array of strings)
     this.applyLevelUI(this.level.data);
