@@ -26,7 +26,7 @@ export class Game {
     //enableDebug(this.scene);
 
     // simple toggle accessible from browser console via window.toggleCollisionDebug()
-    window.__collisionDebugOn = true;
+    window.__collisionDebugOn = false;
     window.toggleCollisionDebug = () => {
       if (window.__collisionDebugOn) {
         disableDebug();
@@ -198,7 +198,9 @@ export class Game {
       } else if (code === 'KeyH') {
         // toggle collider visualization
         this.showColliders = !this.showColliders;
-        this.level.toggleColliders(this.showColliders);
+        if (this.level && this.level.toggleColliders) {
+          this.level.toggleColliders(this.showColliders);
+        }
         this.player.toggleHelperVisible(this.showColliders);
       }
     });
@@ -218,8 +220,10 @@ export class Game {
       return;
     }
 
-  // update level (updates colliders/helpers and enemies)
-  this.level.update(delta, this.player, this.level.getPlatforms());
+    // update level (updates colliders/helpers and enemies) - only if level is loaded
+    if (this.level && this.level.update) {
+      this.level.update(delta, this.player, this.level.getPlatforms());
+    }
 
     // update UI each frame with some context (player model and simple state)
     if (this.ui) {
@@ -247,7 +251,8 @@ export class Game {
     }
 
     // update player (movement read from input manager)
-    this.player.update(delta, this.input, camOrientation, this.level.getPlatforms(), playerActive);
+    const platforms = this.level ? this.level.getPlatforms() : [];
+    this.player.update(delta, this.input, camOrientation, platforms, playerActive);
 
   // update lights (allow dynamic lights to animate)
   if (this.lights) this.lights.update(delta);

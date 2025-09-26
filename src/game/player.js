@@ -44,7 +44,7 @@ export class Player {
     this._hVelocity = new THREE.Vector3(); // horizontal velocity (x,z)
     this._hAccel = options.hAcceleration ?? 40; // units per second^2-ish smoothing factor
     // debug flag (can be toggled from game via window.__collisionDebugOn)
-    this.debug = (typeof window !== 'undefined' && !!window.__collisionDebugOn) || true; // Temporarily enable debug
+    this.debug = (typeof window !== 'undefined' && !!window.__collisionDebugOn) || false; // Debug disabled by default
     this._loadModel();
   }
 

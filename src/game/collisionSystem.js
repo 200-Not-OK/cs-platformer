@@ -149,7 +149,7 @@ export function resolveMovement(box, movement, colliders, options = {}) {
 
   // If we're in the watched region, emit a clear log and optionally pause execution
   if (isInWatch(center)) {
-    console.log('[resolveMovement] WATCH REGION HIT at center', center.clone(), 'watch', watch);
+    if (debugEnabled || options.debug) console.log('[resolveMovement] WATCH REGION HIT at center', center.clone(), 'watch', watch);
     if (watch && watch.break) {
       // Pause execution so you can inspect the scene, colliders, and logs
       debugger;
