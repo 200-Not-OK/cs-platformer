@@ -2,10 +2,8 @@ import * as THREE from 'three';
 import { ColliderHelper } from './colliderHelper.js';
 import { EnemyManager } from './EnemyManager.js';
 import { SimpleSlopeCollider } from './simpleSlopeCollider.js';
-import { loadGLTFModel } from './gltfLoader.js';
-import { CinematicsManager } from './cinematicsManager.js';
 
-// A Level that can load geometry from GLTF files or fallback to procedural objects
+// A generic Level that builds meshes from levelData objects array.
 export class Level {
   constructor(scene, levelData, showColliders = true) {
     this.scene = scene;
@@ -17,79 +15,11 @@ export class Level {
     this.slopeHelpers = []; // slope collider helpers
     this.showColliders = showColliders;
     this.enemyManager = new EnemyManager(this.scene);
-    this.gltfLoaded = false;
-    this.cinematicsManager = new CinematicsManager(scene);
+    this._buildFromData();
   }
 
-  // Static factory method for async construction
-  static async create(scene, levelData, showColliders = true) {
-    const level = new Level(scene, levelData, showColliders);
-    await level._buildFromData();
-    return level;
-  }
-
-  async _buildFromData() {
-    console.log('Building level from data:', this.data.id);
-    
-    // Try to load GLTF geometry first
-    if (this.data.gltfUrl) {
-      try {
-        console.log('Loading level GLTF:', this.data.gltfUrl);
-        await this._loadGLTFGeometry(this.data.gltfUrl);
-        this.gltfLoaded = true;
-      } catch (error) {
-        console.warn('Failed to load GLTF level geometry:', error);
-        console.log('Falling back to procedural geometry');
-        this._buildFallbackGeometry();
-      }
-    } else {
-      console.log('No GLTF specified, using fallback geometry');
-      this._buildFallbackGeometry();
-    }
-    
-    // Load enemies
-    this._loadEnemies();
-    
-    // Initialize cinematics
-    if (this.data.cinematics) {
-      this.cinematicsManager.loadCinematics(this.data.cinematics);
-    }
-  }
-
-  async _loadGLTFGeometry(url) {
-    const gltf = await loadGLTFModel(url);
-    
-    // Process all meshes in the GLTF scene for collision
-    gltf.scene.traverse((child) => {
-      if (child.isMesh) {
-        // Add mesh to scene
-        this.scene.add(child);
-        this.objects.push(child);
-        
-        // Create collision box
-        const box = new THREE.Box3().setFromObject(child);
-        child.userData.collider = box;
-        this.colliders.push(box);
-        
-        // Create collision helper
-        const helper = new ColliderHelper(box, 0x00ff00);
-        helper.setVisible(this.showColliders);
-        this.scene.add(helper.mesh);
-        this.helpers.push(helper);
-        
-        // Tag as GLTF geometry
-        child.userData.type = 'gltf';
-        child.userData.isCollider = child.name.toLowerCase().includes('collider') || 
-                                   child.name.toLowerCase().includes('collision');
-      }
-    });
-    
-    console.log(`Loaded GLTF level with ${this.objects.length} collision objects`);
-  }
-
-  _buildFallbackGeometry() {
-    const objectsToProcess = this.data.fallbackObjects || this.data.objects || [];
-    console.log('Building fallback geometry, total objects:', objectsToProcess.length);
+  _buildFromData() {
+    console.log('Building level from data, total objects:', this.data.objects.length);
     
     // Add test slopes near spawn for easy testing - only on intro level
     if (this.data.id === 'intro') {
@@ -112,11 +42,11 @@ export class Level {
         }
       ];
       
-      objectsToProcess.push(...testSlopes);
+      testSlopes.forEach(slope => this.data.objects.push(slope));
       console.log('Added test slopes for easier testing');
     }
     
-    for (const obj of objectsToProcess) {
+    for (const obj of this.data.objects) {
       if (obj.type === 'box') {
         const geom = new THREE.BoxGeometry(obj.size[0], obj.size[1], obj.size[2]);
         const mat = new THREE.MeshStandardMaterial({ color: obj.color ?? 0x808080 });
@@ -207,9 +137,7 @@ export class Level {
       }
       // extendable: add other object types here (spheres, triggers, etc.)
     }
-  }
 
-  _loadEnemies() {
     // Spawn enemies if defined in level data
     if (this.data.enemies && Array.isArray(this.data.enemies)) {
       for (const ed of this.data.enemies) {
@@ -219,7 +147,6 @@ export class Level {
           console.warn('Failed to spawn enemy', ed, e);
         }
       }
-      console.log(`Loaded ${this.data.enemies.length} enemies`);
     }
   }
 
@@ -269,7 +196,6 @@ export class Level {
     this.colliders = [];
     this.slopeColliders = [];
     if (this.enemyManager) { this.enemyManager.dispose(); this.enemyManager = null; }
-    if (this.cinematicsManager) { this.cinematicsManager.dispose(); this.cinematicsManager = null; }
   }
 
   getPlatforms() {
@@ -279,28 +205,5 @@ export class Level {
   
   getSlopeColliders() {
     return this.slopeColliders;
-  }
-
-  // Cinematic triggers
-  triggerLevelStartCinematic(camera, player) {
-    if (this.cinematicsManager) {
-      this.cinematicsManager.playCinematic('onLevelStart', camera, player);
-    }
-  }
-
-  triggerEnemyDefeatCinematic(camera, player) {
-    if (this.cinematicsManager) {
-      this.cinematicsManager.playCinematic('onEnemyDefeat', camera, player);
-    }
-  }
-
-  triggerLevelCompleteCinematic(camera, player) {
-    if (this.cinematicsManager) {
-      this.cinematicsManager.playCinematic('onLevelComplete', camera, player);
-    }
-  }
-
-  getCinematicsManager() {
-    return this.cinematicsManager;
   }
 }
