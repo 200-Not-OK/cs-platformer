@@ -3,8 +3,8 @@ export const levels = [
   {
     id: 'intro',
     name: 'Intro Level',
-    gltfUrl: 'src/assets/levels/intro.gltf', // Base level geometry from GLTF
-    startPosition: [0, 3, 8],
+    gltfUrl: 'src/assets/levels/introLevel.gltf',
+    startPosition: [0, 6, 8],
     ui: ['hud', 'minimap'],
     lights: [ 'BasicLights' ],
     enemies: [
@@ -51,7 +51,7 @@ export const levels = [
   {
     id: 'custom_level',
     name: 'Custom Level',
-    gltfUrl: 'src/assets/levels/custom_level.gltf', // Base level geometry from GLTF
+    // gltfUrl: 'src/assets/levels/custom_level.gltf', // Base level geometry from GLTF (commented out for testing)
     startPosition: [112, 5, 225],
     ui: ['hud'],
     lights: ['BasicLights'],
