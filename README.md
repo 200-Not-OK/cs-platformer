@@ -1,664 +1,741 @@
 # CS Platformer v2 - Developer Guide
 
-Welcome to the CS Platformer v2 development environment! This comprehensive guide will help you understand the game architecture, use the level editor, create custom enemies, design lighting, and build your own levels.
-
-> **🆕 NEW: GLTF Level System + Cinematics**  
-> The level system now supports GLTF-based geometry and cinematics! See [LEVEL_SYSTEM_UPDATE.md](LEVEL_SYSTEM_UPDATE.md) for details.
+A comprehensive Three.js-based 3D platformer with modular architecture, external level editing, and cinematic systems. This guide covers all game systems and how to create new content.
 
 ## Table of Contents
 - [Quick Start](#quick-start)
-- [Project Architecture](#project-architecture)
-- [Level Editor Guide](#level-editor-guide)
+- [System Architecture Overview](#system-architecture-overview)
+- [Enemy System](#enemy-system)
 - [Lighting System](#lighting-system)
 - [UI System](#ui-system)
-- [Enemy System](#enemy-system)
-- [Creating Your First Level](#creating-your-first-level)
-- [Advanced Features](#advanced-features)
-- [Troubleshooting](#troubleshooting)
+- [Cinematics & Dialogue System](#cinematics--dialogue-system)
+- [Level System](#level-system)
+- [External Level Editor](#external-level-editor)
+- [Creating New Levels](#creating-new-levels)
+- [Development Workflow](#development-workflow)
 
 ## Quick Start
 
 ### Prerequisites
-- Node.js (v14 or higher)
+- Node.js (v16 or higher)
 - Modern web browser with WebGL support
 
 ### Installation & Setup
-1. Clone or download this repository
-2. Open a terminal in the project directory
-3. Install dependencies:
-   ```bash
-   npm install
-   ```
-4. Start the development server:
-   ```bash
-   npm run dev
-   ```
-5. Open your browser to `http://localhost:5173` to play the game
-6. Open `http://localhost:5173/editor.html` to use the standalone level editor
+```bash
+# Clone the repository
+git clone <repository-url>
+cd cs-platformerv2
 
-### Files Structure
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
+### Access Points
+- **Game**: `http://localhost:5173` - Play the game
+- **Level Editor**: `http://localhost:5173/editor.html` - Edit levels
+
+### Project Structure
 ```
 src/
-├── main.js                 # Game entry point
-├── assets/
-│   └── level.json         # Current level data
-├── game/                  # Core game systems
-│   ├── game.js           # Main game class
-│   ├── player.js         # Player controller
-│   ├── enemies/          # Enemy types
-│   ├── lights/           # Lighting components
-│   ├── components/       # UI components
-│   └── editor/           # In-game level editor
-└── editor/               # Standalone level editor
+├── main.js                    # Game entry point
+├── editor/                    # External level editor
+│   ├── StandaloneLevelEditor.js  # Full-featured editor
+│   └── standalone.js          # Editor initialization
+├── game/                      # Core game systems
+│   ├── game.js               # Main game controller
+│   ├── levelData.js          # Level definitions
+│   ├── cinematicsManager.js  # Cutscenes & dialogue
+│   ├── enemies/              # Enemy AI system
+│   ├── lights/               # Lighting components
+│   ├── components/           # UI components
+│   └── ...                   # Other game systems
+└── assets/                   # GLTF models and textures
+    ├── levels/               # Level geometry files
+    ├── low_poly_male/        # Character models
+    └── ...
 ```
 
-## Project Architecture
+## System Architecture Overview
 
-### Core Systems
+CS Platformer v2 follows a **modular component architecture** with clear separation of concerns:
 
-**Game Loop (game.js)**
-- Manages the main game loop with delta time
-- Handles camera switching (Third Person, First Person, Free Camera)
-- Controls pause/resume functionality
-- Integrates all subsystems (physics, rendering, UI, enemies)
+- **Game Core**: Main game loop, player physics, collision detection
+- **Level System**: Data-driven GLTF + JSON hybrid approach with fallback geometry
+- **Component Systems**: Enemies, lights, UI with mount/unmount lifecycle
+- **Cinematics**: Dialogue and cutscene management
+- **External Editor**: Standalone editing tool for level content creation
 
-**Physics & Collision**
-- Built on Three.js with custom collision detection
-- Support for boxes, slopes, and complex geometry
-- Ground detection and movement resolution
-- Debug visualization available (toggle with `window.toggleCollisionDebug()`)
+### Key Design Patterns
 
-**Asset Loading**
-- GLTF model loading for characters and objects
-- Texture and material management
-- Animation system with mixer support
-
-## Level Editor Guide
-
-The platformer includes two level editors:
-
-### 1. In-Game Editor (Press 'E' during gameplay)
-- Integrated into the main game
-- Real-time editing while playing
-- Access via the 'E' key during gameplay
-
-### 2. Standalone Editor (editor.html)
-- Independent editor with full scene control
-- Recommended for serious level creation
-- More robust tools and better performance
-
-### Standalone Editor Controls
-
-**Camera Movement:**
-- `WASD` - Move camera
-- `Mouse` - Look around (hold click and drag)
-- `Mouse Wheel` - Zoom in/out
-- `Shift` - Move faster
-
-**Creation Modes (Hotkeys):**
-- `Q` - Platform mode (create boxes/platforms)
-- `G` - Slope mode (create ramps and stairs) 
-- `F` - Wall mode (create vertical barriers)
-- `R` - Walker Enemy mode
-- `T` - Light mode
-- `Y` - Patrol Point mode
-- `E` - Select mode (edit existing objects)
-
-**Object Manipulation:**
-- `Click` - Place object or select existing object
-- `Delete` - Remove selected object
-- `Ctrl+C` - Copy selected object
-- `Ctrl+V` - Paste copied object
-- `Ctrl+Z` - Undo last action
-- `Drag` - Multi-select objects (in select mode)
-
-### Editor Interface
-
-**Right Panel Sections:**
-
-1. **Creation Mode** - Switch between different object types
-2. **Properties Panel** - Edit selected object properties:
-   - Position (X, Y, Z coordinates)
-   - Scale/Size (Width, Height, Depth)
-   - Rotation (Euler angles)
-   - Color (for platforms and lights)
-   - Type-specific properties
-
-3. **Tools Section**:
-   - **Clear All** - Remove all objects from scene
-   - **Import JSON** - Load level from file
-   - **Export JSON** - Save level to download
-   - **Generate Level Code** - Create levelData.js format
-
-### Creating Level Objects
-
-**Platforms:**
-- Click in scene to place a platform
-- Default size: 4x1x4 units
-- Adjust size in properties panel
-- Change color using color picker
-
-**Slopes/Stairs:**
-- Similar to platforms but angled
-- Use rotation properties to adjust angle
-- Good for creating ramps and stairs
-
-**Walls:**
-- Vertical barriers
-- Can be used for boundaries or obstacles
-- Drag to create long walls quickly
-
-**Enemies:**
-- Place at desired spawn locations
-- Set patrol points after placing enemy
-- Configure behavior in properties panel
-
-**Lights:**
-- Point lights that illuminate the scene
-- Adjust color, intensity, and range
-- Preview lighting effects in real-time
-
-**Patrol Points:**
-- Define enemy movement paths
-- Connect to specific enemies
-- Create complex patrol routes
-
-## Lighting System
-
-The lighting system is modular and extensible, built around the `LightManager` class.
-
-### Available Light Types
-
-**1. Basic Lights (`BasicLights`)**
+**Component Lifecycle**: All game components follow a consistent mount/unmount pattern:
 ```javascript
-// Ambient + Directional lighting setup
-// Provides general scene illumination
-```
-
-**2. Hemisphere Fill (`HemisphereFill`)**
-```javascript
-// Soft ambient lighting with sky/ground colors
-// Creates atmospheric lighting
-```
-
-**3. Point Pulse (`PointPulse`)**
-```javascript
-// Animated point light with pulsing intensity
-// Good for dynamic effects and mood lighting
-```
-
-### Using Lights in Levels
-
-In your level JSON, specify lights in the `lights` array:
-```json
-{
-  "lights": ["BasicLights", "HemisphereFill"],
-  "customLights": [
-    {
-      "type": "point",
-      "position": [10, 5, 0],
-      "color": "#ff6600",
-      "intensity": 1.0,
-      "range": 20
-    }
-  ]
+class MyComponent {
+  mount(scene) { /* Add to scene */ }
+  unmount(scene) { /* Clean up */ }
+  update(delta) { /* Per-frame updates */ }
 }
 ```
 
-### Creating Custom Light Components
+**Data-Driven Architecture**: Levels are defined in `levelData.js` with both GLTF geometry and procedural fallbacks, allowing rapid iteration and reliable loading.
 
-1. Create a new file in `src/game/lights/`
-2. Extend the `LightComponent` class:
+## Enemy System
 
+The enemy system provides AI-driven characters with patrol behaviors, animations, and player interaction.
+
+### Enemy Architecture
+
+**Base Class**: All enemies extend `EnemyBase` which provides:
+- GLTF model loading with automatic bbox calculation
+- Physics integration (gravity, collision)
+- Animation system (idle, walk, run, attack)
+- Health and damage systems
+- Patrol point navigation
+
+### Enemy Types
+
+#### Walker Enemy
+- **Behavior**: Ground-based patrol between waypoints
+- **Movement**: Simple linear patrolling with turn-around at endpoints
+- **Usage**: Basic guards, simple obstacles
+
+#### Runner Enemy  
+- **Behavior**: Fast ground movement with chase mechanics
+- **Movement**: Higher speed, longer chase range
+- **Usage**: Aggressive pursuers, dynamic threats
+
+#### Jumper Enemy
+- **Behavior**: Stationary with periodic jumping attacks
+- **Movement**: Jumps at intervals, can reach elevated positions
+- **Usage**: Area denial, vertical threat
+
+#### Flyer Enemy
+- **Behavior**: 3D aerial patrol with smooth curves
+- **Movement**: Ignores gravity, follows 3D waypoint paths
+- **Usage**: Aerial surveillance, hard-to-reach positions
+
+### Creating Custom Enemies
+
+1. **Extend EnemyBase**:
 ```javascript
-import { LightComponent } from '../lightComponent.js';
+import { EnemyBase } from './EnemyBase.js';
+
+export class CustomEnemy extends EnemyBase {
+  constructor(scene, options) {
+    super(scene, options);
+    this.customProperty = options.customValue ?? 0;
+  }
+  
+  update(delta, platforms, player) {
+    super.update(delta, platforms, player);
+    // Custom behavior logic
+  }
+}
+```
+
+2. **Register in EnemyManager**:
+```javascript
+// In game/EnemyManager.js
+import { CustomEnemy } from './enemies/CustomEnemy.js';
+
+const enemyTypes = {
+  // ... existing types
+  custom: CustomEnemy
+};
+```
+
+3. **Use in Level Data**:
+```javascript
+enemies: [
+  { 
+    type: 'custom', 
+    position: [x, y, z], 
+    customValue: 42,
+    // ... other options
+  }
+]
+```
+
+### Enemy Configuration
+
+Each enemy in `levelData.js` supports:
+```javascript
+{
+  type: 'walker',           // Enemy type
+  position: [x, y, z],      // Starting position
+  modelUrl: 'path/to/model.gltf',  // 3D model
+  patrolPoints: [[x,y,z,waitTime], ...],  // Patrol route
+  speed: 2.4,               // Movement speed
+  chaseRange: 5,            // Player detection range
+  jumpInterval: 1.8,        // For jumper type
+  jumpStrength: 5.5         // Jump force
+}
+```
+
+## Lighting System
+
+The lighting system provides modular, reusable lighting setups that can be mixed and matched per level.
+
+### Lighting Architecture
+
+**Component-Based**: Each light type is a self-contained component that can be mounted/unmounted from scenes.
+
+**Registration System**: Lights are registered in `lights/index.js` and referenced by name in level data.
+
+### Built-in Light Types
+
+#### BasicLights
+- **Components**: Directional light + ambient light
+- **Usage**: General scene illumination
+- **Options**: `color`, `intensity`, `direction`, `ambientColor`, `ambientIntensity`
+
+#### PointPulse  
+- **Components**: Animated point light with pulsing intensity
+- **Usage**: Dynamic focal points, atmosphere
+- **Options**: `color`, `intensity`, `position`, `pulseSpeed`, `pulseRange`
+
+#### HemisphereFill
+- **Components**: Hemisphere light for outdoor scenes
+- **Usage**: Sky/ground lighting simulation
+- **Options**: `skyColor`, `groundColor`, `intensity`
+
+### Creating Custom Lights
+
+1. **Create Light Component**:
+```javascript
 import * as THREE from 'three';
+import { LightComponent } from '../lightComponent.js';
 
 export class CustomLight extends LightComponent {
   constructor(props = {}) {
     super(props);
-    this.intensity = props.intensity || 1.0;
-    this.color = props.color || 0xffffff;
+    this.light = null;
   }
 
   mount(scene) {
-    this.light = new THREE.PointLight(this.color, this.intensity, 100);
-    this.light.position.set(...(this.props.position || [0, 10, 0]));
+    this.light = new THREE.SpotLight(
+      this.props.color ?? 0xffffff,
+      this.props.intensity ?? 1
+    );
+    // Configure light properties
     scene.add(this.light);
+    this._mounted = true;
   }
 
   unmount(scene) {
-    if (this.light) {
-      scene.remove(this.light);
-      this.light = null;
-    }
+    if (this.light) scene.remove(this.light);
+    this.light = null;
+    this._mounted = false;
   }
 
   update(delta) {
-    // Add animation or dynamic behavior
-    if (this.light) {
-      this.light.intensity = Math.sin(Date.now() * 0.001) * 0.5 + 0.5;
-    }
+    // Animation logic
   }
 }
 ```
 
-3. Register in `src/game/lights/index.js`:
+2. **Register Light**:
 ```javascript
+// In lights/index.js
 export { CustomLight } from './customLight.js';
+```
+
+3. **Use in Levels**:
+```javascript
+lights: ['BasicLights', 'CustomLight']
 ```
 
 ## UI System
 
-The UI system uses a component-based architecture with the `UIManager` class.
+The UI system provides modular, game-state-aware interface components.
 
-### Available UI Components
+### UI Architecture
 
-**HUD (`src/game/components/hud.js`)**
-- Health bar
-- Score display
-- Game status information
+**Component-Based**: UI elements extend `UIComponent` base class
+**Manager System**: `UIManager` handles component lifecycle and updates
+**Props System**: Components receive and react to game state changes
 
-**Minimap (`src/game/components/minimap.js`)**
-- Top-down view of level
-- Player position indicator
-- Navigation aid
+### Built-in UI Components
 
-**Objectives (`src/game/components/objectives.js`)**
-- Quest/goal display
-- Progress tracking
-- Mission briefings
+#### HUD (Heads-Up Display)
+- **Purpose**: Show player health, stats, info
+- **Features**: Auto-updating health display, game state integration
+- **Styling**: Positioned overlay with system fonts
 
-**Menu (`src/game/components/menu.js`)**
-- Pause menu
-- Settings interface
-- Level selection
+#### Minimap
+- **Purpose**: Top-down level overview with player position
+- **Features**: Real-time player tracking, level geometry representation
+
+#### Menu
+- **Purpose**: Pause menu, settings, navigation
+- **Features**: Game pause integration, settings persistence
+
+#### Objectives
+- **Purpose**: Mission objectives, quest tracking
+- **Features**: Dynamic objective updates, completion tracking
 
 ### Creating Custom UI Components
 
-1. Create a component extending `UIComponent`:
-
+1. **Extend UIComponent**:
 ```javascript
 import { UIComponent } from '../uiComponent.js';
 
-export class CustomHUD extends UIComponent {
-  constructor(root, props = {}) {
-    super(root, props);
-    this.score = 0;
+export class CustomUI extends UIComponent {
+  constructor(container, props = {}) {
+    super(container, props);
+    this.root.className = 'custom-ui';
+    this._createElements();
   }
 
-  mount() {
-    this.root.innerHTML = `
-      <div class="custom-hud" style="position: fixed; top: 20px; left: 20px; color: white;">
-        <div>Score: <span id="score">0</span></div>
-        <div>Level: <span id="level">1</span></div>
-      </div>
-    `;
-    this.scoreElement = this.root.querySelector('#score');
-    this.levelElement = this.root.querySelector('#level');
+  _createElements() {
+    this.display = document.createElement('div');
+    this.display.textContent = 'Custom UI';
+    this.root.appendChild(this.display);
+  }
+
+  setProps(props) {
+    super.setProps(props);
+    // React to prop changes
   }
 
   update(delta, gameState) {
-    if (gameState.score !== this.score) {
-      this.score = gameState.score;
-      this.scoreElement.textContent = this.score;
+    // Update based on game state
+  }
+}
+```
+
+2. **Register Component**:
+```javascript
+// In components/index.js or ui/index.js
+export { CustomUI } from './customUI.js';
+```
+
+3. **Use in Levels**:
+```javascript
+ui: ['hud', 'CustomUI']
+```
+
+### UI Styling
+
+Components use inline styles for isolation but can be styled with CSS:
+```css
+.custom-ui {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  color: white;
+  font-family: system-ui;
+}
+```
+
+## Cinematics & Dialogue System
+
+The cinematics system handles cutscenes, dialogue sequences, and narrative elements.
+
+### Cinematics Architecture
+
+**Event-Driven**: Cinematics are triggered by level events (start, enemy defeat, etc.)
+**Type-Based**: Two main types - dialogue and cutscenes
+**Non-Blocking**: Cinematics can run while maintaining game state
+
+### Cinematic Types
+
+#### Dialogue
+Shows text-based conversations with timing control:
+```javascript
+{
+  type: 'dialogue',
+  character: 'narrator',
+  lines: [
+    { text: "Welcome to the level!", duration: 3000 },
+    { text: "Use WASD to move.", duration: 4000 }
+  ]
+}
+```
+
+#### Cutscene
+Camera movement with synchronized dialogue:
+```javascript
+{
+  type: 'cutscene',
+  cameraPath: [
+    { position: [10, 5, 10], lookAt: [0, 0, 0], duration: 2000 }
+  ],
+  dialogue: [
+    { character: 'player', text: "Amazing view!", duration: 2000 }
+  ]
+}
+```
+
+### Cinematic Triggers
+
+Cinematics are defined per-level and triggered by events:
+
+```javascript
+cinematics: {
+  onLevelStart: { /* cinematic definition */ },
+  onEnemyDefeat: { /* cinematic definition */ },
+  onPlayerDeath: { /* cinematic definition */ },
+  onLevelComplete: { /* cinematic definition */ }
+}
+```
+
+### Creating Custom Cinematics
+
+1. **Define in Level Data**:
+```javascript
+cinematics: {
+  customTrigger: {
+    type: 'dialogue',
+    character: 'guide',
+    lines: [
+      { text: "You found the secret!", duration: 2500 }
+    ]
+  }
+}
+```
+
+2. **Trigger from Game Code**:
+```javascript
+game.cinematicsManager.playCinematic('customTrigger');
+```
+
+### Dialogue UI Integration
+
+The cinematics manager automatically creates dialogue UI:
+- Text display with character names
+- Timed progression through lines
+- Skip functionality for testing
+- Pause/resume game integration
+
+## Level System
+
+The level system combines GLTF 3D models with JSON data for comprehensive level definition.
+
+### Level Architecture
+
+**Hybrid Approach**: 
+- GLTF files provide detailed 3D geometry and textures
+- JSON data defines gameplay elements (enemies, lights, cinematics)
+- Fallback system ensures levels always load
+
+**Data-Driven**: All levels defined in `levelData.js` with consistent schema
+
+### Level Definition Schema
+
+```javascript
+{
+  id: 'level_name',                    // Unique identifier
+  name: 'Display Name',                // Human-readable name
+  gltfUrl: 'src/assets/levels/level.gltf',  // 3D geometry
+  startPosition: [x, y, z],            // Player spawn point
+  
+  // Gameplay elements
+  enemies: [/* enemy definitions */],
+  lights: ['BasicLights'],             // Light component names
+  ui: ['hud', 'minimap'],             // UI component names
+  
+  // Narrative elements
+  cinematics: {
+    onLevelStart: {/* cinematic */}
+  },
+  
+  // Fallback geometry (if GLTF fails)
+  fallbackObjects: [
+    { type: 'box', position: [x,y,z], size: [w,h,d], color: 0xcolor }
+  ]
+}
+```
+
+### Level Loading Process
+
+1. **GLTF Loading**: Primary geometry loaded from specified file
+2. **Collision Generation**: Automatic collision mesh generation from GLTF
+3. **Fallback Handling**: If GLTF fails, procedural geometry is created
+4. **Component Initialization**: Enemies, lights, UI mounted to scene
+5. **Cinematics Setup**: Event handlers registered for cutscenes
+
+### Level Management
+
+**LevelManager**: Handles level switching and progression
+```javascript
+// Switch to specific level
+game.levelManager.loadLevel(levelIndex);
+
+// Next level in sequence  
+game.levelManager.nextLevel();
+
+// Get current level data
+const currentLevel = game.levelManager.getCurrentLevel();
+```
+
+## External Level Editor
+
+The external level editor is a standalone tool for creating and editing game levels.
+
+### Editor Architecture
+
+**Standalone Application**: Runs independently at `/editor.html`
+**Level-Focused**: Specialized for enemies, lighting, and patrol points only
+**GLTF Integration**: Loads and displays level geometry from game files
+**Save System**: Exports changes back to `levelData.js`
+
+### Editor Features
+
+#### Level Management
+- Load any level from `levelData.js`
+- Switch between levels within editor
+- Preview levels with full textures and lighting
+
+#### Enemy Editing
+- Place enemies of all types (walker, runner, jumper, flyer)
+- Edit enemy properties (position, rotation, speed, chase range)
+- Create and modify patrol routes with visual connections
+- Preview enemy behavior paths
+
+#### Lighting System
+- Add/remove light components
+- Adjust light properties (color, intensity, position)
+- Live preview of lighting changes
+- Multiple light types support
+
+#### Camera Controls
+- **WASD Movement**: Move on X/Z plane
+- **Right-Click + Drag**: Rotate camera view
+- **Scroll Wheel**: Zoom in/out (inverted for natural feel)
+- **Smart Positioning**: Auto-focus on level geometry when loading
+
+#### Selection System
+- Click to select enemies, lights, or patrol points
+- Property panel shows editable values
+- Direct numerical input for precise positioning
+- Visual selection indicators
+
+### Editor Workflow
+
+1. **Open Editor**: Navigate to `http://localhost:5173/editor.html`
+2. **Select Level**: Use level dropdown to load desired level
+3. **Edit Content**: 
+   - Select mode (Enemy, Light, Patrol, Select)
+   - Click to place new items or select existing ones
+   - Use property panel to fine-tune values
+4. **Save Changes**: Export modified data back to `levelData.js`
+5. **Test in Game**: Switch to main game to test changes
+
+### Editor UI Components
+
+#### Mode Selector
+- **Enemy Mode**: Place and edit enemy characters
+- **Light Mode**: Add and configure lighting
+- **Patrol Mode**: Create enemy patrol routes
+- **Select Mode**: Default mode for selecting and editing existing items
+
+#### Properties Panel
+- **Position**: X, Y, Z coordinates with direct input
+- **Rotation**: Euler angles for object orientation  
+- **Type-Specific**: Enemy speed, light intensity, etc.
+- **Patrol Points**: For enemies, editable waypoint list
+
+#### Level Controls
+- **Level Dropdown**: Switch between available levels
+- **Save Button**: Export changes to levelData.js
+- **Reset Button**: Reload level from saved data
+
+## Creating New Levels
+
+This section guides you through creating your first custom level from scratch.
+
+### Step 1: Create GLTF Geometry (Optional)
+
+If you have 3D modeling skills, create level geometry in Blender/Maya:
+
+1. **Model Requirements**:
+   - Reasonable polygon count for web performance
+   - Proper UV mapping for textures
+   - Logical object hierarchy
+   - Collision-appropriate geometry
+
+2. **Export Settings**:
+   - Format: GLTF 2.0 (.gltf + .bin)
+   - Include textures and materials
+   - Apply transforms before export
+   - Embed textures or keep separate files
+
+3. **File Placement**:
+   - Save to `src/assets/levels/your_level.gltf`
+   - Include associated .bin and texture files
+
+### Step 2: Define Level Data
+
+Add your level to `src/game/levelData.js`:
+
+```javascript
+export const levels = [
+  // ... existing levels
+  {
+    id: 'my_custom_level',
+    name: 'My Custom Level',
+    gltfUrl: 'src/assets/levels/my_level.gltf', // Optional
+    startPosition: [0, 5, 0],
+    
+    // Basic setup
+    ui: ['hud', 'minimap'],
+    lights: ['BasicLights'],
+    enemies: [],
+    
+    // Fallback geometry (always include)
+    fallbackObjects: [
+      { type: 'box', position: [0, 0, 0], size: [20, 1, 20], color: 0x6b8e23 }
+    ]
+  }
+];
+```
+
+### Step 3: Test Basic Level
+
+1. **Start Development Server**: `npm run dev`
+2. **Access Game**: `http://localhost:5173`
+3. **Switch to Level**: Press 'N' key to cycle to your level
+4. **Verify Loading**: Check that fallback geometry appears
+
+### Step 4: Use External Editor
+
+1. **Open Editor**: `http://localhost:5173/editor.html`
+2. **Select Your Level**: Use dropdown to load your level
+3. **Add Content**:
+   - Switch to Enemy mode and place some enemies
+   - Add patrol points by clicking in Patrol mode
+   - Experiment with lighting in Light mode
+4. **Save Changes**: Use Save button to export to levelData.js
+
+### Step 5: Add Cinematics
+
+Enhance your level with narrative elements:
+
+```javascript
+{
+  // ... level definition
+  cinematics: {
+    onLevelStart: {
+      type: 'dialogue',
+      character: 'narrator',
+      lines: [
+        { text: "Welcome to my custom level!", duration: 3000 },
+        { text: "Defeat all enemies to proceed.", duration: 4000 }
+      ]
     }
   }
-
-  unmount() {
-    this.root.innerHTML = '';
-  }
 }
 ```
 
-2. Register with UIManager in your level:
+### Step 6: Advanced Features
+
+#### Custom Enemy Configurations
 ```javascript
-game.ui.add('customHUD', CustomHUD, { score: 0 });
-```
-
-## Enemy System
-
-The enemy system is built around a base class with specialized behaviors.
-
-### Available Enemy Types
-
-**Walker Enemy (`WalkerEnemy`)**
-- Ground-based movement
-- Follows patrol points
-- Basic collision detection
-
-**Runner Enemy (`RunnerEnemy`)**
-- Faster ground movement
-- Aggressive pursuit behavior
-- Jump capabilities
-
-**Jumper Enemy (`JumperEnemy`)**
-- Vertical movement patterns
-- Can jump over obstacles
-- Spring-like behavior
-
-**Flyer Enemy (`FlyerEnemy`)**
-- 3D movement in air
-- Ignores ground collision
-- Smooth flight patterns
-
-### Creating Custom Enemy Types
-
-1. Create a new enemy class extending `EnemyBase`:
-
-```javascript
-import { EnemyBase } from './EnemyBase.js';
-import * as THREE from 'three';
-
-export class TeleporterEnemy extends EnemyBase {
-  constructor(scene, options = {}) {
-    super(scene, {
-      ...options,
-      speed: 3,
-      health: 15,
-      modelUrl: '/src/assets/teleporter_model/scene.gltf'
-    });
-    
-    this.teleportCooldown = 0;
-    this.teleportRange = options.teleportRange || 10;
+enemies: [
+  {
+    type: 'walker',
+    position: [5, 2, 5],
+    speed: 1.5,           // Slower than default
+    chaseRange: 8,        // Longer detection range
+    health: 15,           // More health
+    patrolPoints: [[5,2,5,1], [10,2,5,1], [5,2,10,1]]
   }
-
-  update(delta, player, platforms) {
-    super.update(delta, player, platforms);
-    
-    // Custom teleport behavior
-    this.teleportCooldown -= delta;
-    
-    if (this.teleportCooldown <= 0 && player) {
-      const distanceToPlayer = this.mesh.position.distanceTo(player.mesh.position);
-      
-      if (distanceToPlayer > this.teleportRange) {
-        this.teleportTowards(player.mesh.position);
-        this.teleportCooldown = 3.0; // 3 second cooldown
-      }
-    }
-  }
-
-  teleportTowards(targetPosition) {
-    // Teleport within range of target
-    const direction = new THREE.Vector3()
-      .subVectors(targetPosition, this.mesh.position)
-      .normalize();
-    
-    const teleportDistance = Math.random() * 5 + 3; // 3-8 units
-    const newPosition = this.mesh.position.clone()
-      .add(direction.multiplyScalar(teleportDistance));
-    
-    this.mesh.position.copy(newPosition);
-    this._updateCollider();
-    
-    // Add teleport effect (particles, sound, etc.)
-    this.createTeleportEffect();
-  }
-
-  createTeleportEffect() {
-    // Add visual/audio effects for teleportation
-    console.log('Teleport effect triggered!');
-  }
-}
+]
 ```
 
-2. Register the enemy type in `EnemyManager`:
+#### Advanced Lighting
 ```javascript
-import { TeleporterEnemy } from './enemies/TeleporterEnemy.js';
-
-// In your level data or enemy spawning code:
-const teleporter = new TeleporterEnemy(scene, {
-  position: [10, 2, 5],
-  teleportRange: 15
-});
+lights: ['BasicLights', 'PointPulse', 'HemisphereFill']
 ```
 
-### Enemy Behavior Patterns
-
-**Patrol System:**
-- Enemies follow predefined waypoints
-- Smooth movement between points
-- Customizable patrol speed and wait times
-
-**AI States:**
-- Idle - No movement, default animations
-- Patrol - Following waypoint path
-- Chase - Pursuing player when in range
-- Attack - Combat behavior when close to player
-- Return - Going back to patrol route
-
-**Collision Handling:**
-- Ground detection for walking enemies
-- Wall avoidance for navigation
-- Player interaction for damage/combat
-
-## Creating Your First Level
-
-### Step 1: Plan Your Level
-Before opening the editor, sketch your level design:
-- Player start position
-- Platform layout and progression
-- Enemy placement and patrol routes
-- Lighting zones and atmosphere
-- Victory conditions or objectives
-
-### Step 2: Use the Standalone Editor
-1. Open `editor.html` in your browser
-2. Start with platforms (`Q` key) to create the main structure
-3. Add slopes (`G` key) for ramps and variety
-4. Place walls (`F` key) for boundaries
-5. Add enemies (`R` key) at strategic locations
-6. Set up patrol points (`Y` key) for enemy movement
-7. Add lights (`T` key) for atmosphere and visibility
-
-### Step 3: Test and Iterate
-1. Export your level using "Export JSON" in the tools section
-2. Replace the content in `src/assets/level.json` with your exported data
-3. Refresh the main game to test your level
-4. Play through and identify issues:
-   - Is progression logical?
-   - Are jumps possible?
-   - Is lighting adequate?
-   - Are enemies challenging but fair?
-
-### Step 4: Polish and Details
-1. Fine-tune platform positions and sizes
-2. Adjust enemy patrol routes
-3. Balance lighting for mood and gameplay
-4. Add objectives using the UI system
-5. Test with friends for feedback
-
-### Level Design Best Practices
-
-**Platform Placement:**
-- Ensure all jumps are possible with default player abilities
-- Create clear visual paths for progression
-- Use varying heights for interesting navigation
-- Leave space for combat encounters
-
-**Enemy Placement:**
-- Place enemies to create natural challenges
-- Avoid unfair ambushes or impossible encounters
-- Use patrol routes to create predictable patterns
-- Balance enemy density with level pacing
-
-**Lighting Design:**
-- Ensure player can always see safe landing spots
-- Use lighting to guide attention and create mood
-- Avoid overly dark areas that frustrate gameplay
-- Consider using colored lights for visual variety
-
-**Visual Flow:**
-- Create clear sight lines to objectives
-- Use platform arrangement to suggest movement
-- Avoid visual clutter that confuses navigation
-- Maintain consistent visual themes
-
-## Advanced Features
-
-### Dynamic Level Elements
-
-**Moving Platforms:**
-Extend the platform system to create moving elements:
+#### Multiple UI Components
 ```javascript
-// In your level data:
-{
-  "type": "movingPlatform",
-  "position": [0, 5, 0],
-  "size": [4, 1, 4],
-  "movement": {
-    "type": "linear",
-    "start": [0, 5, 0],
-    "end": [10, 5, 0],
-    "speed": 2.0,
-    "loop": true
-  }
-}
+ui: ['hud', 'minimap', 'objectives']
 ```
 
-**Destructible Elements:**
-Create platforms that break when stepped on:
+### Step 7: Testing and Iteration
+
+1. **Playtest Frequently**: Test your level regularly in the main game
+2. **Use Editor Preview**: Preview changes without leaving the editor
+3. **Adjust Difficulty**: Fine-tune enemy placement and patrol routes
+4. **Visual Polish**: Experiment with lighting combinations
+5. **Narrative Integration**: Add cinematics for key moments
+
+## Development Workflow
+
+### Daily Development
+
+1. **Start Services**: `npm run dev`
+2. **Game Testing**: `http://localhost:5173` 
+3. **Level Editing**: `http://localhost:5173/editor.html`
+4. **Code Changes**: Edit source files (hot reload enabled)
+
+### Debugging Features
+
+#### In-Game Debug Keys
+- **C**: Cycle camera modes (Third Person → First Person → Free Camera)
+- **H**: Toggle collision wireframes
+- **N**: Next level in sequence
+- **Escape**: Pause menu
+
+#### Debug Access
+- **Console Access**: `window.__GAME__` exposes game instance
+- **Collision Debug**: `window.toggleCollisionDebug()`
+- **Cinematics State**: `CinematicsManager.isPlaying`
+
+#### Common Debug Tasks
 ```javascript
-{
-  "type": "destructiblePlatform",
-  "position": [5, 3, 0],
-  "size": [2, 0.5, 2],
-  "health": 1,
-  "respawnTime": 5.0
-}
+// In browser console
+window.__GAME__.levelManager.loadLevel(0);  // Load specific level
+window.__GAME__.player.health = 100;        // Restore health
+window.__GAME__.showColliders = true;       // Show collision boxes
 ```
 
-**Interactive Objects:**
-Add switches, keys, and doors:
-```javascript
-{
-  "type": "switch",
-  "position": [8, 2, 3],
-  "targets": ["door_1", "light_group_2"],
-  "activationType": "proximity" // or "interact"
-}
+### Performance Considerations
+
+#### Asset Optimization
+- **GLTF Files**: Keep under 10MB, use compressed textures
+- **Enemy Count**: Limit to 10-15 active enemies per level
+- **Lighting**: Avoid excessive dynamic lights
+
+#### Code Optimization
+- **Component Cleanup**: Always implement unmount() methods
+- **Memory Management**: Remove event listeners in cleanup
+- **Update Loops**: Minimize per-frame calculations
+
+### Building for Production
+
+```bash
+# Create production build
+npm run build
+
+# Preview production build
+npm run preview
+
+# Deploy dist/ folder to web server
 ```
 
-### Custom Animations
+### Extending the Engine
 
-**Scripted Sequences:**
-Create cutscenes and scripted events:
-```javascript
-// In your level's update loop
-if (player.position.x > 50 && !this.triggeredCutscene) {
-  this.triggeredCutscene = true;
-  this.playEnemyRevealSequence();
-}
-```
+#### Adding New Enemy Types
+1. Create class extending `EnemyBase`
+2. Register in `EnemyManager`
+3. Add to external editor's enemy types
+4. Test with various level configurations
 
-**Environmental Animation:**
-Animate level elements for atmosphere:
-```javascript
-// Floating platforms, rotating obstacles, etc.
-this.rotatingPlatform.rotation.y += delta * 0.5;
-```
+#### Adding New Light Components
+1. Create class extending `LightComponent`
+2. Export from `lights/index.js`
+3. Add to editor's light types
+4. Document usage and properties
 
-### Performance Optimization
+#### Adding New UI Components
+1. Create class extending `UIComponent`
+2. Register in UI system
+3. Add to level data schema
+4. Style and integrate with game state
 
-**Level of Detail (LOD):**
-- Use simpler geometry for distant objects
-- Disable animations when objects are far from player
-- Implement object culling for large levels
-
-**Batch Management:**
-- Group similar objects for efficient rendering
-- Use instanced meshes for repeated elements
-- Optimize texture usage and material sharing
-
-## Troubleshooting
-
-### Common Issues
-
-**Editor Not Loading:**
-- Check browser console for JavaScript errors
-- Ensure all files are served from a web server (not file://)
-- Verify Three.js is loading correctly
-
-**Levels Not Loading:**
-- Validate JSON syntax in level files
-- Check file paths are correct
-- Verify level data structure matches expected format
-
-**Performance Problems:**
-- Reduce number of lights in scene
-- Simplify enemy AI for large groups
-- Use lower quality models for better performance
-- Enable object culling for large levels
-
-**Collision Issues:**
-- Enable collision debug visualization
-- Check platform sizes and positions
-- Verify player collider dimensions
-- Test with different movement speeds
-
-### Debug Console Commands
-
-Access these via browser developer console:
-```javascript
-// Toggle collision debug visualization
-window.toggleCollisionDebug()
-
-// Access game instance
-window.__GAME__
-
-// Teleport player
-window.__GAME__.player.mesh.position.set(x, y, z)
-
-// List all enemies
-window.__GAME__.enemyManager.enemies
-
-// Adjust game speed
-window.__GAME__.timeScale = 0.5 // Half speed
-```
-
-### Performance Monitoring
-
-Monitor performance in development:
-```javascript
-// Check frame rate
-console.log('FPS:', 1 / delta);
-
-// Monitor object counts
-console.log('Scene objects:', scene.children.length);
-
-// Memory usage (Chrome DevTools)
-console.log('Memory:', performance.memory);
-```
-
-## Contributing
-
-### Code Style
-- Use ES6+ features and modules
-- Follow consistent naming conventions
-- Comment complex algorithms and systems
-- Write clear commit messages
-
-### Adding New Features
-1. Create feature branch from main
-2. Implement feature with appropriate tests
-3. Update documentation
-4. Submit pull request with description
-
-### Reporting Issues
-Include in bug reports:
-- Browser and version
-- Steps to reproduce
-- Expected vs actual behavior
-- Console errors or warnings
-- Level data if relevant
-
----
-
-## Conclusion
-
-This platformer engine provides a solid foundation for creating 3D platformer games with modern web technologies. The modular architecture makes it easy to extend with new features, while the integrated level editor allows for rapid prototyping and iteration.
-
-Start with simple levels and gradually add complexity as you become familiar with the systems. Don't hesitate to experiment with custom enemies, lighting effects, and interactive elements to make your levels unique and engaging.
-
-Happy level creating! 🎮
+This comprehensive architecture supports rapid development of new content while maintaining code quality and performance. The modular design allows developers to focus on specific systems without breaking others.
