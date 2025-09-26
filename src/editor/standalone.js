@@ -4,17 +4,8 @@ import { StandaloneLevelEditor } from './StandaloneLevelEditor.js';
 const container = document.getElementById('editor-container');
 const statusElement = document.getElementById('status');
 
-// Create the editor
+// Create the editor (it handles its own render loop)
 const editor = new StandaloneLevelEditor(container, statusElement);
 
-// Start the render loop
-function animate() {
-    requestAnimationFrame(animate);
-    editor.update();
-    editor.render();
-}
-
-animate();
-
-// Expose editor to window for debugging
+// Expose editor to window for debugging and UI callbacks
 window.editor = editor;

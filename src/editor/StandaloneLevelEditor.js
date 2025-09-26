@@ -1,13 +1,12 @@
-import * as THREE from 'https://unpkg.com/three@0.180.0/build/three.module.js';
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-// Standalone Level Editor - Independent from the game
+// Standalone Level Editor - Focused on Enemies, Patrol Points, and Lighting
 // Features:
-// - Full scene management
-// - Free camera controls (WASD + mouse look)
-// - Side panel for editing
-// - Create platforms, enemies, lights, patrol points
-// - Import/Export JSON levels
-// - No game dependencies
+// - Load levels from levelData.js with GLTF geometry
+// - Edit enemies, patrol points, and lighting only
+// - Save changes back to levelData.js
+// - Level switching within editor
 
 export class StandaloneLevelEditor {
   constructor(container, statusElement) {
@@ -18,24 +17,30 @@ export class StandaloneLevelEditor {
     this._initScene();
     
     // Editor state
-    this.mode = 'platform'; // platform | enemy | light | patrol | select
-    this.enabled = true; // Always enabled in standalone mode
+    this.mode = 'enemy'; // enemy | light | patrol | select
+    this.enabled = true;
     
-    // Data storage
-    this.platforms = [];
-    this.slopes = [];
-    this.walls = [];
+    // Level management
+    this.levels = [];
+    this.currentLevelIndex = 0;
+    this.currentLevel = null;
+    this.levelGeometry = new THREE.Group(); // Holds GLTF geometry
+    this.scene.add(this.levelGeometry);
+    
+    // Data storage (current level's editable data)
     this.enemies = [];
     this.lights = [];
     this.patrolPoints = [];
     
+    // Visual representations
+    this.enemyMeshes = [];
+    this.lightMeshes = [];
+    this.patrolPointMeshes = [];
+    this.patrolConnections = []; // Lines showing patrol routes
+    
     // Selection system
     this.selected = null;
     this.selectedType = null;
-    this.multiSelected = []; // Array of selected objects
-    this.isMultiSelecting = false;
-    this.selectionBox = null; // Visual selection box
-    this.selectionStart = null;
     
     // Interaction
     this.raycaster = new THREE.Raycaster();
@@ -44,27 +49,27 @@ export class StandaloneLevelEditor {
     // Input state
     this.keys = {};
     this.mouseDown = false;
+    this.isRotating = false;
     this.mouseDelta = { x: 0, y: 0 };
     this.lastMousePos = { x: 0, y: 0 };
-    
-    // Wall drag state
-    this.isDragging = false;
-    this.dragStartPos = null;
-    this.dragPreviewWalls = [];
     
     // ID counter
     this.nextId = 1;
     
-    // Clipboard for copy/paste
-    this.clipboard = null;
+    // GLTF Loader
+    this.gltfLoader = new GLTFLoader();
+    
+    // Enemy and Light types
+    this.enemyTypes = ['walker', 'runner', 'jumper', 'flyer'];
+    this.lightTypes = ['BasicLights', 'PointPulse', 'HemisphereFill'];
     
     // Create UI and bind events
     this._createUI();
     this._bindEvents();
     this._addBasicLighting();
     
-    // Update status
-    this._updateStatus();
+    // Load levels and initialize
+    this._loadLevels();
   }
   
   _initScene() {
@@ -78,17 +83,11 @@ export class StandaloneLevelEditor {
     this.camera.lookAt(0, 0, 0);
     
     // Camera controls (manual WASD + mouse look)
-    // Calculate yaw and pitch from the lookAt direction to maintain initial view
     const lookDirection = new THREE.Vector3().subVectors(new THREE.Vector3(0, 0, 0), this.camera.position).normalize();
     this.cameraYaw = Math.atan2(lookDirection.x, lookDirection.z);
     this.cameraPitch = Math.asin(THREE.MathUtils.clamp(lookDirection.y, -1, 1));
     this.sensitivity = 0.004;
     this.moveSpeed = 20;
-    
-    // Zoom controls
-    this.zoomSpeed = 1.5;
-    this.minDistance = 5;
-    this.maxDistance = 200;
     
     // Renderer
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -98,17 +97,23 @@ export class StandaloneLevelEditor {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.container.appendChild(this.renderer.domElement);
     
-    // Handle window resize
-    window.addEventListener('resize', () => {
-      this.camera.aspect = window.innerWidth / window.innerHeight;
-      this.camera.updateProjectionMatrix();
-      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    // Ground plane for raycasting
+    const groundGeometry = new THREE.PlaneGeometry(1000, 1000);
+    groundGeometry.rotateX(-Math.PI / 2);
+    const groundMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0x00ff00, 
+      transparent: true, 
+      opacity: 0,
+      side: THREE.DoubleSide 
     });
+    this.groundPlane = new THREE.Mesh(groundGeometry, groundMaterial);
+    this.groundPlane.name = 'groundPlane';
+    this.scene.add(this.groundPlane);
   }
   
   _addBasicLighting() {
     // Ambient light
-    const ambientLight = new THREE.AmbientLight(0x404040, 4);
+    const ambientLight = new THREE.AmbientLight(0x404040, 1);
     this.scene.add(ambientLight);
     
     // Directional light (sun)
@@ -124,1928 +129,1189 @@ export class StandaloneLevelEditor {
     directionalLight.shadow.camera.top = 50;
     directionalLight.shadow.camera.bottom = -50;
     this.scene.add(directionalLight);
-    
-    // Add a ground grid for reference
-    const gridHelper = new THREE.GridHelper(1500, 1500, 0x888888, 0x444444);
-    this.scene.add(gridHelper);
   }
   
-  _createUI() {
-    // Main editor panel (right side)
-    this.panel = document.createElement('div');
-    this.panel.id = 'standaloneLevelEditorPanel';
-    Object.assign(this.panel.style, {
-      position: 'fixed',
-      right: '0',
-      top: '0',
-      width: '320px',
-      height: '100vh',
-      background: 'rgba(15, 15, 20, 0.95)',
-      color: '#fff',
-      fontFamily: 'system-ui',
-      fontSize: '14px',
-      overflowY: 'auto',
-      borderLeft: '1px solid #444',
-      zIndex: 10000,
-      display: 'block' // Always visible in standalone mode
-    });
-    
-    document.body.appendChild(this.panel);
-    
-    this._createModeSelector();
-    this._createPropertiesPanel();
-    this._createToolsSection();
-  }
-  
-  _createModeSelector() {
-    const section = document.createElement('div');
-    Object.assign(section.style, {
-      padding: '20px',
-      borderBottom: '1px solid #333'
-    });
-    
-    const title = document.createElement('h3');
-    title.textContent = 'Creation Mode';
-    title.style.margin = '0 0 15px 0';
-    title.style.color = '#fff';
-    section.appendChild(title);
-    
-    this.modes = [
-      { key: 'platform', label: 'Platform (Q)', color: '#4CAF50' },
-      { key: 'slope', label: 'Slope/Stairs (G)', color: '#8BC34A' },
-      { key: 'wall', label: 'Wall (F)', color: '#795548' },
-      { key: 'walker', label: 'Walker Enemy (R)', color: '#F44336' },
-      { key: 'runner', label: 'Runner Enemy', color: '#FF5722' },
-      { key: 'jumper', label: 'Jumper Enemy', color: '#E91E63' },
-      { key: 'flyer', label: 'Flyer Enemy', color: '#9C27B0' },
-      { key: 'patrol', label: 'Patrol Point (Y)', color: '#673AB7' },
-      { key: 'light', label: 'Light (T)', color: '#FFC107' },
-      { key: 'select', label: 'Select (E)', color: '#2196F3' }
-    ];
-    
-    this.modeButtons = [];
-    
-    this.modes.forEach(mode => {
-      const button = document.createElement('button');
-      button.textContent = mode.label;
-      Object.assign(button.style, {
-        display: 'block',
-        width: '100%',
-        padding: '10px',
-        margin: '5px 0',
-        border: 'none',
-        borderRadius: '4px',
-        background: this.mode === mode.key ? mode.color : '#333',
-        color: '#fff',
-        cursor: 'pointer',
-        fontSize: '13px'
-      });
+  async _loadLevels() {
+    try {
+      // Import levelData.js dynamically
+      const levelModule = await import('../game/levelData.js');
+      this.levels = levelModule.levels;
       
-      button.addEventListener('click', () => {
-        this._setMode(mode.key);
-        this._updateModeButtons();
-      });
+      if (this.levels.length > 0) {
+        await this._loadLevel(0);
+      }
       
-      this.modeButtons.push(button);
-      section.appendChild(button);
-    });
-    
-    this.panel.appendChild(section);
-  }
-  
-  _updateModeButtons() {
-    if (this.modeButtons && this.modes) {
-      this.modes.forEach((mode, index) => {
-        const button = this.modeButtons[index];
-        if (button) {
-          button.style.background = this.mode === mode.key ? mode.color : '#333';
-        }
-      });
+      this._updateStatus();
+    } catch (error) {
+      console.error('Failed to load levels:', error);
+      this._updateStatus('Failed to load levels');
     }
   }
   
-  _createPropertiesPanel() {
-    this.propertiesSection = document.createElement('div');
-    Object.assign(this.propertiesSection.style, {
-      padding: '20px',
-      borderBottom: '1px solid #333'
-    });
+  async _loadLevel(index) {
+    if (index < 0 || index >= this.levels.length) return;
     
-    const title = document.createElement('h3');
-    title.textContent = 'Properties';
-    title.style.margin = '0 0 15px 0';
-    title.style.color = '#fff';
-    this.propertiesSection.appendChild(title);
+    this.currentLevelIndex = index;
+    this.currentLevel = this.levels[index];
     
-    this.propertiesContent = document.createElement('div');
-    this.propertiesContent.innerHTML = '<p style=\"color: #888; margin: 0;\">Select an object to edit its properties</p>';
-    this.propertiesSection.appendChild(this.propertiesContent);
+    // Clear previous level data
+    this._clearLevel();
     
-    this.panel.appendChild(this.propertiesSection);
-  }
-  
-  _createToolsSection() {
-    const section = document.createElement('div');
-    Object.assign(section.style, {
-      padding: '20px'
-    });
-    
-    const title = document.createElement('h3');
-    title.textContent = 'Tools';
-    title.style.margin = '0 0 15px 0';
-    title.style.color = '#fff';
-    section.appendChild(title);
-    
-    // Clear Scene button
-    const clearBtn = this._createButton('Clear Scene', '#f44336', () => {
-      if (confirm('Clear all objects? This cannot be undone.')) {
-        this._clearScene();
-      }
-    });
-    section.appendChild(clearBtn);
-    
-    // Export Level button
-    const exportBtn = this._createButton('Export Level', '#4CAF50', () => {
-      this._exportLevel();
-    });
-    section.appendChild(exportBtn);
-    
-    // Import Level button
-    const importBtn = this._createButton('Import Level', '#2196F3', () => {
-      this._importLevel();
-    });
-    section.appendChild(importBtn);
-    
-    // Instructions
-    const instructions = document.createElement('div');
-    instructions.style.marginTop = '20px';
-    instructions.style.fontSize = '12px';
-    instructions.style.color = '#888';
-    instructions.innerHTML = `
-      <strong>Controls:</strong><br>
-      • WASD: Move camera (horizontal)<br>
-      • Mouse: Look around<br>
-      • Mouse Wheel: Zoom in/out<br>
-      • Click: Place objects<br>
-      • Click object: Select<br>
-      • Delete: Remove selected<br>
-      • Ctrl+C: Copy selected<br>
-      • Ctrl+V: Paste<br>
-      <br><strong>Multi-Select:</strong><br>
-      • Ctrl+Click: Add to selection<br>
-      • Drag empty space: Box select<br>
-      • Arrow Keys: Move selected<br>
-      • Page Up/Down: Move Y axis<br>
-      <br><strong>Mode Shortcuts:</strong><br>
-      • E: Select mode<br>
-      • Q: Platform mode<br>
-      • G: Slope/Stairs mode<br>
-      • F: Wall mode (drag to draw)<br>
-      • R: Walker Enemy mode<br>
-      • T: Light mode<br>
-      • Y: Patrol Point mode
-    `;
-    section.appendChild(instructions);
-    
-    this.panel.appendChild(section);
-  }
-  
-  _createButton(text, color, onClick) {
-    const button = document.createElement('button');
-    button.textContent = text;
-    Object.assign(button.style, {
-      display: 'block',
-      width: '100%',
-      padding: '10px',
-      margin: '5px 0',
-      border: 'none',
-      borderRadius: '4px',
-      background: color,
-      color: '#fff',
-      cursor: 'pointer',
-      fontSize: '13px'
-    });
-    button.addEventListener('click', onClick);
-    return button;
-  }
-  
-  _bindEvents() {
-    // Keyboard events
-    window.addEventListener('keydown', (e) => {
-      this.keys[e.code] = true;
-      
-      // Mode switching shortcuts
-      if (e.code === 'KeyE') {
-        e.preventDefault();
-        this._setMode('select');
-        this._updateModeButtons();
-      }
-      if (e.code === 'KeyQ') {
-        e.preventDefault();
-        this._setMode('platform');
-        this._updateModeButtons();
-      }
-      if (e.code === 'KeyG') {
-        e.preventDefault();
-        this._setMode('slope');
-        this._updateModeButtons();
-      }
-      if (e.code === 'KeyF') {
-        e.preventDefault();
-        this._setMode('wall');
-        this._updateModeButtons();
-      }
-      if (e.code === 'KeyR') {
-        e.preventDefault();
-        this._setMode('walker');
-        this._updateModeButtons();
-      }
-      if (e.code === 'KeyT') {
-        e.preventDefault();
-        this._setMode('light');
-        this._updateModeButtons();
-      }
-      if (e.code === 'KeyY') {
-        e.preventDefault();
-        this._setMode('patrol');
-        this._updateModeButtons();
-      }
-      
-      // Delete selected object(s)
-      if (e.code === 'Delete' && (this.selected || this.multiSelected.length > 0)) {
-        this._deleteSelected();
-      }
-      
-      // Move selected objects with arrow keys
-      if (this.selected || this.multiSelected.length > 0) {
-        if (e.code === 'ArrowLeft') {
-          e.preventDefault();
-          this._moveSelectedObjects(-1, 0, 0);
-        }
-        if (e.code === 'ArrowRight') {
-          e.preventDefault();
-          this._moveSelectedObjects(1, 0, 0);
-        }
-        if (e.code === 'ArrowUp') {
-          e.preventDefault();
-          this._moveSelectedObjects(0, 0, -1);
-        }
-        if (e.code === 'ArrowDown') {
-          e.preventDefault();
-          this._moveSelectedObjects(0, 0, 1);
-        }
-        if (e.code === 'PageUp') {
-          e.preventDefault();
-          this._moveSelectedObjects(0, 0.5, 0);
-        }
-        if (e.code === 'PageDown') {
-          e.preventDefault();
-          this._moveSelectedObjects(0, -0.5, 0);
-        }
-      }
-      
-      // Copy selected object (Ctrl+C)
-      if (e.code === 'KeyC' && e.ctrlKey && (this.selected || this.multiSelected.length > 0)) {
-        e.preventDefault();
-        this._copySelected();
-      }
-      
-      // Paste object (Ctrl+V)
-      if (e.code === 'KeyV' && e.ctrlKey && this.clipboard) {
-        e.preventDefault();
-        this._pasteFromClipboard();
-      }
-    });
-    
-    window.addEventListener('keyup', (e) => {
-      this.keys[e.code] = false;
-    });
-    
-    // Mouse events
-    this.renderer.domElement.addEventListener('mousedown', (e) => {
-      this.mouseDown = true;
-      this.lastMousePos = { x: e.clientX, y: e.clientY };
-      
-      // Only handle placement/selection on left click
-      if (e.button === 0) {
-        this._handleMouseDown(e);
-      }
-    });
-    
-    window.addEventListener('mouseup', (e) => {
-      if (e.button === 0) {
-        this._handleMouseUp(e);
-      }
-      this.mouseDown = false;
-    });
-    
-    window.addEventListener('mousemove', (e) => {
-      if (this.mouseDown) {
-        this.mouseDelta.x = e.clientX - this.lastMousePos.x;
-        this.mouseDelta.y = e.clientY - this.lastMousePos.y;
-        this.lastMousePos = { x: e.clientX, y: e.clientY };
-        
-        // Handle drag movement
-        if (this.isDragging && this.mode === 'wall') {
-          this._handleDrag(e);
-        } else if (this.isMultiSelecting) {
-          this._updateSelectionBox(e);
-        }
-      }
-    });
-    
-    // Mouse wheel zoom
-    this.renderer.domElement.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      console.log('Wheel event detected:', e.deltaY); // Debug log
-      
-      // Calculate zoom direction and amount
-      const zoomDirection = e.deltaY > 0 ? 1 : -1;
-      const zoomAmount = 2.0; // Increased for more noticeable movement
-      
-      // Get camera forward direction
-      const forward = new THREE.Vector3(0, 0, -1);
-      forward.applyQuaternion(this.camera.quaternion);
-      
-      // Raycast from center of screen to find what we're looking at
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera); // Center of screen
-      
-      // Get all meshes in the scene for raycasting
-      const meshes = [];
-      this.scene.traverse((child) => {
-        if (child.isMesh) {
-          meshes.push(child);
-        }
-      });
-      
-      // Find intersection point
-      const intersects = raycaster.intersectObjects(meshes);
-      let targetPoint;
-      
-      if (intersects.length > 0) {
-        // Zoom toward the intersected object
-        targetPoint = intersects[0].point;
-        console.log('Zooming toward object at:', targetPoint); // Debug log
-      } else {
-        // No intersection, zoom toward a point ahead of the camera
-        targetPoint = this.camera.position.clone().add(forward.multiplyScalar(20));
-        console.log('No intersection, zooming forward to:', targetPoint); // Debug log
-      }
-      
-      // Calculate movement vector toward target
-      const direction = targetPoint.clone().sub(this.camera.position).normalize();
-      const moveDistance = zoomAmount * -zoomDirection; // Fixed direction
-      
-      // Move camera toward/away from target
-      const movement = direction.multiplyScalar(moveDistance);
-      const newPosition = this.camera.position.clone().add(movement);
-      
-      console.log('Moving camera from:', this.camera.position, 'to:', newPosition); // Debug log
-      
-      // Apply the movement with better distance checking
-      const distanceToTarget = newPosition.distanceTo(targetPoint);
-      const currentDistanceFromOrigin = this.camera.position.length();
-      const newDistanceFromOrigin = newPosition.length();
-      
-      // More lenient distance check - only prevent if we're getting too close to the target or too far from scene
-      if (distanceToTarget > 2 && newDistanceFromOrigin < 500) { // Much more lenient limits
-        this.camera.position.copy(newPosition);
-        console.log('Camera moved successfully'); // Debug log
-      } else {
-        console.log(`Movement blocked - distanceToTarget: ${distanceToTarget}, newDistanceFromOrigin: ${newDistanceFromOrigin}`); // Debug log
-      }
-    });
-    
-    // Prevent context menu
-    this.renderer.domElement.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-    });
-  }
-  
-  _handleMouseDown(event) {
-    // Update mouse coordinates
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
-    // Raycast
-    this.raycaster.setFromCamera(this.mouse, this.camera);
-    
-    if (this.mode === 'wall') {
-      // Start wall drag mode
-      this._startWallDrag();
-    } else if (this.mode === 'select') {
-      // Check if Ctrl is held for multi-selection
-      if (event.ctrlKey) {
-        this._handleSingleSelection(event);
-      } else {
-        // Start selection box if not clicking on an object
-        const allObjects = this._getAllSelectableObjects();
-        const meshes = allObjects.map(obj => obj.mesh).filter(mesh => mesh);
-        const intersects = this.raycaster.intersectObjects(meshes);
-        
-        if (intersects.length > 0) {
-          this._handleSingleSelection(event);
-        } else {
-          this._startSelectionBox(event);
-        }
+    // Load GLTF geometry if available
+    if (this.currentLevel.gltfUrl) {
+      try {
+        await this._loadLevelGeometry(this.currentLevel.gltfUrl);
+      } catch (error) {
+        console.warn('Failed to load GLTF geometry, using fallback:', error);
+        this._loadFallbackGeometry();
       }
     } else {
-      this._handlePlacement();
-    }
-  }
-  
-  _handleMouseUp(event) {
-    if (this.isDragging && this.mode === 'wall') {
-      this._finishWallDrag();
-    } else if (this.isMultiSelecting) {
-      this._finishSelectionBox(event);
-    }
-  }
-  
-  _handleClick(event) {
-    // Legacy method for non-drag interactions
-    this._handleMouseDown(event);
-  }
-  
-  _handleSingleSelection(event) {
-    const allObjects = this._getAllSelectableObjects();
-    const meshes = allObjects.map(obj => obj.mesh).filter(mesh => mesh);
-    const intersects = this.raycaster.intersectObjects(meshes);
-    
-    if (intersects.length > 0) {
-      const intersectedMesh = intersects[0].object;
-      const obj = allObjects.find(o => o.mesh === intersectedMesh);
-      if (obj) {
-        if (event.ctrlKey) {
-          // Add to multi-selection
-          this._toggleMultiSelection(obj, obj.type);
-        } else {
-          // Single selection
-          this._selectObject(obj, obj.type);
-        }
-      }
-    } else if (!event.ctrlKey) {
-      this._deselect();
-    }
-  }
-  
-  _getAllSelectableObjects() {
-    return [
-      ...this.platforms.map(p => ({ ...p, type: 'platform' })),
-      ...this.slopes.map(s => ({ ...s, type: 'slope' })),
-      ...this.walls.map(w => ({ ...w, type: 'wall' })),
-      ...this.enemies.map(e => ({ ...e, type: 'enemy' })),
-      ...this.lights.map(l => ({ ...l, type: 'light', mesh: l.helper })),
-      ...this.patrolPoints.map(pp => ({ ...pp, type: 'patrol' }))
-    ];
-  }
-  
-  _handlePlacement() {
-    // Cast ray to find placement position
-    const intersects = this.raycaster.intersectObjects(this.scene.children, true);
-    let position;
-    
-    if (intersects.length > 0) {
-      position = intersects[0].point;
-    } else {
-      // Place at camera forward direction
-      const forward = new THREE.Vector3(0, 0, -10);
-      forward.applyQuaternion(this.camera.quaternion);
-      position = this.camera.position.clone().add(forward);
+      this._loadFallbackGeometry();
     }
     
-    // Simple grid snapping with overlap avoidance
-    position = this._snapToGrid(position);
+    // Load editable data
+    this._loadEditableData();
     
-    switch (this.mode) {
-      case 'platform':
-        // Find safe position to avoid overlaps
-        const safePlatformPos = this._findSafeGridPosition(position, 10, 1, 10, 'platform');
-        this._createPlatform(safePlatformPos);
-        break;
-      case 'slope':
-        // Find safe position to avoid overlaps
-        const safeSlopePos = this._findSafeGridPosition(position, 10, 1, 10, 'slope');
-        this._createSlope(safeSlopePos);
-        break;
-      case 'wall':
-        // Find safe position to avoid overlaps
-        const safeWallPos = this._findSafeGridPosition(position, 1, 4, 1, 'wall');
-        this._createWall(safeWallPos);
-        break;
-      case 'walker':
-        this._createEnemy(position, 'walker');
-        break;
-      case 'runner':
-        this._createEnemy(position, 'runner');
-        break;
-      case 'jumper':
-        this._createEnemy(position, 'jumper');
-        break;
-      case 'flyer':
-        this._createEnemy(position, 'flyer');
-        break;
-      case 'patrol':
-        this._createPatrolPoint(position);
-        break;
-      case 'light':
-        this._createLight(position);
-        break;
-    }
-  }
-  
-  _startWallDrag() {
-    // Get starting position
-    const intersects = this.raycaster.intersectObjects(this.scene.children, true);
-    let position;
-    
-    if (intersects.length > 0) {
-      position = intersects[0].point;
-    } else {
-      // Place at camera forward direction
-      const forward = new THREE.Vector3(0, 0, -10);
-      forward.applyQuaternion(this.camera.quaternion);
-      position = this.camera.position.clone().add(forward);
-    }
-    
-    this.dragStartPos = this._snapToGrid(position);
-    this.isDragging = true;
-    this.dragPreviewWalls = [];
-    
-    console.log('Started wall drag at:', this.dragStartPos);
-  }
-  
-  _handleDrag(event) {
-    if (!this.isDragging || !this.dragStartPos) return;
-    
-    // Update mouse coordinates
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
-    // Raycast to get current position
-    this.raycaster.setFromCamera(this.mouse, this.camera);
-    const intersects = this.raycaster.intersectObjects(this.scene.children, true);
-    let currentPos;
-    
-    if (intersects.length > 0) {
-      currentPos = intersects[0].point;
-    } else {
-      const forward = new THREE.Vector3(0, 0, -10);
-      forward.applyQuaternion(this.camera.quaternion);
-      currentPos = this.camera.position.clone().add(forward);
-    }
-    
-    currentPos = this._snapToGrid(currentPos);
-    
-    // Clear previous preview walls
-    this._clearPreviewWalls();
-    
-    // Create preview walls along the drag path
-    this._createPreviewWalls(this.dragStartPos, currentPos);
-  }
-  
-  _createPreviewWalls(startPos, endPos) {
-    const dx = endPos.x - startPos.x;
-    const dz = endPos.z - startPos.z;
-    
-    // Determine if we're drawing horizontally or vertically
-    const isHorizontal = Math.abs(dx) > Math.abs(dz);
-    
-    if (isHorizontal) {
-      // Draw horizontal line of walls
-      const minX = Math.min(startPos.x, endPos.x);
-      const maxX = Math.max(startPos.x, endPos.x);
-      const z = startPos.z;
-      
-      for (let x = minX; x <= maxX; x++) {
-        const previewPos = new THREE.Vector3(x, startPos.y, z);
-        this._createPreviewWall(previewPos);
-      }
-    } else {
-      // Draw vertical line of walls
-      const minZ = Math.min(startPos.z, endPos.z);
-      const maxZ = Math.max(startPos.z, endPos.z);
-      const x = startPos.x;
-      
-      for (let z = minZ; z <= maxZ; z++) {
-        const previewPos = new THREE.Vector3(x, startPos.y, z);
-        this._createPreviewWall(previewPos);
-      }
-    }
-  }
-  
-  _createPreviewWall(position) {
-    const geometry = new THREE.BoxGeometry(1, 4, 1);
-    const material = new THREE.MeshLambertMaterial({ 
-      color: 0x8b4513, 
-      transparent: true, 
-      opacity: 0.5 
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    
-    // Auto-position on platforms like regular walls
-    let finalPosition = position.clone();
-    for (const platform of this.platforms) {
-      const platformPos = platform.mesh.position;
-      const platformSize = platform.data.size;
-      
-      const overlapX = Math.abs(finalPosition.x - platformPos.x) < (platformSize[0] / 2 + 0.5);
-      const overlapZ = Math.abs(finalPosition.z - platformPos.z) < (platformSize[2] / 2 + 0.5);
-      
-      if (overlapX && overlapZ) {
-        const platformTop = platformPos.y + platformSize[1] / 2;
-        finalPosition.y = platformTop + 2;
-        break;
-      }
-    }
-    
-    mesh.position.copy(finalPosition);
-    this.scene.add(mesh);
-    this.dragPreviewWalls.push(mesh);
-  }
-  
-  _clearPreviewWalls() {
-    this.dragPreviewWalls.forEach(wall => {
-      this.scene.remove(wall);
-      wall.geometry.dispose();
-      wall.material.dispose();
-    });
-    this.dragPreviewWalls = [];
-  }
-  
-  _finishWallDrag() {
-    if (!this.isDragging || !this.dragStartPos) return;
-    
-    // Convert preview walls to actual walls
-    this.dragPreviewWalls.forEach(previewWall => {
-      const position = previewWall.position.clone();
-      this._createWallAtPosition(position);
-    });
-    
-    // Clean up
-    this._clearPreviewWalls();
-    this.isDragging = false;
-    this.dragStartPos = null;
-    
-    console.log('Finished wall drag');
-  }
-  
-  _createWallAtPosition(position) {
-    // Create wall without overlap detection since we're placing manually
-    const id = this.nextId++;
-    const geometry = new THREE.BoxGeometry(1, 4, 1);
-    const material = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
-    const mesh = new THREE.Mesh(geometry, material);
-    
-    mesh.position.copy(position);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData = { id, type: 'wall' };
-    
-    this.scene.add(mesh);
-    
-    const wallData = {
-      id,
-      mesh,
-      data: {
-        position: [position.x, position.y, position.z],
-        size: [1, 4, 1],
-        rotation: [0, 0, 0],
-        color: 0x8b4513
-      }
-    };
-    
-    this.walls.push(wallData);
-    this._updateStatus();
-  }
-  
-  _snapToGrid(position) {
-    // Snap to grid
-    const gridPosition = new THREE.Vector3(
-      Math.round(position.x),
-      Math.round(position.y),
-      Math.round(position.z)
-    );
-    
-    return gridPosition;
-  }
-  
-  _findSafeGridPosition(position, width, height, depth, objectType = 'unknown') {
-    // Check if the desired grid position is free
-    if (!this._hasOverlapAtPosition(position, width, height, depth, objectType)) {
-      return position; // Perfect - no overlap at desired position
-    }
-    
-    console.log('Grid position occupied, finding alternative...');
-    
-    // Systematically search for free grid positions in expanding spiral
-    for (let radius = 1; radius <= 20; radius++) {
-      // Try positions in a grid pattern around the original position
-      for (let dx = -radius; dx <= radius; dx++) {
-        for (let dz = -radius; dz <= radius; dz++) {
-          // Only check the perimeter of current radius (not interior points already checked)
-          if (Math.abs(dx) !== radius && Math.abs(dz) !== radius) continue;
-          
-          const testPos = new THREE.Vector3(
-            position.x + dx,
-            position.y,
-            position.z + dz
-          );
-          
-          if (!this._hasOverlapAtPosition(testPos, width, height, depth, objectType)) {
-            return testPos; // Found a free grid position
-          }
-        }
-      }
-      
-      // Also try different Y levels at the original X,Z
-      const abovePos = new THREE.Vector3(position.x, position.y + radius, position.z);
-      const belowPos = new THREE.Vector3(position.x, position.y - radius, position.z);
-      
-      if (!this._hasOverlapAtPosition(abovePos, width, height, depth, objectType)) {
-        return abovePos;
-      }
-      if (position.y - radius >= 0 && !this._hasOverlapAtPosition(belowPos, width, height, depth, objectType)) {
-        return belowPos;
-      }
-    }
-    
-    // Last resort - return original position with warning
-    console.warn('Could not find safe grid position, placing anyway');
-    return position;
-  }
-  
-  _hasOverlapAtPosition(position, width, height, depth, objectType = 'unknown') {
-    const newBounds = {
-      minX: position.x - width / 2,
-      maxX: position.x + width / 2,
-      minY: position.y - height / 2,
-      maxY: position.y + height / 2,
-      minZ: position.z - depth / 2,
-      maxZ: position.z + depth / 2
-    };
-    
-    // Check for overlap with each existing platform and wall
-    const allStructures = [...this.platforms, ...this.walls];
-    for (const structure of allStructures) {
-      const structurePos = structure.mesh.position;
-      const structureSize = structure.data.size;
-      const existingBounds = {
-        minX: structurePos.x - structureSize[0] / 2,
-        maxX: structurePos.x + structureSize[0] / 2,
-        minY: structurePos.y - structureSize[1] / 2,
-        maxY: structurePos.y + structureSize[1] / 2,
-        minZ: structurePos.z - structureSize[2] / 2,
-        maxZ: structurePos.z + structureSize[2] / 2
-      };
-      
-      // Check if bounds overlap
-      const overlapsX = newBounds.maxX > existingBounds.minX && newBounds.minX < existingBounds.maxX;
-      const overlapsY = newBounds.maxY > existingBounds.minY && newBounds.minY < existingBounds.maxY;
-      const overlapsZ = newBounds.maxZ > existingBounds.minZ && newBounds.minZ < existingBounds.maxZ;
-      
-      // Smart overlap detection based on object types
-      const existingType = structure.mesh.userData.type;
-      const isNewWall = objectType === 'wall' || (height > width && height > depth); // Tall objects are likely walls
-      const isExistingPlatform = existingType === 'platform' || (structureSize[1] < structureSize[0] && structureSize[1] < structureSize[2]); // Thin objects are likely platforms
-      
-      // Allow walls to be placed on platforms (they can share X,Z space)
-      if (isNewWall && isExistingPlatform) {
-        // Check if wall and platform overlap in X,Z but allow them to stack vertically
-        if (overlapsX && overlapsZ) {
-          // This is acceptable - wall can be placed on platform
-          // Don't check Y overlap for wall-on-platform placement
-          continue;
-        }
-      }
-      
-      // Standard overlap check for all other cases
-      if (overlapsX && overlapsY && overlapsZ) {
-        return true; // Overlap detected
-      }
-    }
-    
-    return false; // No overlap
-  }
-  
-  _createPlatform(position) {
-    const id = this.nextId++;
-    const geometry = new THREE.BoxGeometry(10, 1, 10);
-    const material = new THREE.MeshLambertMaterial({ color: 0x2e8b57 });
-    const mesh = new THREE.Mesh(geometry, material);
-    
-    mesh.position.copy(position);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData = { id, type: 'platform' };
-    
-    this.scene.add(mesh);
-    
-    const platformData = {
-      id,
-      mesh,
-      data: {
-        position: [position.x, position.y, position.z],
-        size: [10, 1, 10],
-        rotation: [0, 0, 0],
-        color: 0x2e8b57
-      }
-    };
-    
-    this.platforms.push(platformData);
-    this._updateStatus();
-  }
-  
-  _createSlope(position, customSize = [10, 1, 10], customRotation = [0, 0, 0]) {
-    const id = this.nextId++;
-    
-    const material = new THREE.MeshLambertMaterial({ color: 0x8bc34a }); // Light green for slopes
-    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
-    
-    mesh.position.copy(position);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData = { id, type: 'slope' };
-    
-    this.scene.add(mesh);
-    
-    const slopeData = {
-      id,
-      mesh,
-      data: {
-        position: [position.x, position.y, position.z],
-        size: [...customSize],
-        rotation: [...customRotation],
-        color: 0x8bc34a,
-        slopeDirection: 'north' // Direction the slope faces (low to high)
-      }
-    };
-    
-    this.slopes.push(slopeData);
-    
-    // Create the geometry with the correct size and rotation
-    this._recreateSlopeGeometry(slopeData);
+    // Position camera to look at the level geometry
+    this._positionCameraForLevel();
     
     this._updateStatus();
   }
   
-  _createWall(position) {
-    const id = this.nextId++;
-    const geometry = new THREE.BoxGeometry(1, 4, 1); // Tall and narrow for walls
-    const material = new THREE.MeshLambertMaterial({ color: 0x8b4513 }); // Brown color
-    const mesh = new THREE.Mesh(geometry, material);
-    
-    // Check if there's a platform at this X,Z position and auto-adjust wall height
-    let finalPosition = position.clone();
-    for (const platform of this.platforms) {
-      const platformPos = platform.mesh.position;
-      const platformSize = platform.data.size;
-      
-      // Check if wall position overlaps with platform in X,Z
-      const overlapX = Math.abs(finalPosition.x - platformPos.x) < (platformSize[0] / 2 + 0.5);
-      const overlapZ = Math.abs(finalPosition.z - platformPos.z) < (platformSize[2] / 2 + 0.5);
-      
-      if (overlapX && overlapZ) {
-        // Position wall on top of platform
-        const platformTop = platformPos.y + platformSize[1] / 2;
-        finalPosition.y = platformTop + 2; // Wall center is 2 units above platform top (wall height is 4)
-        break;
-      }
+  _clearLevel() {
+    // Clear geometry
+    while (this.levelGeometry.children.length > 0) {
+      this.levelGeometry.remove(this.levelGeometry.children[0]);
     }
     
-    mesh.position.copy(finalPosition);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData = { id, type: 'wall' };
+    // Clear visual representations
+    this._clearVisualRepresentations();
     
-    this.scene.add(mesh);
-    
-    const wallData = {
-      id,
-      mesh,
-      data: {
-        position: [finalPosition.x, finalPosition.y, finalPosition.z],
-        size: [1, 4, 1],
-        rotation: [0, 0, 0],
-        color: 0x8b4513
-      }
-    };
-    
-    this.walls.push(wallData);
-    this._updateStatus();
-  }
-  
-  _createEnemy(position, enemyType = 'walker') {
-    const id = this.nextId++;
-    
-    // Different visuals for different enemy types
-    const enemyConfig = {
-      walker: { geometry: new THREE.ConeGeometry(0.5, 2), color: 0xff4444, speed: 2.4 },
-      runner: { geometry: new THREE.ConeGeometry(0.4, 1.8), color: 0xff5722, speed: 4.0 },
-      jumper: { geometry: new THREE.CylinderGeometry(0.4, 0.4, 1.5), color: 0xe91e63, speed: 2.0 },
-      flyer: { geometry: new THREE.OctahedronGeometry(0.6), color: 0x9c27b0, speed: 2.5 }
-    };
-    
-    const config = enemyConfig[enemyType] || enemyConfig.walker;
-    const geometry = config.geometry;
-    const material = new THREE.MeshLambertMaterial({ color: config.color });
-    const mesh = new THREE.Mesh(geometry, material);
-    
-    mesh.position.copy(position);
-    mesh.castShadow = true;
-    mesh.userData = { id, type: 'enemy', enemyType };
-    
-    this.scene.add(mesh);
-    
-    const enemyData = {
-      id,
-      mesh,
-      data: {
-        type: enemyType,
-        position: [position.x, position.y, position.z],
-        rotation: [0, 0, 0],
-        patrolPoints: [],
-        speed: config.speed,
-        modelUrl: this._getModelUrl(enemyType)
-      }
-    };
-    
-    this.enemies.push(enemyData);
-    this._updateStatus();
-  }
-  
-  _getModelUrl(enemyType) {
-    const modelPaths = {
-      walker: 'src/assets/low_poly_female/scene.gltf',
-      runner: 'src/assets/low_poly_male/scene.gltf',
-      jumper: 'src/assets/low_poly_school_boy_zombie_apocalypse_rigged/scene.gltf',
-      flyer: 'src/assets/futuristic_flying_animated_robot_-_low_poly/scene.gltf'
-    };
-    return modelPaths[enemyType] || modelPaths.walker;
-  }
-  
-  _createLight(position) {
-    const id = this.nextId++;
-    const light = new THREE.PointLight(0xffffff, 1, 20);
-    light.position.copy(position);
-    light.castShadow = true;
-    
-    // Visual helper
-    const helper = new THREE.PointLightHelper(light, 0.5);
-    light.userData = { id, type: 'light' };
-    helper.userData = { id, type: 'light' };
-    
-    this.scene.add(light);
-    this.scene.add(helper);
-    
-    const lightData = {
-      id,
-      light,
-      helper,
-      data: {
-        type: 'point',
-        position: [position.x, position.y, position.z],
-        color: 0xffffff,
-        intensity: 1
-      }
-    };
-    
-    this.lights.push(lightData);
-    this._updateStatus();
-  }
-  
-  _createPatrolPoint(position) {
-    const id = this.nextId++;
-    const geometry = new THREE.SphereGeometry(0.3);
-    const material = new THREE.MeshBasicMaterial({ 
-      color: 0x673ab7,
-      transparent: true,
-      opacity: 0.8
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    
-    mesh.position.copy(position);
-    mesh.userData = { id, type: 'patrol' };
-    
-    this.scene.add(mesh);
-    
-    // Find the nearest enemy to link this patrol point to
-    let nearestEnemyId = null;
-    let minDistance = Infinity;
-    
-    for (const enemy of this.enemies) {
-      const distance = position.distanceTo(enemy.mesh.position);
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearestEnemyId = enemy.id;
-      }
-    }
-    
-    const patrolData = {
-      id,
-      mesh,
-      data: {
-        position: [position.x, position.y, position.z],
-        waitTime: 1.0,
-        enemyId: nearestEnemyId
-      }
-    };
-    
-    this.patrolPoints.push(patrolData);
-    this._updateStatus();
-    console.log(`Patrol point ${id} linked to enemy ${nearestEnemyId}`);
-  }
-  
-  _selectObject(obj, type) {
-    this._deselect();
-    
-    this.selected = obj;
-    this.selectedType = type;
-    
-    // Visual feedback
-    if (obj.mesh) {
-      obj.mesh.material = obj.mesh.material.clone();
-      obj.mesh.material.emissive = new THREE.Color(0x444444);
-    }
-    
-    this._updatePropertiesPanel();
-  }
-  
-  _deselect() {
-    if (this.selected && this.selected.mesh) {
-      // Remove selection highlight
-      this.selected.mesh.material = this.selected.mesh.material.clone();
-      this.selected.mesh.material.emissive = new THREE.Color(0x000000);
-    }
-    
-    // Clear multi-selection
-    this._clearMultiSelection();
-    
-    this.selected = null;
-    this.selectedType = null;
-    this._updatePropertiesPanel();
-  }
-  
-  _toggleMultiSelection(obj, type) {
-    const index = this.multiSelected.findIndex(item => item.id === obj.id);
-    
-    if (index !== -1) {
-      // Remove from selection
-      this._removeFromMultiSelection(index);
-    } else {
-      // Add to selection
-      this._addToMultiSelection(obj, type);
-    }
-    
-    this._updatePropertiesPanel();
-  }
-  
-  _addToMultiSelection(obj, type) {
-    this.multiSelected.push({ obj, type });
-    
-    // Visual feedback
-    if (obj.mesh) {
-      obj.mesh.material = obj.mesh.material.clone();
-      obj.mesh.material.emissive = new THREE.Color(0x666600); // Yellow tint for multi-select
-    }
-  }
-  
-  _removeFromMultiSelection(index) {
-    const item = this.multiSelected[index];
-    
-    // Remove visual feedback
-    if (item.obj.mesh) {
-      item.obj.mesh.material = item.obj.mesh.material.clone();
-      item.obj.mesh.material.emissive = new THREE.Color(0x000000);
-    }
-    
-    this.multiSelected.splice(index, 1);
-  }
-  
-  _clearMultiSelection() {
-    this.multiSelected.forEach(item => {
-      if (item.obj.mesh) {
-        item.obj.mesh.material = item.obj.mesh.material.clone();
-        item.obj.mesh.material.emissive = new THREE.Color(0x000000);
-      }
-    });
-    this.multiSelected = [];
-  }
-  
-  _startSelectionBox(event) {
-    this.isMultiSelecting = true;
-    this.selectionStart = { x: event.clientX, y: event.clientY };
-    
-    // Clear previous selection if not holding Ctrl
-    if (!event.ctrlKey) {
-      this._deselect();
-    }
-    
-    // Create selection box visual
-    this._createSelectionBox();
-  }
-  
-  _createSelectionBox() {
-    if (this.selectionBox) {
-      document.body.removeChild(this.selectionBox);
-    }
-    
-    this.selectionBox = document.createElement('div');
-    this.selectionBox.style.position = 'absolute';
-    this.selectionBox.style.border = '2px dashed #00ff00';
-    this.selectionBox.style.backgroundColor = 'rgba(0, 255, 0, 0.1)';
-    this.selectionBox.style.pointerEvents = 'none';
-    this.selectionBox.style.zIndex = '1000';
-    document.body.appendChild(this.selectionBox);
-  }
-  
-  _updateSelectionBox(event) {
-    if (!this.isMultiSelecting || !this.selectionBox || !this.selectionStart) return;
-    
-    const currentX = event.clientX;
-    const currentY = event.clientY;
-    
-    const left = Math.min(this.selectionStart.x, currentX);
-    const top = Math.min(this.selectionStart.y, currentY);
-    const width = Math.abs(currentX - this.selectionStart.x);
-    const height = Math.abs(currentY - this.selectionStart.y);
-    
-    this.selectionBox.style.left = left + 'px';
-    this.selectionBox.style.top = top + 'px';
-    this.selectionBox.style.width = width + 'px';
-    this.selectionBox.style.height = height + 'px';
-  }
-  
-  _finishSelectionBox(event) {
-    if (!this.isMultiSelecting) return;
-    
-    // Get selection bounds
-    const currentX = event.clientX;
-    const currentY = event.clientY;
-    
-    const left = Math.min(this.selectionStart.x, currentX);
-    const top = Math.min(this.selectionStart.y, currentY);
-    const right = Math.max(this.selectionStart.x, currentX);
-    const bottom = Math.max(this.selectionStart.y, currentY);
-    
-    // Find objects within selection box
-    this._selectObjectsInBox(left, top, right, bottom);
-    
-    // Clean up
-    if (this.selectionBox) {
-      document.body.removeChild(this.selectionBox);
-      this.selectionBox = null;
-    }
-    
-    this.isMultiSelecting = false;
-    this.selectionStart = null;
-  }
-  
-  _selectObjectsInBox(left, top, right, bottom) {
-    const allObjects = this._getAllSelectableObjects();
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    
-    allObjects.forEach(obj => {
-      if (!obj.mesh) return;
-      
-      // Project object position to screen coordinates
-      const screenPos = obj.mesh.position.clone();
-      screenPos.project(this.camera);
-      
-      const screenX = (screenPos.x * 0.5 + 0.5) * rect.width + rect.left;
-      const screenY = (screenPos.y * -0.5 + 0.5) * rect.height + rect.top;
-      
-      // Check if object is within selection box
-      if (screenX >= left && screenX <= right && screenY >= top && screenY <= bottom) {
-        this._addToMultiSelection(obj, obj.type);
-      }
-    });
-  }
-  
-  _deleteSelected() {
-    const objectsToDelete = [];
-    
-    // Collect objects to delete
-    if (this.multiSelected.length > 0) {
-      objectsToDelete.push(...this.multiSelected.map(item => ({ obj: item.obj, type: item.type })));
-    } else if (this.selected) {
-      objectsToDelete.push({ obj: this.selected, type: this.selectedType });
-    }
-    
-    if (objectsToDelete.length === 0) return;
-    
-    const arrays = [this.platforms, this.slopes, this.walls, this.enemies, this.lights, this.patrolPoints];
-    
-    // Delete each object
-    objectsToDelete.forEach(({ obj }) => {
-      for (const array of arrays) {
-        const index = array.findIndex(item => item.id === obj.id);
-        if (index !== -1) {
-          const item = array[index];
-          
-          // Remove from scene
-          if (item.mesh) this.scene.remove(item.mesh);
-          if (item.light) this.scene.remove(item.light);
-          if (item.helper) this.scene.remove(item.helper);
-          
-          // Remove from array
-          array.splice(index, 1);
-          break;
-        }
-      }
-    });
-    
-    this._deselect();
-    this._updateStatus();
-    
-    console.log(`Deleted ${objectsToDelete.length} object(s)`);
-  }
-  
-  _moveSelectedObjects(deltaX, deltaY, deltaZ) {
-    const objectsToMove = [];
-    
-    // Collect objects to move
-    if (this.multiSelected.length > 0) {
-      objectsToMove.push(...this.multiSelected.map(item => item.obj));
-    } else if (this.selected) {
-      objectsToMove.push(this.selected);
-    }
-    
-    if (objectsToMove.length === 0) return;
-    
-    // Move each object
-    objectsToMove.forEach(obj => {
-      if (obj.mesh) {
-        // Update mesh position
-        obj.mesh.position.x += deltaX;
-        obj.mesh.position.y += deltaY;
-        obj.mesh.position.z += deltaZ;
-        
-        // Update data
-        obj.data.position[0] += deltaX;
-        obj.data.position[1] += deltaY;
-        obj.data.position[2] += deltaZ;
-        
-        // Update light position if it's a light object
-        if (obj.light) {
-          obj.light.position.copy(obj.mesh.position);
-        }
-      }
-    });
-    
-    // Update properties panel if single object is selected
-    if (this.selected && this.multiSelected.length === 0) {
-      this._updatePropertiesPanel();
-    }
-    
-    console.log(`Moved ${objectsToMove.length} object(s) by (${deltaX}, ${deltaY}, ${deltaZ})`);
-  }
-  
-  _recreateSlopeGeometry(slopeObj) {
-    if (!slopeObj || !slopeObj.mesh) return;
-    
-    const data = slopeObj.data;
-    const halfW = data.size[0] / 2;
-    const halfD = data.size[2] / 2;
-    const height = data.size[1];
-    
-    // Dispose old geometry
-    slopeObj.mesh.geometry.dispose();
-    
-    // Create new geometry with updated size
-    const geometry = new THREE.BufferGeometry();
-    
-    // Define vertices for a wedge/ramp shape with custom size
-    const vertices = new Float32Array([
-      // Bottom face (flat on ground)
-      -halfW, 0, -halfD,   halfW, 0, -halfD,   halfW, 0,  halfD,
-      -halfW, 0, -halfD,   halfW, 0,  halfD,  -halfW, 0,  halfD,
-      
-      // Top face (slanted)
-      -halfW, height,  halfD,   halfW, height,  halfD,   halfW, 0, -halfD,
-      -halfW, height,  halfD,   halfW, 0, -halfD,  -halfW, 0, -halfD,
-      
-      // Side faces
-      -halfW, 0, -halfD,  -halfW, 0,  halfD,  -halfW, height,  halfD,  // Left
-      -halfW, 0, -halfD,  -halfW, height,  halfD,  -halfW, 0, -halfD,
-      
-       halfW, 0, -halfD,   halfW, height,  halfD,   halfW, 0,  halfD,  // Right
-       halfW, 0, -halfD,   halfW, 0, -halfD,   halfW, height,  halfD,
-      
-      // Back face (high end)
-      -halfW, 0,  halfD,   halfW, 0,  halfD,   halfW, height,  halfD,
-      -halfW, 0,  halfD,   halfW, height,  halfD,  -halfW, height,  halfD,
-      
-      // Front face (low end) - triangle  
-      -halfW, 0, -halfD,   halfW, 0, -halfD,   0, 0, -halfD,
-    ]);
-    
-    geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-    geometry.computeVertexNormals();
-    
-    // Apply the new geometry
-    slopeObj.mesh.geometry = geometry;
-    
-    // Apply rotation
-    slopeObj.mesh.rotation.set(data.rotation[0], data.rotation[1], data.rotation[2]);
-  }
-  
-  _copySelected() {
-    if (!this.selected) return;
-    
-    // Deep copy the selected object's data
-    this.clipboard = {
-      type: this.selectedType,
-      data: JSON.parse(JSON.stringify(this.selected.data))
-    };
-    
-    console.log(`Copied ${this.selectedType}:`, this.clipboard.data);
-    
-    // Visual feedback
-    if (this.statusElement) {
-      const originalText = this.statusElement.textContent;
-      this.statusElement.textContent = `Copied ${this.selectedType}! Press Ctrl+V to paste`;
-      setTimeout(() => {
-        this.statusElement.textContent = originalText;
-      }, 2000);
-    }
-  }
-  
-  _pasteFromClipboard() {
-    if (!this.clipboard) return;
-    
-    // Use the original position from the copied object
-    const originalPosition = new THREE.Vector3(...this.clipboard.data.position);
-    
-    // Apply grid snapping to ensure it stays on grid
-    let pastePosition = this._snapToGrid(originalPosition);
-    
-    // Find safe position to avoid overlaps for platforms, slopes, and walls
-    if (this.clipboard.type === 'platform') {
-      const size = this.clipboard.data.size;
-      pastePosition = this._findSafeGridPosition(pastePosition, size[0], size[1], size[2], 'platform');
-    } else if (this.clipboard.type === 'slope') {
-      const size = this.clipboard.data.size;
-      pastePosition = this._findSafeGridPosition(pastePosition, size[0], size[1], size[2], 'slope');
-    } else if (this.clipboard.type === 'wall') {
-      const size = this.clipboard.data.size;
-      pastePosition = this._findSafeGridPosition(pastePosition, size[0], size[1], size[2], 'wall');
-    }
-    
-    // Create the appropriate object type
-    switch (this.clipboard.type) {
-      case 'platform':
-        this._createPlatformFromData(pastePosition, this.clipboard.data);
-        break;
-      case 'slope':
-        this._createSlopeFromData(pastePosition, this.clipboard.data);
-        break;
-      case 'wall':
-        this._createWallFromData(pastePosition, this.clipboard.data);
-        break;
-      case 'enemy':
-        this._createEnemyFromData(pastePosition, this.clipboard.data);
-        break;
-      case 'light':
-        this._createLightFromData(pastePosition, this.clipboard.data);
-        break;
-      case 'patrol':
-        this._createPatrolPointFromData(pastePosition, this.clipboard.data);
-        break;
-    }
-    
-    console.log(`Pasted ${this.clipboard.type} at original position:`, pastePosition);
-  }
-  
-  _createPlatformFromData(position, data) {
-    const id = this.nextId++;
-    const geometry = new THREE.BoxGeometry(...data.size);
-    const material = new THREE.MeshLambertMaterial({ color: data.color });
-    const mesh = new THREE.Mesh(geometry, material);
-    
-    mesh.position.copy(position);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData = { id, type: 'platform' };
-    
-    this.scene.add(mesh);
-    
-    const platformData = {
-      id,
-      mesh,
-      data: {
-        position: [position.x, position.y, position.z],
-        size: [...data.size],
-        rotation: [...data.rotation],
-        color: data.color
-      }
-    };
-    
-    this.platforms.push(platformData);
-    this._updateStatus();
-  }
-  
-  _createSlopeFromData(position, data) {
-    const id = this.nextId++;
-    
-    const material = new THREE.MeshLambertMaterial({ color: data.color });
-    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
-    
-    mesh.position.copy(position);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData = { id, type: 'slope' };
-    
-    this.scene.add(mesh);
-    
-    const slopeData = {
-      id,
-      mesh,
-      data: {
-        position: [position.x, position.y, position.z],
-        size: [...data.size],
-        rotation: [...data.rotation],
-        color: data.color,
-        slopeDirection: data.slopeDirection || 'north'
-      }
-    };
-    
-    this.slopes.push(slopeData);
-    
-    // Create the geometry with the correct size and rotation
-    this._recreateSlopeGeometry(slopeData);
-    
-    this._updateStatus();
-  }
-  
-  _createWallFromData(position, data) {
-    const id = this.nextId++;
-    const geometry = new THREE.BoxGeometry(...data.size);
-    const material = new THREE.MeshLambertMaterial({ color: data.color });
-    const mesh = new THREE.Mesh(geometry, material);
-    
-    mesh.position.copy(position);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData = { id, type: 'wall' };
-    
-    this.scene.add(mesh);
-    
-    const wallData = {
-      id,
-      mesh,
-      data: {
-        position: [position.x, position.y, position.z],
-        size: [...data.size],
-        rotation: [...data.rotation],
-        color: data.color
-      }
-    };
-    
-    this.walls.push(wallData);
-    this._updateStatus();
-  }
-  
-  _createEnemyFromData(position, data) {
-    const id = this.nextId++;
-    
-    // Use the same enemy configuration as the original create method
-    const enemyConfig = {
-      walker: { geometry: new THREE.ConeGeometry(0.5, 2), color: 0xff4444, speed: 2.4 },
-      runner: { geometry: new THREE.ConeGeometry(0.4, 1.8), color: 0xff5722, speed: 4.0 },
-      jumper: { geometry: new THREE.CylinderGeometry(0.4, 0.4, 1.5), color: 0xe91e63, speed: 2.0 },
-      flyer: { geometry: new THREE.OctahedronGeometry(0.6), color: 0x9c27b0, speed: 2.5 }
-    };
-    
-    const config = enemyConfig[data.type] || enemyConfig.walker;
-    const geometry = config.geometry;
-    const material = new THREE.MeshLambertMaterial({ color: config.color });
-    const mesh = new THREE.Mesh(geometry, material);
-    
-    mesh.position.copy(position);
-    mesh.castShadow = true;
-    mesh.userData = { id, type: 'enemy', enemyType: data.type };
-    
-    this.scene.add(mesh);
-    
-    const enemyData = {
-      id,
-      mesh,
-      data: {
-        type: data.type,
-        position: [position.x, position.y, position.z],
-        rotation: [...data.rotation],
-        patrolPoints: [...data.patrolPoints],
-        speed: data.speed,
-        modelUrl: data.modelUrl
-      }
-    };
-    
-    this.enemies.push(enemyData);
-    this._updateStatus();
-  }
-  
-  _createLightFromData(position, data) {
-    const id = this.nextId++;
-    const light = new THREE.PointLight(data.color, data.intensity, 20);
-    light.position.copy(position);
-    light.castShadow = true;
-    
-    // Visual helper
-    const helper = new THREE.PointLightHelper(light, 0.5);
-    light.userData = { id, type: 'light' };
-    helper.userData = { id, type: 'light' };
-    
-    this.scene.add(light);
-    this.scene.add(helper);
-    
-    const lightData = {
-      id,
-      light,
-      helper,
-      data: {
-        type: data.type,
-        position: [position.x, position.y, position.z],
-        color: data.color,
-        intensity: data.intensity
-      }
-    };
-    
-    this.lights.push(lightData);
-    this._updateStatus();
-  }
-  
-  _createPatrolPointFromData(position, data) {
-    const id = this.nextId++;
-    const geometry = new THREE.SphereGeometry(0.3);
-    const material = new THREE.MeshBasicMaterial({ 
-      color: 0x673ab7,
-      transparent: true,
-      opacity: 0.8
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    
-    mesh.position.copy(position);
-    mesh.userData = { id, type: 'patrol' };
-    
-    this.scene.add(mesh);
-    
-    const patrolData = {
-      id,
-      mesh,
-      data: {
-        position: [position.x, position.y, position.z],
-        waitTime: data.waitTime,
-        enemyId: data.enemyId // Preserve original enemy link
-      }
-    };
-    
-    this.patrolPoints.push(patrolData);
-    this._updateStatus();
-  }
-  
-  _updatePropertiesPanel() {
-    // Show multi-selection info
-    if (this.multiSelected.length > 0) {
-      let html = `<strong>MULTI-SELECTION (${this.multiSelected.length} objects)</strong><br><br>`;
-      
-      // Group by type
-      const typeGroups = {};
-      this.multiSelected.forEach(item => {
-        if (!typeGroups[item.type]) typeGroups[item.type] = 0;
-        typeGroups[item.type]++;
-      });
-      
-      html += '<strong>Selected Objects:</strong><br>';
-      Object.entries(typeGroups).forEach(([type, count]) => {
-        html += `${type}: ${count}<br>`;
-      });
-      
-      html += '<br><strong>Controls:</strong><br>';
-      html += '• Arrow Keys: Move X/Z<br>';
-      html += '• Page Up/Down: Move Y<br>';
-      html += '• Delete: Remove all<br>';
-      html += '• Ctrl+Click: Add/Remove from selection<br>';
-      html += '• Click empty space: Box select<br>';
-      
-      this.propertiesContent.innerHTML = html;
-      return;
-    }
-    
-    if (!this.selected) {
-      this.propertiesContent.innerHTML = '<p style=\"color: #888; margin: 0;\">Select an object to edit its properties<br><br><strong>Multi-Select:</strong><br>• Ctrl+Click: Add to selection<br>• Drag empty space: Box select</p>';
-      return;
-    }
-    
-    const data = this.selected.data;
-    let html = `<strong>${this.selectedType.toUpperCase()} #${this.selected.id}</strong><br><br>`;
-    
-    // Position controls
-    html += '<strong>Position:</strong><br>';
-    html += `X: <input type="number" value="${data.position[0]}" step="1" style="width: 60px; margin: 2px;"><br>`;
-    html += `Y: <input type="number" value="${data.position[1]}" step="1" style="width: 60px; margin: 2px;"><br>`;
-    html += `Z: <input type="number" value="${data.position[2]}" step="1" style="width: 60px; margin: 2px;"><br><br>`;
-    
-    // Type-specific controls
-    if (this.selectedType === 'platform') {
-      html += '<strong>Size:</strong><br>';
-      html += `W: <input type="number" value="${data.size[0]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
-      html += `H: <input type="number" value="${data.size[1]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
-      html += `D: <input type="number" value="${data.size[2]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
-    } else if (this.selectedType === 'wall') {
-      html += '<strong>Size:</strong><br>';
-      html += `W: <input type="number" value="${data.size[0]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
-      html += `H: <input type="number" value="${data.size[1]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
-      html += `D: <input type="number" value="${data.size[2]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
-    } else if (this.selectedType === 'slope') {
-      html += '<strong>Size:</strong><br>';
-      html += `W: <input type="number" value="${data.size[0]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
-      html += `H: <input type="number" value="${data.size[1]}" step="1" min="1" style="width: 60px; margin: 2px;"><br>`;
-      html += `D: <input type="number" value="${data.size[2]}" step="1" min="1" style="width: 60px; margin: 2px;"><br><br>`;
-      html += '<strong>Rotation (Y-axis):</strong><br>';
-      html += `<input type="number" value="${data.rotation[1] * 180 / Math.PI}" step="90" min="0" max="270" style="width: 80px; margin: 2px;"> degrees<br>`;
-    } else if (this.selectedType === 'light') {
-      html += `<strong>Intensity:</strong><br>`;
-      html += `<input type="number" value="${data.intensity}" step="0.1" min="0" style="width: 80px; margin: 2px;"><br>`;
-    }
-    
-    this.propertiesContent.innerHTML = html;
-    
-    // Add event listeners to inputs
-    const inputs = this.propertiesContent.querySelectorAll('input');
-    inputs.forEach((input, index) => {
-      input.addEventListener('change', () => {
-        this._updateSelectedObject();
-      });
-    });
-  }
-  
-  _updateSelectedObject() {
-    if (!this.selected) return;
-    
-    const inputs = this.propertiesContent.querySelectorAll('input');
-    const data = this.selected.data;
-    
-    // Update position
-    data.position[0] = parseFloat(inputs[0].value);
-    data.position[1] = parseFloat(inputs[1].value);
-    data.position[2] = parseFloat(inputs[2].value);
-    
-    this.selected.mesh.position.set(...data.position);
-    
-    // Update type-specific properties
-    if ((this.selectedType === 'platform' || this.selectedType === 'wall') && inputs.length >= 6) {
-      data.size[0] = parseFloat(inputs[3].value);
-      data.size[1] = parseFloat(inputs[4].value);
-      data.size[2] = parseFloat(inputs[5].value);
-      
-      // Recreate geometry with new size
-      this.selected.mesh.geometry.dispose();
-      this.selected.mesh.geometry = new THREE.BoxGeometry(...data.size);
-    } else if (this.selectedType === 'slope' && inputs.length >= 7) {
-      data.size[0] = parseFloat(inputs[3].value);
-      data.size[1] = parseFloat(inputs[4].value);
-      data.size[2] = parseFloat(inputs[5].value);
-      
-      // Update rotation (convert degrees to radians)
-      const rotationDegrees = parseFloat(inputs[6].value);
-      data.rotation[1] = rotationDegrees * Math.PI / 180;
-      
-      // Recreate slope geometry with new size and rotation
-      this._recreateSlopeGeometry(this.selected);
-    } else if (this.selectedType === 'light' && inputs.length >= 4) {
-      data.intensity = parseFloat(inputs[3].value);
-      if (this.selected.light) {
-        this.selected.light.intensity = data.intensity;
-      }
-    }
-  }
-  
-  _setMode(mode) {
-    this.mode = mode;
-    this._updateStatus();
-  }
-  
-  _updateStatus() {
-    const counts = {
-      platforms: this.platforms.length,
-      slopes: this.slopes.length,
-      walls: this.walls.length,
-      enemies: this.enemies.length,
-      lights: this.lights.length,
-      patrol: this.patrolPoints.length
-    };
-    
-    this.statusElement.textContent = `Level Editor - Mode: ${this.mode} | Objects: ${Object.values(counts).reduce((a, b) => a + b, 0)}`;
-  }
-  
-  _clearScene() {
-    // Remove all objects
-    [...this.platforms, ...this.slopes, ...this.walls, ...this.enemies, ...this.lights, ...this.patrolPoints].forEach(item => {
-      if (item.mesh) this.scene.remove(item.mesh);
-      if (item.light) this.scene.remove(item.light);
-      if (item.helper) this.scene.remove(item.helper);
-    });
-    
-    // Clear arrays
-    this.platforms = [];
-    this.slopes = [];
-    this.walls = [];
+    // Clear data arrays
     this.enemies = [];
     this.lights = [];
     this.patrolPoints = [];
     
-    this._deselect();
-    this._updateStatus();
+    this.selected = null;
+    this.selectedType = null;
   }
   
-  _exportLevel() {
-    const levelData = {
-      id: 'custom_level',
-      name: 'Custom Level',
-      startPosition: [0, 2, 8],
-      ui: ['hud'],
-      lights: ['BasicLights'],
-      objects: [
-        // Platforms
-        ...this.platforms.map(p => ({
-          type: 'box',
-          position: p.data.position,
-          size: p.data.size,
-          color: p.data.color
-        })),
-        // Slopes
-        ...this.slopes.map(s => ({
-          type: 'slope',
-          position: s.data.position,
-          size: s.data.size,
-          rotation: s.data.rotation,
-          color: s.data.color,
-          slopeDirection: s.data.slopeDirection
-        })),
-        // Walls  
-        ...this.walls.map(w => ({
-          type: 'box',
-          position: w.data.position,
-          size: w.data.size,
-          color: w.data.color
-        }))
-      ],
-      enemies: this.enemies.map(e => ({
-        type: e.data.type,
-        position: e.data.position,
-        modelUrl: e.data.modelUrl,
-        speed: e.data.speed,
-        patrolPoints: this.patrolPoints
-          .filter(pp => pp.data.enemyId === e.id)
-          .map(pp => [...pp.data.position, pp.data.waitTime || 1.0])
-      }))
+  _clearVisualRepresentations() {
+    // Remove enemy meshes
+    this.enemyMeshes.forEach(mesh => this.scene.remove(mesh));
+    this.enemyMeshes = [];
+    
+    // Remove light meshes
+    this.lightMeshes.forEach(mesh => this.scene.remove(mesh));
+    this.lightMeshes = [];
+    
+    // Remove patrol point meshes
+    this.patrolPointMeshes.forEach(mesh => this.scene.remove(mesh));
+    this.patrolPointMeshes = [];
+    
+    // Remove patrol connections
+    this.patrolConnections.forEach(line => this.scene.remove(line));
+    this.patrolConnections = [];
+  }
+  
+  async _loadLevelGeometry(gltfUrl) {
+    return new Promise((resolve, reject) => {
+      this.gltfLoader.load(
+        gltfUrl,
+        (gltf) => {
+          this.levelGeometry.add(gltf.scene);
+          
+          // Set up meshes with original materials and textures
+          gltf.scene.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+              
+              // Only make collision objects slightly transparent, keep original materials
+              if (child.name.toLowerCase().includes('collision') || 
+                  child.name.toLowerCase().includes('collider')) {
+                // Clone the original material and make it slightly transparent
+                if (child.material) {
+                  child.material = child.material.clone();
+                  child.material.transparent = true;
+                  child.material.opacity = 0.7; // Less transparent than before
+                }
+              }
+              // All other meshes keep their original materials and textures
+            }
+          });
+          
+          resolve(gltf);
+        },
+        undefined,
+        reject
+      );
+    });
+  }
+  
+  _loadFallbackGeometry() {
+    if (!this.currentLevel.fallbackObjects) return;
+    
+    this.currentLevel.fallbackObjects.forEach(obj => {
+      let geometry, material, mesh;
+      
+      switch (obj.type) {
+        case 'box':
+          geometry = new THREE.BoxGeometry(obj.size[0], obj.size[1], obj.size[2]);
+          material = new THREE.MeshLambertMaterial({ color: obj.color || 0x888888 });
+          mesh = new THREE.Mesh(geometry, material);
+          mesh.position.set(obj.position[0], obj.position[1], obj.position[2]);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          this.levelGeometry.add(mesh);
+          break;
+      }
+    });
+  }
+  
+  _loadEditableData() {
+    // Load enemies
+    if (this.currentLevel.enemies) {
+      this.enemies = [...this.currentLevel.enemies];
+      this._createEnemyVisuals();
+    }
+    
+    // Load lights
+    if (this.currentLevel.lights) {
+      this.lights = this.currentLevel.lights.map(lightType => ({
+        type: lightType,
+        position: [0, 5, 0], // Default position
+        id: this.nextId++
+      }));
+      this._createLightVisuals();
+    }
+    
+    // Extract patrol points from enemies
+    this._extractPatrolPoints();
+    this._createPatrolPointVisuals();
+    this._createPatrolConnections();
+  }
+  
+  _positionCameraForLevel() {
+    // Calculate bounding box of the level geometry
+    const boundingBox = new THREE.Box3();
+    
+    if (this.levelGeometry.children.length > 0) {
+      // Calculate bounds from level geometry
+      boundingBox.setFromObject(this.levelGeometry);
+    } else {
+      // Fallback: use start position if available
+      if (this.currentLevel.startPosition) {
+        const startPos = this.currentLevel.startPosition;
+        boundingBox.setFromPoints([
+          new THREE.Vector3(startPos[0] - 25, startPos[1] - 5, startPos[2] - 25),
+          new THREE.Vector3(startPos[0] + 25, startPos[1] + 20, startPos[2] + 25)
+        ]);
+      } else {
+        // Default fallback bounds
+        boundingBox.setFromPoints([
+          new THREE.Vector3(-25, -5, -25),
+          new THREE.Vector3(25, 20, 25)
+        ]);
+      }
+    }
+    
+    // Get the center and size of the bounding box
+    const center = boundingBox.getCenter(new THREE.Vector3());
+    const size = boundingBox.getSize(new THREE.Vector3());
+    
+    // Calculate appropriate camera distance based on level size
+    const maxDimension = Math.max(size.x, size.y, size.z);
+    const distance = maxDimension * 1.5; // Adjust multiplier as needed
+    
+    // Position camera at an angle that provides a good overview
+    const cameraOffset = new THREE.Vector3(
+      distance * 0.7,  // X offset (right side)
+      distance * 0.8,  // Y offset (above)
+      distance * 0.7   // Z offset (forward)
+    );
+    
+    // Set camera position
+    this.camera.position.copy(center).add(cameraOffset);
+    this.camera.lookAt(center);
+    
+    // Extract yaw and pitch from the camera's actual rotation after lookAt()
+    const euler = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
+    this.cameraYaw = euler.y;
+    this.cameraPitch = euler.x;
+    
+    console.log(`Camera positioned at: ${this.camera.position.toArray().map(v => v.toFixed(1)).join(', ')}`);
+    console.log(`Looking at level center: ${center.toArray().map(v => v.toFixed(1)).join(', ')}`);
+    console.log(`Level bounds: ${size.toArray().map(v => v.toFixed(1)).join(', ')}`);
+  }
+  
+  _extractPatrolPoints() {
+    this.patrolPoints = [];
+    
+    this.enemies.forEach((enemy, enemyIndex) => {
+      if (enemy.patrolPoints) {
+        enemy.patrolPoints.forEach((point, pointIndex) => {
+          this.patrolPoints.push({
+            position: [point[0], point[1], point[2]],
+            waitTime: point[3] || 0.5,
+            enemyIndex: enemyIndex,
+            pointIndex: pointIndex,
+            id: this.nextId++
+          });
+        });
+      }
+    });
+  }
+  
+  _createEnemyVisuals() {
+    this.enemies.forEach((enemy, index) => {
+      const geometry = new THREE.BoxGeometry(1, 1.5, 1);
+      const material = new THREE.MeshLambertMaterial({ 
+        color: this._getEnemyColor(enemy.type) 
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      
+      mesh.position.set(enemy.position[0], enemy.position[1], enemy.position[2]);
+      mesh.userData = { type: 'enemy', index: index, enemyData: enemy };
+      mesh.name = `enemy_${index}`;
+      
+      this.scene.add(mesh);
+      this.enemyMeshes.push(mesh);
+    });
+  }
+  
+  _createLightVisuals() {
+    this.lights.forEach((light, index) => {
+      const geometry = new THREE.SphereGeometry(0.5, 8, 6);
+      const material = new THREE.MeshBasicMaterial({ 
+        color: 0xffff00,
+        transparent: true,
+        opacity: 0.7
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      
+      mesh.position.set(light.position[0], light.position[1], light.position[2]);
+      mesh.userData = { type: 'light', index: index, lightData: light };
+      mesh.name = `light_${index}`;
+      
+      this.scene.add(mesh);
+      this.lightMeshes.push(mesh);
+    });
+  }
+  
+  _createPatrolPointVisuals() {
+    this.patrolPoints.forEach((point, index) => {
+      const geometry = new THREE.SphereGeometry(0.3, 8, 6);
+      const material = new THREE.MeshLambertMaterial({ 
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.8
+      });
+      const mesh = new THREE.Mesh(geometry, material);
+      
+      mesh.position.set(point.position[0], point.position[1], point.position[2]);
+      mesh.userData = { type: 'patrol', index: index, patrolData: point };
+      mesh.name = `patrol_${index}`;
+      
+      this.scene.add(mesh);
+      this.patrolPointMeshes.push(mesh);
+    });
+  }
+  
+  _createPatrolConnections() {
+    // Group patrol points by enemy
+    const enemyPatrolGroups = {};
+    this.patrolPoints.forEach(point => {
+      if (!enemyPatrolGroups[point.enemyIndex]) {
+        enemyPatrolGroups[point.enemyIndex] = [];
+      }
+      enemyPatrolGroups[point.enemyIndex].push(point);
+    });
+    
+    // Create lines between consecutive patrol points for each enemy
+    Object.values(enemyPatrolGroups).forEach(group => {
+      if (group.length < 2) return;
+      
+      group.sort((a, b) => a.pointIndex - b.pointIndex);
+      
+      for (let i = 0; i < group.length - 1; i++) {
+        const start = group[i].position;
+        const end = group[i + 1].position;
+        
+        const geometry = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(start[0], start[1], start[2]),
+          new THREE.Vector3(end[0], end[1], end[2])
+        ]);
+        
+        const material = new THREE.LineBasicMaterial({ 
+          color: 0xff00ff,
+          transparent: true,
+          opacity: 0.6
+        });
+        
+        const line = new THREE.Line(geometry, material);
+        this.scene.add(line);
+        this.patrolConnections.push(line);
+      }
+    });
+  }
+  
+  _getEnemyColor(type) {
+    const colors = {
+      walker: 0xff0000,    // Red
+      runner: 0x00ff00,    // Green
+      jumper: 0x0000ff,    // Blue
+      flyer: 0xffff00      // Yellow
+    };
+    return colors[type] || 0x888888;
+  }
+  
+  _createUI() {
+    // Create side panel
+    const panel = document.createElement('div');
+    panel.id = 'editor-panel';
+    panel.style.cssText = `
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 300px;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 20px;
+      font-family: monospace;
+      font-size: 12px;
+      overflow-y: auto;
+      z-index: 1000;
+      box-sizing: border-box;
+    `;
+    
+    document.body.appendChild(panel);
+    this.panel = panel;
+    
+    this._updateUI();
+  }
+  
+  _updateUI() {
+    if (!this.panel) return;
+    
+    const levelSelect = this.levels.map((level, index) => 
+      `<option value="${index}" ${index === this.currentLevelIndex ? 'selected' : ''}>${level.name}</option>`
+    ).join('');
+    
+    const enemyTypeOptions = this.enemyTypes.map(type => 
+      `<option value="${type}">${type.charAt(0).toUpperCase() + type.slice(1)}</option>`
+    ).join('');
+    
+    const lightTypeOptions = this.lightTypes.map(type => 
+      `<option value="${type}">${type}</option>`
+    ).join('');
+    
+    this.panel.innerHTML = `
+      <h3>Level Editor</h3>
+      
+      <div style="margin-bottom: 20px;">
+        <label>Current Level:</label><br>
+        <select id="level-select" style="width: 100%; padding: 5px;">
+          ${levelSelect}
+        </select>
+      </div>
+      
+      <div style="margin-bottom: 20px;">
+        <label>Edit Mode:</label><br>
+        <button id="mode-enemy" class="mode-btn ${this.mode === 'enemy' ? 'active' : ''}">Enemies</button>
+        <button id="mode-light" class="mode-btn ${this.mode === 'light' ? 'active' : ''}">Lights</button>
+        <button id="mode-patrol" class="mode-btn ${this.mode === 'patrol' ? 'active' : ''}">Patrol</button>
+        <button id="mode-select" class="mode-btn ${this.mode === 'select' ? 'active' : ''}">Select</button>
+      </div>
+      
+      <div id="enemy-controls" style="display: ${this.mode === 'enemy' ? 'block' : 'none'};">
+        <h4>Enemy Controls</h4>
+        <label>Type:</label><br>
+        <select id="enemy-type" style="width: 100%; padding: 5px; margin-bottom: 10px;">
+          ${enemyTypeOptions}
+        </select>
+        <button id="add-enemy" style="width: 100%; padding: 5px;">Add Enemy (Click on level)</button>
+        
+        <div id="enemy-list">
+          <h5>Enemies (${this.enemies.length})</h5>
+          ${this.enemies.map((enemy, index) => `
+            <div class="item-row" data-type="enemy" data-index="${index}">
+              <strong>${enemy.type}</strong> at [${enemy.position.join(', ')}]
+              <button onclick="window.editor._deleteEnemy(${index})">Delete</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      
+      <div id="light-controls" style="display: ${this.mode === 'light' ? 'block' : 'none'};">
+        <h4>Light Controls</h4>
+        <label>Type:</label><br>
+        <select id="light-type" style="width: 100%; padding: 5px; margin-bottom: 10px;">
+          ${lightTypeOptions}
+        </select>
+        <button id="add-light" style="width: 100%; padding: 5px;">Add Light (Click on level)</button>
+        
+        <div id="light-list">
+          <h5>Lights (${this.lights.length})</h5>
+          ${this.lights.map((light, index) => `
+            <div class="item-row" data-type="light" data-index="${index}">
+              <strong>${light.type}</strong> at [${light.position.join(', ')}]
+              <button onclick="window.editor._deleteLight(${index})">Delete</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      
+      <div id="patrol-controls" style="display: ${this.mode === 'patrol' ? 'block' : 'none'};">
+        <h4>Patrol Point Controls</h4>
+        <p>Select an enemy first, then click to add patrol points</p>
+        
+        <div id="patrol-list">
+          <h5>Patrol Points (${this.patrolPoints.length})</h5>
+          ${this.patrolPoints.map((point, index) => `
+            <div class="item-row" data-type="patrol" data-index="${index}">
+              Enemy ${point.enemyIndex} Point ${point.pointIndex}<br>
+              [${point.position.join(', ')}] Wait: ${point.waitTime}s
+              <button onclick="window.editor._deletePatrolPoint(${index})">Delete</button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      
+      ${this._getSelectionPropertiesHTML()}
+      
+      <div style="margin-top: 30px;">
+        <button id="save-level" style="width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 3px;">
+          Save Level
+        </button>
+      </div>
+      
+      <div style="margin-top: 10px; font-size: 10px; opacity: 0.7;">
+        <p><strong>Controls:</strong></p>
+        <p>WASD - Move camera on X,Z plane</p>
+        <p>Q/E - Move camera up/down</p>
+        <p>Right-click + drag - Look around</p>
+        <p>Mouse wheel - Zoom to center</p>
+        <p>Left-click - Place/Select objects</p>
+        <p>Delete - Remove selected</p>
+      </div>
+      
+      <style>
+        .mode-btn {
+          padding: 5px 10px;
+          margin: 2px;
+          background: #333;
+          color: white;
+          border: 1px solid #666;
+          border-radius: 3px;
+          cursor: pointer;
+        }
+        .mode-btn.active {
+          background: #4CAF50;
+        }
+        .item-row {
+          background: #222;
+          margin: 5px 0;
+          padding: 8px;
+          border-radius: 3px;
+          font-size: 11px;
+        }
+        .item-row button {
+          float: right;
+          padding: 2px 6px;
+          background: #f44336;
+          color: white;
+          border: none;
+          border-radius: 2px;
+          font-size: 10px;
+          cursor: pointer;
+        }
+      </style>
+    `;
+    
+    // Bind UI events
+    this._bindUIEvents();
+  }
+  
+  _getSelectionPropertiesHTML() {
+    if (!this.selected) {
+      return '<div id="selection-properties" style="margin-top: 20px; display: none;"></div>';
+    }
+    
+    const selectedData = this.selected.userData;
+    const pos = this.selected.position;
+    const rot = this.selected.rotation;
+    
+    let typeSpecificInputs = '';
+    
+    // Add type-specific properties
+    if (this.selectedType === 'enemy') {
+      const enemyData = selectedData.enemyData;
+      typeSpecificInputs = `
+        <div style="margin-top: 10px;">
+          <label style="font-size: 11px;">Enemy Type:</label><br>
+          <select id="selected-enemy-type" style="width: 100%; padding: 3px; font-size: 11px;">
+            ${this.enemyTypes.map(type => 
+              `<option value="${type}" ${type === enemyData.type ? 'selected' : ''}>${type.charAt(0).toUpperCase() + type.slice(1)}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div style="margin-top: 5px;">
+          <label style="font-size: 11px;">Speed:</label><br>
+          <input type="number" id="selected-speed" value="${enemyData.speed || 2}" step="0.1" min="0" style="width: 100%; padding: 3px; font-size: 11px;">
+        </div>
+        <div style="margin-top: 5px;">
+          <label style="font-size: 11px;">Chase Range:</label><br>
+          <input type="number" id="selected-chase-range" value="${enemyData.chaseRange || 5}" step="0.5" min="0" style="width: 100%; padding: 3px; font-size: 11px;">
+        </div>
+      `;
+    } else if (this.selectedType === 'light') {
+      const lightData = selectedData.lightData;
+      typeSpecificInputs = `
+        <div style="margin-top: 10px;">
+          <label style="font-size: 11px;">Light Type:</label><br>
+          <select id="selected-light-type" style="width: 100%; padding: 3px; font-size: 11px;">
+            ${this.lightTypes.map(type => 
+              `<option value="${type}" ${type === lightData.type ? 'selected' : ''}>${type}</option>`
+            ).join('')}
+          </select>
+        </div>
+      `;
+    }
+    
+    return `
+      <div id="selection-properties" style="margin-top: 20px; border: 1px solid #444; padding: 10px; border-radius: 3px;">
+        <h4 style="margin: 0 0 10px 0; color: #4CAF50;">Selected: ${this.selectedType.charAt(0).toUpperCase() + this.selectedType.slice(1)}</h4>
+        
+        <div style="margin-bottom: 15px;">
+          <h5 style="margin: 0 0 5px 0;">Position</h5>
+          <div style="display: flex; gap: 5px;">
+            <div>
+              <label style="font-size: 10px;">X:</label><br>
+              <input type="number" id="selected-pos-x" value="${pos.x.toFixed(2)}" step="0.1" style="width: 60px; padding: 3px; font-size: 11px;">
+            </div>
+            <div>
+              <label style="font-size: 10px;">Y:</label><br>
+              <input type="number" id="selected-pos-y" value="${pos.y.toFixed(2)}" step="0.1" style="width: 60px; padding: 3px; font-size: 11px;">
+            </div>
+            <div>
+              <label style="font-size: 10px;">Z:</label><br>
+              <input type="number" id="selected-pos-z" value="${pos.z.toFixed(2)}" step="0.1" style="width: 60px; padding: 3px; font-size: 11px;">
+            </div>
+          </div>
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+          <h5 style="margin: 0 0 5px 0;">Rotation (degrees)</h5>
+          <div style="display: flex; gap: 5px;">
+            <div>
+              <label style="font-size: 10px;">X:</label><br>
+              <input type="number" id="selected-rot-x" value="${(rot.x * 180 / Math.PI).toFixed(1)}" step="1" style="width: 60px; padding: 3px; font-size: 11px;">
+            </div>
+            <div>
+              <label style="font-size: 10px;">Y:</label><br>
+              <input type="number" id="selected-rot-y" value="${(rot.y * 180 / Math.PI).toFixed(1)}" step="1" style="width: 60px; padding: 3px; font-size: 11px;">
+            </div>
+            <div>
+              <label style="font-size: 10px;">Z:</label><br>
+              <input type="number" id="selected-rot-z" value="${(rot.z * 180 / Math.PI).toFixed(1)}" step="1" style="width: 60px; padding: 3px; font-size: 11px;">
+            </div>
+          </div>
+        </div>
+        
+        ${typeSpecificInputs}
+        
+        <div style="margin-top: 10px;">
+          <button id="apply-properties" style="width: 100%; padding: 5px; background: #2196F3; color: white; border: none; border-radius: 3px; font-size: 11px;">
+            Apply Changes
+          </button>
+          <button id="deselect-object" style="width: 100%; padding: 5px; background: #666; color: white; border: none; border-radius: 3px; font-size: 11px; margin-top: 5px;">
+            Deselect
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  
+  _bindUIEvents() {
+    // Level selection
+    const levelSelect = document.getElementById('level-select');
+    if (levelSelect) {
+      levelSelect.addEventListener('change', (e) => {
+        this._loadLevel(parseInt(e.target.value));
+      });
+    }
+    
+    // Mode buttons
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        this.mode = e.target.id.replace('mode-', '');
+        this._updateUI();
+      });
+    });
+    
+    // Add buttons
+    const addEnemyBtn = document.getElementById('add-enemy');
+    if (addEnemyBtn) {
+      addEnemyBtn.addEventListener('click', () => {
+        this.mode = 'enemy';
+        this._updateStatus('Click on the level to place an enemy');
+      });
+    }
+    
+    const addLightBtn = document.getElementById('add-light');
+    if (addLightBtn) {
+      addLightBtn.addEventListener('click', () => {
+        this.mode = 'light';
+        this._updateStatus('Click on the level to place a light');
+      });
+    }
+    
+    // Save button
+    const saveBtn = document.getElementById('save-level');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => this._saveLevel());
+    }
+    
+    // Selection property buttons
+    const applyBtn = document.getElementById('apply-properties');
+    if (applyBtn) {
+      applyBtn.addEventListener('click', () => this._applySelectedProperties());
+    }
+    
+    const deselectBtn = document.getElementById('deselect-object');
+    if (deselectBtn) {
+      deselectBtn.addEventListener('click', () => this._selectObject(null));
+    }
+  }
+  
+  _bindEvents() {
+    // Mouse events
+    this.renderer.domElement.addEventListener('mousedown', this._onMouseDown.bind(this));
+    this.renderer.domElement.addEventListener('mousemove', this._onMouseMove.bind(this));
+    this.renderer.domElement.addEventListener('mouseup', this._onMouseUp.bind(this));
+    this.renderer.domElement.addEventListener('wheel', this._onMouseWheel.bind(this));
+    
+    // Prevent right-click context menu
+    this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+    
+    // Keyboard events
+    window.addEventListener('keydown', this._onKeyDown.bind(this));
+    window.addEventListener('keyup', this._onKeyUp.bind(this));
+    
+    // Window resize
+    window.addEventListener('resize', this._onWindowResize.bind(this));
+    
+    // Expose editor to window for button callbacks
+    window.editor = this;
+    
+    // Start render loop
+    this._animate();
+  }
+  
+  _onMouseDown(event) {
+    if (event.target !== this.renderer.domElement) return;
+    
+    this.mouseDown = true;
+    this.lastMousePos = { x: event.clientX, y: event.clientY };
+    
+    // Check if right mouse button for camera rotation
+    if (event.button === 2) { // Right mouse button
+      this.isRotating = true;
+      return;
+    }
+    
+    // Only left mouse button (button === 0) for object placement/selection
+    if (event.button === 0) { // Left mouse button only
+      if (this.mode !== 'select') {
+        this._handlePlacement(event);
+      } else {
+        this._handleSelection(event);
+      }
+    }
+    // Middle mouse button (button === 1) and other buttons are ignored
+  }
+  
+  _onMouseMove(event) {
+    // Only rotate camera when right mouse button is held down
+    if (this.isRotating && this.mouseDown) {
+      const deltaX = event.clientX - this.lastMousePos.x;
+      const deltaY = event.clientY - this.lastMousePos.y;
+      
+      this.cameraYaw -= deltaX * this.sensitivity;
+      this.cameraPitch -= deltaY * this.sensitivity;
+      this.cameraPitch = THREE.MathUtils.clamp(this.cameraPitch, -Math.PI/2 + 0.1, Math.PI/2 - 0.1);
+      
+      this._updateCameraRotation();
+      
+      this.lastMousePos.x = event.clientX;
+      this.lastMousePos.y = event.clientY;
+    }
+  }
+  
+  _onMouseUp(event) {
+    this.mouseDown = false;
+    this.isRotating = false;
+  }
+  
+  _onMouseWheel(event) {
+    event.preventDefault();
+    
+    // Get the center of the screen for zoom direction
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    
+    // Cast ray from center of screen
+    const mouse = new THREE.Vector2(0, 0); // Center of screen
+    this.raycaster.setFromCamera(mouse, this.camera);
+    
+    // Get the direction to zoom towards
+    const zoomDirection = this.raycaster.ray.direction.clone();
+    const zoomAmount = event.deltaY > 0 ? 2 : -2;
+    
+    // Move camera towards/away from the center point
+    this.camera.position.add(zoomDirection.multiplyScalar(zoomAmount));
+  }
+  
+  _onKeyDown(event) {
+    this.keys[event.code] = true;
+    
+    // Delete selected object
+    if (event.code === 'Delete' && this.selected) {
+      this._deleteSelected();
+    }
+    
+    // Mode switching
+    if (event.code === 'Digit1') this.mode = 'enemy';
+    if (event.code === 'Digit2') this.mode = 'light';
+    if (event.code === 'Digit3') this.mode = 'patrol';
+    if (event.code === 'Digit4') this.mode = 'select';
+    
+    this._updateUI();
+  }
+  
+  _onKeyUp(event) {
+    this.keys[event.code] = false;
+  }
+  
+  _onWindowResize() {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+  
+  _updateCameraRotation() {
+    const quaternion = new THREE.Quaternion();
+    const euler = new THREE.Euler(this.cameraPitch, this.cameraYaw, 0, 'YXZ');
+    quaternion.setFromEuler(euler);
+    this.camera.quaternion.copy(quaternion);
+  }
+  
+  _handleCameraMovement(delta) {
+    const moveVector = new THREE.Vector3();
+    
+    // Only move on X,Z plane - ignore camera rotation for movement
+    if (this.keys['KeyW']) moveVector.z -= 1; // Forward
+    if (this.keys['KeyS']) moveVector.z += 1; // Backward  
+    if (this.keys['KeyA']) moveVector.x -= 1; // Left
+    if (this.keys['KeyD']) moveVector.x += 1; // Right
+    if (this.keys['KeyQ']) moveVector.y -= 1; // Down
+    if (this.keys['KeyE']) moveVector.y += 1; // Up
+    
+    if (moveVector.length() > 0) {
+      moveVector.normalize();
+      
+      // For X,Z movement, only apply Y rotation (yaw), not pitch
+      if (moveVector.x !== 0 || moveVector.z !== 0) {
+        const yawQuaternion = new THREE.Quaternion();
+        yawQuaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.cameraYaw);
+        
+        const xzMovement = new THREE.Vector3(moveVector.x, 0, moveVector.z);
+        xzMovement.applyQuaternion(yawQuaternion);
+        moveVector.x = xzMovement.x;
+        moveVector.z = xzMovement.z;
+      }
+      
+      moveVector.multiplyScalar(this.moveSpeed * delta);
+      this.camera.position.add(moveVector);
+    }
+  }
+  
+  _handlePlacement(event) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+    
+    // Get intersection with level geometry or ground plane
+    const intersects = this.raycaster.intersectObjects([
+      ...this.levelGeometry.children,
+      this.groundPlane
+    ], true);
+    
+    if (intersects.length > 0) {
+      const point = intersects[0].point;
+      
+      switch (this.mode) {
+        case 'enemy':
+          this._addEnemy(point);
+          break;
+        case 'light':
+          this._addLight(point);
+          break;
+        case 'patrol':
+          this._addPatrolPoint(point);
+          break;
+      }
+    }
+  }
+  
+  _handleSelection(event) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+    
+    const selectableObjects = [
+      ...this.enemyMeshes,
+      ...this.lightMeshes,
+      ...this.patrolPointMeshes
+    ];
+    
+    const intersects = this.raycaster.intersectObjects(selectableObjects);
+    
+    if (intersects.length > 0) {
+      this._selectObject(intersects[0].object);
+    } else {
+      this._selectObject(null);
+    }
+  }
+  
+  _addEnemy(position) {
+    const enemyTypeSelect = document.getElementById('enemy-type');
+    const type = enemyTypeSelect ? enemyTypeSelect.value : 'walker';
+    
+    const enemy = {
+      type: type,
+      position: [position.x, position.y, position.z],
+      modelUrl: this._getDefaultModelUrl(type),
+      patrolPoints: [],
+      speed: this._getDefaultSpeed(type),
+      chaseRange: 5,
+      id: this.nextId++
     };
     
-    const jsonString = JSON.stringify(levelData, null, 2);
+    this.enemies.push(enemy);
+    this._createEnemyVisuals();
+    this._updateUI();
+    this._updateStatus(`Added ${type} enemy at [${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)}]`);
+  }
+  
+  _addLight(position) {
+    const lightTypeSelect = document.getElementById('light-type');
+    const type = lightTypeSelect ? lightTypeSelect.value : 'BasicLights';
     
-    // Create download
-    const blob = new Blob([jsonString], { type: 'application/json' });
+    const light = {
+      type: type,
+      position: [position.x, position.y, position.z],
+      id: this.nextId++
+    };
+    
+    this.lights.push(light);
+    this._createLightVisuals();
+    this._updateUI();
+    this._updateStatus(`Added ${type} light at [${position.x.toFixed(1)}, ${position.y.toFixed(1)}, ${position.z.toFixed(1)}]`);
+  }
+  
+  _addPatrolPoint(position) {
+    if (!this.selected || this.selectedType !== 'enemy') {
+      this._updateStatus('Select an enemy first to add patrol points');
+      return;
+    }
+    
+    const enemyIndex = this.selected.userData.index;
+    const enemy = this.enemies[enemyIndex];
+    
+    if (!enemy.patrolPoints) enemy.patrolPoints = [];
+    
+    const pointIndex = enemy.patrolPoints.length;
+    enemy.patrolPoints.push([position.x, position.y, position.z, 0.5]);
+    
+    // Update patrol points and visuals
+    this._extractPatrolPoints();
+    this._clearVisualRepresentations();
+    this._createEnemyVisuals();
+    this._createLightVisuals();
+    this._createPatrolPointVisuals();
+    this._createPatrolConnections();
+    
+    this._updateUI();
+    this._updateStatus(`Added patrol point ${pointIndex} for enemy ${enemyIndex}`);
+  }
+  
+  _selectObject(object) {
+    // Clear previous selection
+    if (this.selected && this.selected.material && this.selected.material.emissive) {
+      this.selected.material.emissive.setHex(0x000000);
+    }
+    
+    this.selected = object;
+    this.selectedType = object ? object.userData.type : null;
+    
+    if (this.selected && this.selected.material && this.selected.material.emissive) {
+      this.selected.material.emissive.setHex(0x444444);
+    }
+    
+    // Refresh UI to show/hide selection properties
+    this._updateUI();
+  }
+  
+  _applySelectedProperties() {
+    if (!this.selected) return;
+    
+    // Get position inputs
+    const posX = document.getElementById('selected-pos-x');
+    const posY = document.getElementById('selected-pos-y');
+    const posZ = document.getElementById('selected-pos-z');
+    
+    // Get rotation inputs
+    const rotX = document.getElementById('selected-rot-x');
+    const rotY = document.getElementById('selected-rot-y');
+    const rotZ = document.getElementById('selected-rot-z');
+    
+    if (posX && posY && posZ) {
+      // Update visual mesh position
+      this.selected.position.set(
+        parseFloat(posX.value),
+        parseFloat(posY.value),
+        parseFloat(posZ.value)
+      );
+      
+      // Update data array position
+      const index = this.selected.userData.index;
+      if (this.selectedType === 'enemy' && this.enemies[index]) {
+        this.enemies[index].position = [
+          parseFloat(posX.value),
+          parseFloat(posY.value),
+          parseFloat(posZ.value)
+        ];
+      } else if (this.selectedType === 'light' && this.lights[index]) {
+        this.lights[index].position = [
+          parseFloat(posX.value),
+          parseFloat(posY.value),
+          parseFloat(posZ.value)
+        ];
+      } else if (this.selectedType === 'patrol' && this.patrolPoints[index]) {
+        this.patrolPoints[index].position = [
+          parseFloat(posX.value),
+          parseFloat(posY.value),
+          parseFloat(posZ.value)
+        ];
+        
+        // Update the corresponding enemy's patrol point array
+        const patrolData = this.patrolPoints[index];
+        const enemy = this.enemies[patrolData.enemyIndex];
+        if (enemy && enemy.patrolPoints && enemy.patrolPoints[patrolData.pointIndex]) {
+          enemy.patrolPoints[patrolData.pointIndex][0] = parseFloat(posX.value);
+          enemy.patrolPoints[patrolData.pointIndex][1] = parseFloat(posY.value);
+          enemy.patrolPoints[patrolData.pointIndex][2] = parseFloat(posZ.value);
+        }
+      }
+    }
+    
+    if (rotX && rotY && rotZ) {
+      // Update visual mesh rotation (convert degrees to radians)
+      this.selected.rotation.set(
+        parseFloat(rotX.value) * Math.PI / 180,
+        parseFloat(rotY.value) * Math.PI / 180,
+        parseFloat(rotZ.value) * Math.PI / 180
+      );
+    }
+    
+    // Handle type-specific properties
+    if (this.selectedType === 'enemy') {
+      const enemyTypeSelect = document.getElementById('selected-enemy-type');
+      const speedInput = document.getElementById('selected-speed');
+      const chaseRangeInput = document.getElementById('selected-chase-range');
+      
+      const index = this.selected.userData.index;
+      if (this.enemies[index]) {
+        if (enemyTypeSelect) {
+          this.enemies[index].type = enemyTypeSelect.value;
+          this.enemies[index].modelUrl = this._getDefaultModelUrl(enemyTypeSelect.value);
+          
+          // Update visual color
+          if (this.selected.material && this.selected.material.color) {
+            this.selected.material.color.setHex(this._getEnemyColor(enemyTypeSelect.value));
+          }
+        }
+        if (speedInput) {
+          this.enemies[index].speed = parseFloat(speedInput.value);
+        }
+        if (chaseRangeInput) {
+          this.enemies[index].chaseRange = parseFloat(chaseRangeInput.value);
+        }
+      }
+    } else if (this.selectedType === 'light') {
+      const lightTypeSelect = document.getElementById('selected-light-type');
+      
+      const index = this.selected.userData.index;
+      if (this.lights[index] && lightTypeSelect) {
+        this.lights[index].type = lightTypeSelect.value;
+      }
+    }
+    
+    // Recreate patrol connections if patrol point was moved
+    if (this.selectedType === 'patrol') {
+      this.patrolConnections.forEach(line => this.scene.remove(line));
+      this.patrolConnections = [];
+      this._createPatrolConnections();
+    }
+    
+    this._updateStatus('Properties updated successfully');
+  }
+  
+  _deleteSelected() {
+    if (!this.selected) return;
+    
+    const index = this.selected.userData.index;
+    
+    switch (this.selectedType) {
+      case 'enemy':
+        this._deleteEnemy(index);
+        break;
+      case 'light':
+        this._deleteLight(index);
+        break;
+      case 'patrol':
+        this._deletePatrolPoint(index);
+        break;
+    }
+  }
+  
+  _deleteEnemy(index) {
+    if (index >= 0 && index < this.enemies.length) {
+      this.enemies.splice(index, 1);
+      this._extractPatrolPoints(); // Update patrol points
+      this._clearVisualRepresentations();
+      this._createEnemyVisuals();
+      this._createLightVisuals();
+      this._createPatrolPointVisuals();
+      this._createPatrolConnections();
+      this._updateUI();
+      this.selected = null;
+      this.selectedType = null;
+    }
+  }
+  
+  _deleteLight(index) {
+    if (index >= 0 && index < this.lights.length) {
+      this.lights.splice(index, 1);
+      this._createLightVisuals();
+      this._updateUI();
+      this.selected = null;
+      this.selectedType = null;
+    }
+  }
+  
+  _deletePatrolPoint(index) {
+    if (index >= 0 && index < this.patrolPoints.length) {
+      const point = this.patrolPoints[index];
+      const enemy = this.enemies[point.enemyIndex];
+      
+      if (enemy && enemy.patrolPoints) {
+        enemy.patrolPoints.splice(point.pointIndex, 1);
+        this._extractPatrolPoints();
+        this._clearVisualRepresentations();
+        this._createEnemyVisuals();
+        this._createLightVisuals();
+        this._createPatrolPointVisuals();
+        this._createPatrolConnections();
+        this._updateUI();
+        this.selected = null;
+        this.selectedType = null;
+      }
+    }
+  }
+  
+  _getDefaultModelUrl(type) {
+    const urls = {
+      walker: 'src/assets/low_poly_female/scene.gltf',
+      runner: 'src/assets/low_poly_male/scene.gltf',
+      jumper: 'src/assets/low_poly_female/scene.gltf',
+      flyer: 'src/assets/futuristic_flying_animated_robot_-_low_poly/scene.gltf'
+    };
+    return urls[type] || urls.walker;
+  }
+  
+  _getDefaultSpeed(type) {
+    const speeds = {
+      walker: 2.4,
+      runner: 4.0,
+      jumper: 2.0,
+      flyer: 2.5
+    };
+    return speeds[type] || 2.0;
+  }
+  
+  _saveLevel() {
+    if (!this.currentLevel) return;
+    
+    // Update current level data
+    this.currentLevel.enemies = [...this.enemies];
+    this.currentLevel.lights = this.lights.map(light => light.type);
+    
+    // Generate levelData.js content
+    const levelDataContent = this._generateLevelDataJS();
+    
+    // Create and download file
+    const blob = new Blob([levelDataContent], { type: 'text/javascript' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'level.json';
+    a.download = 'levelData.js';
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    console.log('Exported level:', levelData);
+    this._updateStatus('Level data saved! Replace src/game/levelData.js with the downloaded file.');
   }
   
-  _importLevel() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    
-    input.onchange = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const levelData = JSON.parse(e.target.result);
-          this._loadLevelData(levelData);
-        } catch (error) {
-          alert('Invalid JSON file: ' + error.message);
-        }
-      };
-      reader.readAsText(file);
-    };
-    
-    input.click();
+  _generateLevelDataJS() {
+    const levelsJSON = JSON.stringify(this.levels, null, 2);
+    return `// Data-driven level definitions with GLTF geometry loading
+export const levels = ${levelsJSON};`;
   }
   
-  _loadLevelData(levelData) {
-    // Clear existing scene
-    this._clearScene();
+  _updateStatus(message = '') {
+    if (!this.statusElement) return;
     
-    // Load platforms and slopes
-    if (levelData.objects) {
-      levelData.objects.forEach(obj => {
-        if (obj.type === 'box') {
-          const position = new THREE.Vector3(...obj.position);
-          this._createPlatform(position);
-          
-          // Update the last created platform with proper data
-          const platform = this.platforms[this.platforms.length - 1];
-          platform.data.size = obj.size;
-          platform.data.color = obj.color || 0x2e8b57;
-          
-          // Update mesh
-          platform.mesh.geometry.dispose();
-          platform.mesh.geometry = new THREE.BoxGeometry(...platform.data.size);
-          platform.mesh.material.color.setHex(platform.data.color);
-        } else if (obj.type === 'slope') {
-          const position = new THREE.Vector3(...obj.position);
-          const size = obj.size || [10, 1, 10];
-          const rotation = obj.rotation || [0, 0, 0];
-          this._createSlope(position, size, rotation);
-          
-          // Update the last created slope with proper data
-          const slope = this.slopes[this.slopes.length - 1];
-          slope.data.color = obj.color || 0x8bc34a;
-          slope.data.slopeDirection = obj.slopeDirection || 'north';
-          
-          // Update mesh color
-          slope.mesh.material.color.setHex(slope.data.color);
-        }
-      });
-    }
+    const currentLevel = this.currentLevel ? this.currentLevel.name : 'No Level';
+    const mode = this.mode.charAt(0).toUpperCase() + this.mode.slice(1);
     
-    // Load enemies
-    if (levelData.enemies) {
-      levelData.enemies.forEach(enemy => {
-        const position = new THREE.Vector3(...enemy.position);
-        this._createEnemy(position);
-        
-        // Update the last created enemy with proper data
-        const enemyObj = this.enemies[this.enemies.length - 1];
-        enemyObj.data.type = enemy.type;
-        enemyObj.data.patrolPoints = enemy.patrolPoints || [];
-      });
-    }
-    
-    this._updateStatus();
-    console.log('Imported level:', levelData);
+    this.statusElement.innerHTML = `
+      <strong>Level Editor</strong><br>
+      Level: ${currentLevel}<br>
+      Mode: ${mode}<br>
+      Enemies: ${this.enemies.length} | Lights: ${this.lights.length} | Patrol: ${this.patrolPoints.length}<br>
+      ${message}
+    `;
   }
   
-  update() {
-    const delta = 0.016; // Assume 60fps
+  _animate() {
+    requestAnimationFrame(this._animate.bind(this));
     
-    // Camera movement (WASD + mouse look) - disabled during multi-selection
-    if (this.mouseDown && !this.isMultiSelecting) {
-      this.cameraYaw -= this.mouseDelta.x * this.sensitivity;
-      this.cameraPitch -= this.mouseDelta.y * this.sensitivity;
-      this.cameraPitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, this.cameraPitch));
-      this.mouseDelta.x = 0;
-      this.mouseDelta.y = 0;
-    }
+    const delta = 0.016; // Approximately 60fps
     
-    // Movement
-    const forward = new THREE.Vector3(
-      -Math.sin(this.cameraYaw) * Math.cos(this.cameraPitch),
-      Math.sin(this.cameraPitch),
-      -Math.cos(this.cameraYaw) * Math.cos(this.cameraPitch)
-    ).normalize();
+    // Handle camera movement
+    this._handleCameraMovement(delta);
     
-    const right = new THREE.Vector3(
-      Math.cos(this.cameraYaw),
-      0,
-      -Math.sin(this.cameraYaw)
-    ).normalize();
-    
-    // Create horizontal-only forward direction (ignoring pitch/vertical look)
-    const horizontalForward = new THREE.Vector3(
-      -Math.sin(this.cameraYaw),
-      0,
-      -Math.cos(this.cameraYaw)
-    ).normalize();
-    
-    const moveVector = new THREE.Vector3();
-    if (this.keys['KeyW']) moveVector.add(horizontalForward);
-    if (this.keys['KeyS']) moveVector.sub(horizontalForward);
-    if (this.keys['KeyA']) moveVector.sub(right);
-    if (this.keys['KeyD']) moveVector.add(right);
-    // Removed Q and E movement
-    
-    if (moveVector.length() > 0) {
-      moveVector.normalize().multiplyScalar(this.moveSpeed * delta);
-      this.camera.position.add(moveVector);
-    }
-    
-    // Update camera rotation
-    this.camera.quaternion.setFromEuler(new THREE.Euler(this.cameraPitch, this.cameraYaw, 0, 'YXZ'));
-  }
-  
-  render() {
+    // Render
     this.renderer.render(this.scene, this.camera);
   }
 }
