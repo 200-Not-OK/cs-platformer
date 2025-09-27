@@ -1,3 +1,4 @@
+// src/game/game.js
 import * as THREE from 'three';
 import { createSceneAndRenderer } from './scene.js';
 import { InputManager } from './input.js';
@@ -11,6 +12,7 @@ import { Minimap } from './components/minimap.js';
 import { Objectives } from './components/objectives.js';
 import { SmallMenu } from './components/menu.js';
 import { FPS } from './components/fps.js';
+import { resolveMovement, meshesToColliders, enableDebug, disableDebug } from './collisionSystem.js';
 import { Crosshair } from './components/crosshair.js';
 import { Collectibles } from './components/collectibles.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
@@ -18,190 +20,269 @@ import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
 import { PhysicsWorld } from './physics/PhysicsWorld.js';
 import { CombatSystem } from './combatSystem.js';
+import { WorldMap } from './components/worldmap.js';
+import { CountdownTimer } from './components/countdownTimer.js';
 
 export class Game {
   constructor() {
+    // --- Scene & renderer ----------------------------------------------------
     const { scene, renderer } = createSceneAndRenderer();
     this.scene = scene;
     this.renderer = renderer;
 
+    // Prevent white screen while loading by rendering a first frame ASAP
+    this.renderer.setAnimationLoop(null);
+    this.scene.background = this.scene.background ?? new THREE.Color(0x0d1117);
+
+    // --- State flags ---------------------------------------------------------
+    this._frozen = false;     // gameplay frozen during cinematics (no pause menu)
+    this.paused  = false;     // normal pause (shows menu)
+    this.showColliders = true;
+    this._suppressPointerLockPause = false;
+
+    // --- Physics -------------------------------------------------------------
     // Initialize physics world with scene for improved collision detection
     this.physicsWorld = new PhysicsWorld(this.scene, {
-      useAccurateCollision: false, // Disable Trimesh by default for more reliable collision
+      useAccurateCollision: false, // Disable Trimesh by default for reliability
       debugMode: false
     });
 
-    // Input
+    // --- Input & managers ----------------------------------------------------
     this.input = new InputManager(window);
+    this.levelManager = new LevelManager(this.scene, this.physicsWorld);
+    this.level = null;
 
-  // Level system
-  this.levelManager = new LevelManager(this.scene, this.physicsWorld);
-  this.level = null;
+    // --- Player --------------------------------------------------------------
+    this.player = new Player(this.scene, this.physicsWorld, {
+      speed: 17,
+      jumpStrength: 12,
+      size: [1, 1.5, 1],
+      colliderWidthScale: 0.5,
+      colliderHeightScale: 1,
+      colliderDepthScale: 0.5
+    });
 
-  // Player
-  this.player = new Player(this.scene, this.physicsWorld, { 
-    speed: 17, 
-    jumpStrength: 12, 
-    size: [1, 1.5, 1],
-    // Collider size scaling factors (optional)
-    colliderWidthScale: 0.5,   // 40% of model width (default: 0.4)
-    colliderHeightScale: 1,  // 90% of model height (default: 0.9)  
-    colliderDepthScale: 0.5    // 40% of model depth (default: 0.4)
-  });
-  // Player position will be set by loadLevel() call
+    // --- Cameras -------------------------------------------------------------
+    this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
+    this.firstCam = new FirstPersonCamera(this.player, this.input, window);
+    this.freeCam  = new FreeCamera(this.input, window);
 
-    // Cameras
-  this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
-  this.firstCam = new FirstPersonCamera(this.player, this.input, window);
-  this.freeCam = new FreeCamera(this.input, window);
-  // Cache the underlying three.js camera objects so identity checks are reliable
-  this.thirdCameraObject = this.thirdCam.getCamera();
-  this.firstCameraObject = this.firstCam.getCamera();
-  this.freeCameraObject = this.freeCam.getCamera();
-  this.activeCamera = this.thirdCameraObject;
-  //this.activeCamera = this.freeCameraObject;
-    // Enable alwaysTrackMouse for third-person camera
+    this.thirdCameraObject = this.thirdCam.getCamera();
+    this.firstCameraObject = this.firstCam.getCamera();
+    this.freeCameraObject  = this.freeCam.getCamera();
+
+    // Default camera is 3rd person
+    this.activeCamera = this.thirdCameraObject;
     this.input.alwaysTrackMouse = true;
-    // Request pointer lock for third-person/first-person camera when the user clicks
-    // Ignore clicks originating from the pause menu so the Resume button's click
-    // doesn't accidentally trigger a second request or race with the resume flow.
-    window.addEventListener('click', (e) => {
-      if (this.pauseMenu && this.pauseMenu.contains && this.pauseMenu.contains(e.target)) return;
-      // request pointer lock when clicking while in first or third person
-      if ((this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) && document.pointerLockElement !== document.body) {
-        try {
-          document.body.requestPointerLock();
-        } catch (err) {
-          // Some browsers may throw if the gesture was not accepted; swallow and warn
-          console.warn('requestPointerLock failed:', err);
+
+    // --- UI manager (init early so listeners can safely reference it) --------
+    const appEl = document.getElementById('app');
+    if (!appEl) {
+      console.error('[Game] Missing #app root element in DOM. Cannot initialize UI.');
+    }
+    this.ui = new UIManager(appEl || document.body);
+    // Baseline HUD + persistent debug UI
+    this.ui.add('hud', HUD, { health: 100 });
+    this.ui.add('fps', FPS, { showFrameTime: true });
+    this.ui.add('crosshair', Crosshair, { visible: true });
+    // World map (hidden initially)
+    this.ui.add('worldmap', WorldMap, {}).show(false);
+
+    // --- Pause menu references (if present in your HTML) ---------------------
+    this.pauseMenu = document.getElementById('pauseMenu') || null;
+    const resumeBtn = document.getElementById('resumeBtn') || null;
+    if (resumeBtn) {
+      resumeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        this.setPaused(false);
+        if (this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) {
+          try { document.body.requestPointerLock(); } catch (err) {
+            console.warn('[Game] requestPointerLock on resume failed:', err);
+          }
         }
+      });
+    }
+
+    // --- Lighting ------------------------------------------------------------
+    this.lights = new LightManager(this.scene);
+
+    // --- Combat system -------------------------------------------------------
+    this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
+
+    // --- Cinematic control hooks (for CinematicsManager) ---------------------
+    this._cinematicControls = {
+      freeze: (on) => this.setFrozen(on),
+      spawnFirstBug: () => (this.level?.spawnFirstBug ? this.level.spawnFirstBug() : null),
+
+      context: {},
+
+      switchToFreeCamera: (player) => {
+        const prevCamObj = this.activeCamera;
+        const wasLocked  = (document.pointerLockElement === document.body);
+
+        // Move free cam near player and switch
+        this.freeCam.moveNearPlayer(player || this.player);
+        this.activeCamera = this.freeCameraObject;
+        this.input.alwaysTrackMouse = false;
+        if (wasLocked) {
+          this._suppressPointerLockPause = true;
+          try { document.exitPointerLock(); } catch {}
+        }
+        this.player.mesh.visible = true;
+
+        // Return restore() to go back to the exact previous camera
+        return () => {
+          this.activeCamera = prevCamObj;
+          const needsLock = (this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject);
+          this.input.alwaysTrackMouse = needsLock;
+          this.player.mesh.visible = (this.activeCamera !== this.firstCameraObject);
+          if (needsLock && document.pointerLockElement !== document.body) {
+            try { document.body.requestPointerLock(); } catch {}
+          }
+        };
+      },
+
+      getActiveCamera: () => this.activeCamera,
+
+      getEnemies: () =>
+        (this.level && typeof this.level.getEnemies === 'function' && this.level.getEnemies()) ||
+        (this.level && this.level.enemyManager && this.level.enemyManager.enemies) ||
+        [],
+
+      freeCamAPI: this.freeCam
+    };
+
+    Object.defineProperties(this._cinematicControls.context, {
+      nodePoints: {
+        enumerable: true,
+        get: () => (Array.isArray(this.level?.data?.nodePoints) ? this.level.data.nodePoints : [])
+      },
+      firstBugSpawn: {
+        enumerable: true,
+        get: () => (Array.isArray(this.level?.data?.firstBugSpawn) ? this.level.data.firstBugSpawn : [6, 3, -4])
       }
     });
 
-    // When pointer lock is exited (usually via Escape), if we were in third/first person
-    // we should go directly to the pause menu. Some exits are intentional (we call
-    // document.exitPointerLock()); to avoid treating those as user Esc presses we
-    // use a suppression flag.
-    this._suppressPointerLockPause = false;
+    // --- Pointer-lock: click to request (ignore UI) --------------------------
+    window.addEventListener('click', (e) => {
+      try {
+        const wm = this.ui?.get?.('worldmap');
+        const clickedPause = !!(this.pauseMenu && this.pauseMenu.contains && this.pauseMenu.contains(e.target));
+        const clickedWm    = !!(wm && wm.contains && wm.contains(e.target));
+        const clickedMenu  = !!(this.ui?.get('menu')?.contains?.(e.target));
+        if (clickedPause || clickedWm || clickedMenu) return;
+
+        if ((this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) &&
+            document.pointerLockElement !== document.body) {
+          document.body.requestPointerLock();
+        }
+      } catch (err) {
+        console.warn('[Game] requestPointerLock click handler failed:', err);
+      }
+    });
+
+    // --- Pointer-lock change: treat user ESC as pause (unless frozen) --------
     document.addEventListener('pointerlockchange', () => {
-      // Only react to lock being removed
       if (document.pointerLockElement) return;
       if (this._suppressPointerLockPause) {
-        // programmatic exit; clear flag and do nothing
         this._suppressPointerLockPause = false;
         return;
       }
-      // If we were in first/third person, interpret the pointerlock exit as Esc -> pause
-      if (this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) {
+      if (!this._frozen && (this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject)) {
         this.setPaused(true);
       }
     });
 
-    // When switching to free camera, move it near player
+    // --- Keyboard bindings ---------------------------------------------------
     this._bindKeys();
 
-  // UI manager (modular UI per-level)
-  this.ui = new UIManager(document.getElementById('app'));
-  // register a default HUD — actual per-level UI will be loaded by loadLevel
-  this.ui.add('hud', HUD, { health: 100 });
-  // Add FPS counter
-  this.ui.add('fps', FPS, { showFrameTime: true });
-  // Add crosshair for combat
-  this.ui.add('crosshair', Crosshair, { visible: true });
-
-  // Combat system
-  this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
-
-  // Lighting manager (modular per-level lights)
-  this.lights = new LightManager(this.scene);
-
-    // Load the initial level early so subsequent code can reference `this.level`
-    this._initializeLevel();
-
-    // small world grid
+    // --- Scene helpers -------------------------------------------------------
     const grid = new THREE.GridHelper(200, 200, 0x444444, 0x222222);
-    this.scene.add(grid);    // Pause state
-    this.paused = false;
-    this.pauseMenu = document.getElementById('pauseMenu');
-    const resumeBtn = document.getElementById('resumeBtn');
-    if (resumeBtn) resumeBtn.addEventListener('click', (e) => {
-      // prevent the click from bubbling to the global click handler which would
-      // also try to request pointer lock and could race with this handler
-      e.stopPropagation();
-      e.preventDefault();
-      this.setPaused(false);
-      // After resuming, if we're in a camera mode that prefers pointer lock,
-      // request it using the same user gesture (the button click). Wrap in try/catch
-      // to avoid unhandled exceptions in browsers that refuse the request.
-      if (this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) {
-        try {
-          document.body.requestPointerLock();
-        } catch (err) {
-          console.warn('requestPointerLock on resume failed:', err);
-        }
-      }
-    });
+    this.scene.add(grid);
 
-  // loop
-  this.last = performance.now();
-  this._loop = this._loop.bind(this);
-  requestAnimationFrame(this._loop);
+    // --- Main loop -----------------------------------------------------------
+    this.last = performance.now();
+    this._loop = this._loop.bind(this);
+    requestAnimationFrame(this._loop);
+
+    // --- Load first level ----------------------------------------------------
+    this._initializeLevel().catch(err => {
+      console.error('[Game] Initial level load failed:', err);
+    });
   }
 
-  // Initialize the first level asynchronously
   async _initializeLevel() {
     await this.loadLevel(0);
-    // Apply lights for current level   
     this.applyLevelLights(this.level?.data);
   }
 
   _bindKeys() {
     window.addEventListener('keydown', (e) => {
       const code = e.code;
-      // Always allow toggling pause via Escape
-      if (code === 'Escape') {
-        this.setPaused(!this.paused);
+
+      // World map toggle (doesn’t use pause menu)
+      if (code === 'KeyM') {
+        const wm = this.ui.get('worldmap');
+        if (wm) {
+          wm.toggle();
+          if (wm._visible) {
+            this.input?.setEnabled?.(false);
+            if (document.pointerLockElement) {
+              this._suppressPointerLockPause = true;
+              try { document.exitPointerLock(); } catch {}
+            }
+          } else {
+            if (!this.paused) this.input?.setEnabled?.(true);
+            if ((this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) &&
+                !document.pointerLockElement) {
+              try { document.body.requestPointerLock(); } catch {}
+            }
+          }
+        }
         return;
       }
-      // When paused ignore other keys
+
+      if (code === 'Escape') { this.setPaused(!this.paused); return; }
       if (this.paused) return;
 
       if (code === 'KeyC') {
-        // cycle cameras: free -> third -> first -> free
+        // Cycle cameras: free -> third -> first -> free
         if (this.activeCamera === this.freeCameraObject) {
-          // free -> third
           this.activeCamera = this.thirdCameraObject;
           this.input.alwaysTrackMouse = true;
           document.body.requestPointerLock();
           this.player.mesh.visible = true;
         } else if (this.activeCamera === this.thirdCameraObject) {
-          // third -> first
           this.activeCamera = this.firstCameraObject;
           this.input.alwaysTrackMouse = true;
           document.body.requestPointerLock();
-          this.player.mesh.visible = false; // hide model in first-person to avoid clipping
+          this.player.mesh.visible = false;
         } else {
-          // first (or other) -> free
           this.freeCam.moveNearPlayer(this.player);
           this.activeCamera = this.freeCameraObject;
           this.input.alwaysTrackMouse = false;
-          if (document.pointerLockElement) { this._suppressPointerLockPause = true; document.exitPointerLock(); }
-          this.player.mesh.visible = true; // restore visibility
+          if (document.pointerLockElement) {
+            this._suppressPointerLockPause = true;
+            try { document.exitPointerLock(); } catch {}
+          }
+          this.player.mesh.visible = true;
         }
-        // ensure player is active when in third- or first-person
-        // (handled each frame in _loop by checking activeCamera)
       } else if (code === 'KeyN') {
-        // next level — use loadLevel so per-level UI is applied
         const nextIndex = this.levelManager.currentIndex + 1;
-        this.loadLevel(nextIndex).catch(err => console.error('Failed to load level:', err));
+        this.loadLevel(nextIndex).catch(err => console.error('[Game] Failed to load next level:', err));
+      } else if (code === 'KeyH') {
+        // show/hide runtime helpers & colliders (player + level)
+        this.showColliders = !this.showColliders;
+        if (this.level?.toggleColliders) this.level.toggleColliders(this.showColliders);
+        this.player.toggleHelperVisible?.(this.showColliders);
       } else if (code === 'KeyL') {
         // toggle physics debug visualization
-        const debugEnabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
+        const enabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
+        console.log('[Physics] debug:', enabled);
       } else if (code === 'KeyB') {
         // toggle combat debug visuals
-        if (this.combatSystem) {
-          this.combatSystem.toggleDebug();
-        }
+        this.combatSystem?.toggleDebug?.();
       }
     });
   }
@@ -211,209 +292,297 @@ export class Game {
     const now = performance.now();
     let delta = (now - this.last) / 1000;
     this.last = now;
-    // clamp delta
     delta = Math.min(delta, 1 / 20);
 
-    // If paused: skip updates but still render the current frame.
-    if (this.paused) {
-      this.renderer.render(this.scene, this.activeCamera);
-      return;
-    }
-
-    // Step physics simulation
-    this.physicsWorld.step(delta);
-
-    // update level (updates colliders/helpers and enemies) - only if level is loaded
-    if (this.level && this.level.update) {
-      this.level.update(delta, this.player, this.level.getPlatforms());
-    }
-
-    // update UI each frame with some context (player model and simple state)
-    if (this.ui) {
-      const ctx = {
-        player: { 
-          health: this.player.health ?? 100,
-          maxHealth: this.player.maxHealth ?? 100 
-        },
-        playerModel: this.player.mesh
-      };
-      this.ui.update(delta, ctx);
-    }
-
-    // determine camera orientation for movement mapping
-    let camOrientation, playerActive;
-    if (this.activeCamera === this.thirdCam.getCamera()) {
-      this.thirdCam.update();
-      camOrientation = this.thirdCam.getCameraOrientation();
-      playerActive = true;
-    } else if (this.activeCamera === this.firstCam.getCamera()) {
-      this.firstCam.update();
-      camOrientation = this.firstCam.getCameraOrientation();
-      playerActive = true;
-    } else {
-      this.freeCam.update(delta);
-      camOrientation = this.freeCam.getOrientation();
-      playerActive = false;
-    }
-
-    // Update crosshair visibility based on camera mode
-    const crosshair = this.ui.get('crosshair');
-    if (crosshair) {
-      crosshair.setProps({ visible: true }); // Always visible for debugging
-    }
-
-    // update player (movement read from input manager)
-    const platforms = this.level ? this.level.getPlatforms() : [];
-    this.player.update(delta, this.input, camOrientation, platforms, playerActive);
-
-    // Handle combat input (left-click to attack)
-    if (playerActive && this.input.wasLeftClicked() && this.combatSystem.canAttack()) {
-      if (this.player.performAttack()) {
-        // Set enemies for combat system if level has them
-        if (this.level && this.level.getEnemies) {
-          this.combatSystem.setEnemies(this.level.getEnemies());
-        }
-        // Perform the sword swing attack (better for horizontal sword animation)
-        this.combatSystem.performSwordSwing(this.player, this.activeCamera);
+    try {
+      // If paused or frozen → still render a frame so scene isn’t blank
+      if (this.paused || this._frozen) {
+        this.renderer.render(this.scene, this.activeCamera);
+        return;
       }
+
+      // Physics step
+      this.physicsWorld?.step(delta);
+
+      // Level update
+      if (this.level?.update) {
+        this.level.update(delta, this.player, this.level.getPlatforms());
+      }
+
+      // UI update (map, hud, etc.)
+      if (this.ui) {
+        const enemyInstances =
+          (this.level && typeof this.level.getEnemies === 'function' && this.level.getEnemies()) ||
+          (this.level && this.level.enemyManager && this.level.enemyManager.enemies) ||
+          [];
+
+        const enemiesForUI = enemyInstances.map(e => {
+          const p = e?.mesh?.position ?? e?.position ?? null;
+          if (p && typeof p.x === 'number') return { position: [p.x, p.y ?? 0, p.z] };
+          if (Array.isArray(e?.position)) return { position: e.position };
+          return null;
+        }).filter(Boolean);
+
+        const levelData = this.level?.data;
+        const ctx = {
+          player: { health: this.player.health ?? 100, maxHealth: this.player.maxHealth ?? 100 },
+          playerModel: this.player.mesh,
+          map: {
+            levelData,
+            playerPos: this.player.mesh?.position,
+            enemies: enemiesForUI.length ? enemiesForUI : (levelData?.enemies || [])
+          }
+        };
+        this.ui.update(delta, ctx);
+      }
+
+      // Camera updates & movement orientation
+      let camOrientation, playerActive;
+      if (this.activeCamera === this.thirdCam.getCamera()) {
+        this.thirdCam.update();
+        camOrientation = this.thirdCam.getCameraOrientation();
+        playerActive = true;
+      } else if (this.activeCamera === this.firstCam.getCamera()) {
+        this.firstCam.update();
+        camOrientation = this.firstCam.getCameraOrientation();
+        playerActive = true;
+      } else {
+        this.freeCam.update(delta);
+        camOrientation = this.freeCam.getOrientation();
+        playerActive = false;
+      }
+
+      // Player update
+      const platforms = this.level ? this.level.getPlatforms() : [];
+      this.player.update(delta, this.input, camOrientation, platforms, playerActive);
+
+      // Combat input & update
+      if (playerActive && this.input.wasLeftClicked && this.input.wasLeftClicked() && this.combatSystem.canAttack()) {
+        if (this.player.performAttack?.()) {
+          if (this.level?.getEnemies) {
+            this.combatSystem.setEnemies(this.level.getEnemies());
+          }
+          this.combatSystem.performSwordSwing(this.player, this.activeCamera);
+        }
+      }
+      this.combatSystem.update(delta);
+
+      // Lights animate
+      this.lights?.update?.(delta);
+
+      // Render
+      this.renderer.render(this.scene, this.activeCamera);
+    } catch (err) {
+      console.error('[Game] Loop error:', err);
+      // Try to at least render something instead of a white screen
+      try { this.renderer.render(this.scene, this.activeCamera); } catch {}
     }
-
-    // Update combat system
-    this.combatSystem.update(delta);
-
-  // update lights (allow dynamic lights to animate)
-  if (this.lights) this.lights.update(delta);
-
-    // render
-    this.renderer.render(this.scene, this.activeCamera);
   }
 
-  // Load level by index and swap UI based on level metadata
   async loadLevel(index) {
-    if (this.level) this.level.dispose();
-    
-    // Preserve debug state before disposing old physics world
+    // Dispose previous level (if any)
+    if (this.level) {
+      try { this.level.dispose(); } catch (e) { console.warn('[Game] Previous level dispose failed:', e); }
+      this.level = null;
+    }
+
+    // Recreate physics world to ensure clean state per level
     const wasDebugEnabled = this.physicsWorld.isDebugEnabled();
-    
-    // Clear existing physics bodies and recreate physics world with improved collision detection
     this.physicsWorld.dispose();
     this.physicsWorld = new PhysicsWorld(this.scene, {
-      useAccurateCollision: false, // Disable Trimesh by default for more reliable collision
-      debugMode: wasDebugEnabled   // Preserve debug state across level transitions
+      useAccurateCollision: false,
+      debugMode: wasDebugEnabled
     });
-    
-    // Update player's physics world reference
+
+    // Update refs that depend on physics world
     this.player.physicsWorld = this.physicsWorld;
-    
-    // Update combat system's physics world reference
-    this.combatSystem.physicsWorld = this.physicsWorld;
-    
-    // Recreate player's physics body in the new physics world
     if (this.player.originalModelSize) {
       this.player.createPhysicsBody(this.player.originalModelSize);
     }
-    
-    // Update level manager's physics world reference
+    this.combatSystem.physicsWorld = this.physicsWorld;
     this.levelManager.physicsWorld = this.physicsWorld;
-    
-    this.level = await this.levelManager.loadIndex(index);
 
-    // Position player at start position
-    const start = this.level.data.startPosition;
-    this.player.setPosition(new THREE.Vector3(...start));
-    
-    // Trigger level start cinematic
-    this.level.triggerLevelStartCinematic(this.activeCamera, this.player);
+    console.log('[Game] Loading level...', index);
+    let newLevel;
+    try {
+      newLevel = await this.levelManager.loadIndex(index);
+    } catch (e) {
+      console.error('[Game] levelManager.loadIndex failed:', e);
+      throw e;
+    }
+    this.level = newLevel;
 
-    // swap UI components according to level.data.ui (array of strings)
+    // Supply player ref for node system (if used)
+    this.level.setPlayerRef?.(this.player);
+
+    // Position player at spawn
+    try {
+      const start = this.level.data.startPosition || [0, 3, 0];
+      this.player.setPosition(new THREE.Vector3(...start));
+      this.player.velocity.set(0, 0, 0);
+    } catch (e) {
+      console.warn('[Game] Failed to position player:', e);
+    }
+
+    // Collider visuals
+    if (this.level.toggleColliders) this.level.toggleColliders(this.showColliders);
+    this.player.toggleHelperVisible?.(this.showColliders);
+
+    // UI & lights for this level
     this.applyLevelUI(this.level.data);
-    // swap lighting according to level.data.lights (array of descriptors)
     this.applyLevelLights(this.level.data);
+
+    // Start intro cinematic safely — always unfreeze at the end
+    try {
+      const p = this.level?.cinematicsManager?.playCinematic(
+        'onLevelStart',
+        this.activeCamera,
+        this.player,
+        this.ui,
+        this._cinematicControls
+      );
+      await Promise.resolve(p);
+    } catch (err) {
+      console.error('[Game] Intro cinematic failed:', err);
+    } finally {
+      this.setFrozen(false);
+    }
+
+    console.log('[Game] Level loaded successfully');
     return this.level;
   }
 
   applyLevelLights(levelData) {
     if (!this.lights) return;
-    // Clear existing lights
-    this.lights.clear();
-    const list = (levelData && levelData.lights) ? levelData.lights : null;
-    if (!list) return;
-    // list is array of either string keys or objects { key, props }
-    for (const item of list) {
-      let key, props;
-      if (typeof item === 'string') { key = item; props = {}; }
-      else { key = item.key; props = item.props || {}; }
-      const Module = LightModules[key];
-      if (!Module) {
-        console.warn('Unknown light module key in level data:', key);
-        continue;
+    try {
+      this.lights.clear();
+      const list = (levelData && levelData.lights) ? levelData.lights : null;
+      if (!list) return;
+      for (const item of list) {
+        let key, props;
+        if (typeof item === 'string') { key = item; props = {}; }
+        else { key = item.key; props = item.props || {}; }
+        const Module = LightModules[key];
+        if (!Module) { console.warn('[Game] Unknown light module key:', key); continue; }
+        this.lights.add(key, Module, props);
       }
-      this.lights.add(key, Module, props);
+    } catch (e) {
+      console.warn('[Game] applyLevelLights error:', e);
+    }
+  }
+
+  // Freeze gameplay without pause UI (cinematics)
+  setFrozen(on) {
+    const want = !!on;
+    if (this._frozen === want) return;
+    this._frozen = want;
+
+    // disable input while frozen
+    this.input?.setEnabled?.(!want);
+
+    // exit pointer lock so user can’t steer while frozen
+    if (want && document.pointerLockElement) {
+      this._suppressPointerLockPause = true;
+      try { document.exitPointerLock(); } catch {}
     }
   }
 
   applyLevelUI(levelData) {
-    // Clear existing UI and re-add defaults according to level metadata
     if (!this.ui) return;
-    
-    // Store global components that should persist across levels
-    const globalComponents = new Map();
-    if (this.ui.get('fps')) {
-      globalComponents.set('fps', this.ui.get('fps'));
-    }
-    if (this.ui.get('crosshair')) {
-      globalComponents.set('crosshair', this.ui.get('crosshair'));
-    }
-    
-    this.ui.clear();
-    
-    // Re-add global components first
-    for (const [key, component] of globalComponents) {
-      this.ui.components.set(key, component);
-      // Re-mount the component since it was unmounted during clear
-      if (component.mount) {
-        component.mount();
+    try {
+      // Preserve persistent components (fps, crosshair) across level clears
+      const persist = {};
+      const keepKeys = ['fps', 'crosshair', 'worldmap'];
+      for (const k of keepKeys) {
+        const c = this.ui.get(k);
+        if (c) persist[k] = c;
       }
+
+      this.ui.clear();
+
+      // Re-add persistent components first (mount if necessary)
+      for (const k of Object.keys(persist)) {
+        this.ui.components.set(k, persist[k]);
+        if (persist[k].mount) persist[k].mount();
+        if (k === 'worldmap') persist[k].show(false);
+      }
+      if (!this.ui.get('fps')) this.ui.add('fps', FPS, { showFrameTime: true });
+      if (!this.ui.get('crosshair')) this.ui.add('crosshair', Crosshair, { visible: true });
+      if (!this.ui.get('worldmap')) this.ui.add('worldmap', WorldMap, {}).show(false);
+
+      const uiList = (levelData && levelData.ui) ? levelData.ui : ['hud'];
+
+      for (const uiItem of uiList) {
+        let key, config;
+        if (typeof uiItem === 'string') {
+          key = uiItem; config = {};
+        } else if (typeof uiItem === 'object' && uiItem.type) {
+          key = uiItem.type; config = uiItem.config || {};
+        } else {
+          console.warn('[Game] Invalid UI item in level data:', uiItem);
+          continue;
+        }
+
+        if (key === 'hud') {
+          this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
+        } else if (key === 'minimap') {
+          this.ui.add('minimap', Minimap, config);
+        } else if (key === 'objectives') {
+          this.ui.add('objectives', Objectives, {
+            items: levelData.objectives ?? ['Reach the goal'],
+            ...config
+          });
+        } else if (key === 'menu') {
+          const m = this.ui.add('menu', SmallMenu, { onResume: () => this.setPaused(false), ...config });
+          if (m?.show) m.show(false); else if (m?.root?.style) m.root.style.display = 'none';
+        } else if (key === 'collectibles') {
+          this.ui.add('collectibles', Collectibles, config);
+        } else if (key === 'timer') {
+          this._addTimer(levelData);
+        } else if (key === 'fps' || key === 'crosshair') {
+          // already handled as persistent
+          continue;
+        } else {
+          console.warn('[Game] Unknown UI component type in level data:', key);
+        }
+      }
+
+      // World map always present but hidden
+      const wm = this.ui.get('worldmap') || this.ui.add('worldmap', WorldMap, {});
+      wm?.show(false);
+
+      // If timerSeconds present but 'timer' wasn’t in ui[], still add it:
+      if (levelData?.timerSeconds && !uiList.includes('timer')) {
+        this._addTimer(levelData);
+      }
+    } catch (e) {
+      console.error('[Game] applyLevelUI error:', e);
     }
-    
-    const uiList = (levelData && levelData.ui) ? levelData.ui : ['hud'];
-    
-    for (const uiItem of uiList) {
-      // Handle both string format ("hud") and object format ({ type: "collectibles", config: {...} })
-      let key, config;
-      if (typeof uiItem === 'string') {
-        key = uiItem;
-        config = {};
-      } else if (typeof uiItem === 'object' && uiItem.type) {
-        key = uiItem.type;
-        config = uiItem.config || {};
-      } else {
-        console.warn('Invalid UI item format in level data:', uiItem);
-        continue;
-      }
-      
-      if (key === 'hud') {
-        this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
-      } else if (key === 'minimap') {
-        this.ui.add('minimap', Minimap, config);
-      } else if (key === 'objectives') {
-        this.ui.add('objectives', Objectives, { 
-          items: levelData.objectives ?? ['Reach the goal'],
-          ...config 
-        });
-      } else if (key === 'menu') {
-        this.ui.add('menu', SmallMenu, { 
-          onResume: () => this.setPaused(false),
-          ...config 
-        });
-      } else if (key === 'collectibles') {
-        this.ui.add('collectibles', Collectibles, config);
-      } else if (key === 'fps') {
-        // FPS is already added as a global component, skip
-        continue;
-      } else {
-        console.warn('Unknown UI component type in level data:', key);
-      }
+  }
+
+  _addTimer(levelData) {
+    const seconds = Math.floor(levelData?.timerSeconds ?? 120);
+    try {
+      const timer = this.ui.add('timer', CountdownTimer, {
+        seconds,
+        onStart: () => {},
+        onWarning30: () => {
+          const cm = this.level?.cinematicsManager;
+          if (cm?.playCinematic) {
+            cm.playCinematic('timeWarning30', this.activeCamera, this.player, this.ui, this._cinematicControls);
+          }
+        },
+        onExpire: () => {
+          const cm = this.level?.cinematicsManager;
+          if (cm?.playCinematic) {
+            cm.playCinematic('onLevelFail', this.activeCamera, this.player, this.ui, this._cinematicControls);
+          }
+        }
+      });
+      return timer;
+    } catch (e) {
+      console.error('[Game] Failed to add timer:', e);
+      return null;
     }
   }
 
@@ -421,18 +590,26 @@ export class Game {
     const want = !!v;
     if (this.paused === want) return;
     this.paused = want;
-    // show/hide UI
+
+    // Show/hide legacy DOM pause menu if present
     if (this.pauseMenu) {
       this.pauseMenu.style.display = want ? 'flex' : 'none';
       this.pauseMenu.setAttribute('aria-hidden', (!want).toString());
     }
-    // disable input handling when paused
-    if (this.input && this.input.setEnabled) {
-      this.input.setEnabled(!want);
+
+    // Toggle SmallMenu UI component
+    const menuComp = this.ui?.get('menu');
+    if (menuComp) {
+      if (typeof menuComp.show === 'function') menuComp.show(want);
+      else if (menuComp.root?.style) menuComp.root.style.display = want ? '' : 'none';
     }
-    // if pausing, exit pointer lock so user can interact with UI
+
+    // Enable/disable input
+    this.input?.setEnabled?.(!want);
+
+    // If pausing, exit pointer lock so user can interact with UI
     if (want && document.pointerLockElement) {
-      try { document.exitPointerLock(); } catch (e) { /* ignore */ }
+      try { document.exitPointerLock(); } catch {}
     }
   }
 }
