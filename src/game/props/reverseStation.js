@@ -1,250 +1,121 @@
-// src/game/level.js
 import * as THREE from 'three';
-import { ColliderHelper } from './colliderHelper.js';
-import { EnemyManager } from './EnemyManager.js';
-import { loadGLTFModel } from './gltfLoader.js';
-import { CinematicsManager } from './cinematicsManager.js';
-import { NodeManager } from './linkedList/NodeManager.js';
-import { ReverseStation } from './props/reverseStation.js';
 
-export class Level {
-  constructor(scene, levelData, showColliders = true) {
+export class ReverseStation {
+  constructor(scene, position = [0, 3.2, 10], opts = {}) {
     this.scene = scene;
-    this.data = levelData;
+    this.position = new THREE.Vector3(...position);
+    this.interactRadius = opts.interactRadius ?? 3.0;
+    this._interacted = false;
 
-    this.objects = [];
-    this.colliders = [];
-    this.helpers  = [];
-    this.showColliders = showColliders;
+    this.root = new THREE.Group();
+    this.root.position.copy(this.position);
+    this.scene.add(this.root);
 
-    this.enemyManager = new EnemyManager(this.scene);
-    this._firstBug = null;
-    this.nodeManager = null;
+    const metal = new THREE.MeshStandardMaterial({ color: 0x22303f, metalness: 0.7, roughness: 0.35 });
+    const panel = new THREE.MeshStandardMaterial({ color: 0x2b3648, metalness: 0.2, roughness: 0.8 });
+    const glass = new THREE.MeshStandardMaterial({ color: 0x8ecaff, emissive: 0x162738, emissiveIntensity: 0.35, metalness: 0.1, roughness: 0.1 });
+    const accentGreen = new THREE.MeshStandardMaterial({ color: 0x22c55e, emissive: 0x0b5d2b, emissiveIntensity: 0.9 });
+    const accentAmber = new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0x6a3d00, emissiveIntensity: 0.8 });
+    const accentRed   = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x4a0a0a, emissiveIntensity: 0.9 });
 
-    this._playerRef = null;
-    this._inputRef = null;
+    const gBase = new THREE.BoxGeometry(8, 0.5, 6);
+    const mBase = metal.clone(); mBase.color.set(0x1f2a38);
+    this.base = new THREE.Mesh(gBase, mBase); this.base.receiveShadow = true; this.root.add(this.base);
 
-    this._eHeld = false; // for edge-detecting the E key
-    this.reverseStation = null;
+    const mkRail = (x) => {
+      const g = new THREE.BoxGeometry(0.2, 1.4, 6);
+      const mesh = new THREE.Mesh(g, panel); mesh.position.set(x, 0.7, 0); mesh.castShadow = mesh.receiveShadow = true; return mesh;
+    };
+    this.root.add(mkRail(-3.5), mkRail(3.5));
 
-    this.gltfLoaded = false;
-    this.cinematicsManager = new CinematicsManager(scene);
+    const pedG = new THREE.BoxGeometry(2, 2, 2);
+    this.pedestal = new THREE.Mesh(pedG, panel); this.pedestal.position.set(-1, 1, 0); this.pedestal.castShadow = this.pedestal.receiveShadow = true; this.root.add(this.pedestal);
+
+    const scrG = new THREE.BoxGeometry(2.2, 1.2, 0.2);
+    this.screen = new THREE.Mesh(scrG, glass); this.screen.position.set(-1, 2.2, -0.8); this.screen.rotation.x = THREE.MathUtils.degToRad(-12); this.root.add(this.screen);
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0x8ecaff, transparent: true, opacity: 0.25 });
+    const glowGeo = new THREE.PlaneGeometry(2.4, 1.3);
+    this.screenGlow = new THREE.Mesh(glowGeo, glowMat); this.screenGlow.position.set(0, 0, 0.12); this.screen.add(this.screenGlow);
+
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(8, 2, 0.2), panel);
+    wall.position.set(0, 1.1, 2.8); wall.castShadow = wall.receiveShadow = true; this.root.add(wall);
+    const mkLamp = (x, mat) => {
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.2), mat.clone());
+      lamp.position.set(x, 1.6, 0.11); lamp.userData._baseEmissive = lamp.material.emissiveIntensity; wall.add(lamp); return lamp;
+    };
+    this.lamps = [ mkLamp(-2.8, accentGreen), mkLamp(-2.0, accentAmber), mkLamp(-1.2, accentRed) ];
+
+    const torus = new THREE.TorusGeometry(1.8, 0.06, 16, 64);
+    this.ring = new THREE.Mesh(torus, new THREE.MeshStandardMaterial({
+      color: 0x7dd3fc, emissive: 0x0a3a4f, emissiveIntensity: 1.1, metalness: 0.6, roughness: 0.3
+    }));
+    this.ring.position.set(2.4, 1.3, 0); this.root.add(this.ring);
+
+    // Prompt
+    const spriteMat = new THREE.SpriteMaterial({ color: 0xffffff });
+    this.prompt = new THREE.Sprite(spriteMat); this.prompt.scale.set(0.9, 0.3, 1); this.prompt.position.set(-1, 2.9, -0.8); this.prompt.visible = false; this.root.add(this.prompt);
+    const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#ffffff'; ctx.font = '28px system-ui, -apple-system, Segoe UI, Roboto, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Press E: Reverse', canvas.width / 2, canvas.height / 2);
+    const tex = new THREE.CanvasTexture(canvas); this.prompt.material.map = tex; this.prompt.material.needsUpdate = true;
+
+    this._rangeHelper = new THREE.Mesh(
+      new THREE.SphereGeometry(this.interactRadius, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: true, transparent: true, opacity: 0.08 })
+    );
+    this._rangeHelper.visible = false; this.root.add(this._rangeHelper);
+
+    this._t = 0;
   }
 
-  static async create(scene, levelData, showColliders = true) {
-    const level = new Level(scene, levelData, showColliders);
-    await level._buildFromData();
-    return level;
-  }
+  update(delta = 1/60) {
+    this._t += delta;
+    const bob = Math.sin(this._t * 2.2) * 0.06;
+    this.ring.position.y = 1.3 + bob;
+    this.ring.rotation.y += delta * 1.2;
 
-  async _buildFromData() {
-    let geometryLoaded = false;
-
-    if (this.data.gltfUrl) {
-      try {
-        await this._loadGLTFGeometry(this.data.gltfUrl);
-        this.gltfLoaded = true;
-        geometryLoaded = true;
-      } catch (error) {
-        console.warn('Failed to load GLTF level geometry:', error);
-        this.gltfLoaded = false;
-      }
-    }
-
-    if (!geometryLoaded) this._buildFallbackGeometry();
-
-    this._loadEnemies();
-
-    if (this.data.cinematics) {
-      this.cinematicsManager.loadCinematics(this.data.cinematics);
-    }
-
-    // Create Reverse Station (position can be configured in level data)
-    const rsPos = Array.isArray(this.data.reverseStationPos) ? this.data.reverseStationPos : [0, 3.2, 10];
-    this.reverseStation = new ReverseStation(this.scene, rsPos);
-
-    if (this._playerRef) this.initNodeSystem(this._playerRef, this.cinematicsManager);
-  }
-
-  async _loadGLTFGeometry(url) {
-    const gltf = await loadGLTFModel(url);
-    if (!gltf || !gltf.scene) throw new Error(`Invalid GLTF for ${url}`);
-
-    const meshesToProcess = [];
-    gltf.scene.traverse((child) => { if (child.isMesh) meshesToProcess.push(child); });
-
-    this.scene.add(gltf.scene);
-
-    for (const child of meshesToProcess) {
-      this.objects.push(child);
-
-      const box = new THREE.Box3().setFromObject(child);
-      child.userData.collider = box;
-      this.colliders.push(box);
-
-      const helper = new ColliderHelper(box, 0x00ff00);
-      helper.setVisible(this.showColliders);
-      this.scene.add(helper.mesh);
-      this.helpers.push(helper);
-
-      child.userData.type = 'gltf';
-      const name = (child.name || '').toLowerCase();
-      child.userData.isCollider = name.includes('collider') || name.includes('collision');
-    }
-  }
-
-  _buildFallbackGeometry() {
-    const list = this.data.fallbackObjects || this.data.objects || [];
-    for (const obj of list) {
-      if (obj.type === 'box') {
-        const geom = new THREE.BoxGeometry(obj.size[0], obj.size[1], obj.size[2]);
-        const mat = new THREE.MeshStandardMaterial({ color: obj.color ?? 0x808080 });
-        const mesh = new THREE.Mesh(geom, mat);
-        mesh.position.set(obj.position[0], obj.position[1], obj.position[2]);
-        mesh.userData.type = 'box';
-        this.scene.add(mesh);
-        this.objects.push(mesh);
-
-        const box = new THREE.Box3().setFromObject(mesh);
-        mesh.userData.collider = box;
-        this.colliders.push(box);
-
-        const helper = new ColliderHelper(box, 0x0000ff);
-        helper.setVisible(this.showColliders);
-        this.scene.add(helper.mesh);
-        this.helpers.push(helper);
-      }
+    const pulse = 0.35 + Math.sin(this._t * 3.0) * 0.25;
+    if (!this._interacted) {
+      this.screen.material.emissiveIntensity = 0.35 + pulse * 0.35;
+      this.lamps.forEach((lamp, i) => {
+        const phase = this._t * 3.2 + i * 0.6;
+        lamp.material.emissiveIntensity = lamp.userData._baseEmissive + 0.4 * (0.5 + 0.5 * Math.sin(phase));
+      });
+    } else {
+      this.screen.material.emissiveIntensity = 1.4;
+      this.lamps.forEach(l => (l.material.emissiveIntensity = 1.4));
+      this.ring.rotation.y += delta * 2.0;
     }
   }
 
-  _loadEnemies() {
-    if (Array.isArray(this.data.enemies)) {
-      for (const ed of this.data.enemies) {
-        try { this.enemyManager.spawn(ed.type, ed); }
-        catch (e) { console.warn('Failed to spawn enemy', ed, e); }
-      }
-    }
+  isPlayerInRange(playerPos) {
+    const d = this.position.distanceTo(playerPos);
+    const inRange = d <= this.interactRadius;
+    this.prompt.visible = inRange && !this._interacted;
+    return inRange;
   }
 
-  setPlayerRef(player) {
-    this._playerRef = player;
-    if (!this.nodeManager && Array.isArray(this.data.nodePoints) && this.data.nodePoints.length > 0) {
-      this.initNodeSystem(this._playerRef, this.cinematicsManager);
-    }
-  }
-
-  setInputRef(input) { this._inputRef = input; }
-
-  initNodeSystem(playerRef, cinematicsManager) {
-    if (!Array.isArray(this.data.nodePoints) || this.data.nodePoints.length === 0) return;
-
-    this.nodeManager = new NodeManager(this.scene, {
-      points: this.data.nodePoints,
-      order: Array.isArray(this.data.nodeOrder) ? this.data.nodeOrder : undefined,
-      lineColor: 0x7dd3fc,
-      getPlayerPos: () => playerRef?.mesh?.position || new THREE.Vector3(),
-      onPhaseAdvance: () => {
-        cinematicsManager?.playCinematic?.('bugChaos');
-      },
-      onComplete: () => {
-        cinematicsManager?.playCinematic?.('onLevelComplete');
-      }
-    });
-  }
-
-  update(delta = 1 / 60, player = null, platforms = [], input = null) {
-    // Keep input ref (so Game doesn't need a separate call)
-    if (input) this._inputRef = input;
-
-    // Update colliders/helpers
-    for (let i = 0; i < this.objects.length; i++) {
-      const mesh = this.objects[i];
-      if (mesh.userData.collider) mesh.userData.collider.setFromObject(mesh);
-      this.helpers[i]?.update();
-      this.helpers[i]?.setVisible(this.showColliders);
-    }
-
-    // Enemies
-    this.enemyManager?.update(delta, player, platforms.length ? platforms : this.getPlatforms());
-
-    // Node system
-    this.nodeManager?.update(delta);
-
-    // Reverse station animations + interaction
-    if (this.reverseStation) {
-      this.reverseStation.update(delta);
-
-      if (player?.mesh?.position) {
-        const inRange = this.reverseStation.isPlayerInRange(player.mesh.position);
-
-        // simple edge detection for E
-        const eDown = !!this._inputRef?.isKey?.('KeyE');
-        if (!eDown) this._eHeld = false;
-
-        if (inRange && eDown && !this._eHeld) {
-          this._eHeld = true;
-          if (!this.reverseStation.hasInteracted()) {
-            this.reverseStation.markInteracted();
-            // As requested: throw an alert on interaction
-            alert('Reverse Station: Interaction received! Starting reverse protocol...');
-            // You can also kick off a cinematic or phase here if you want:
-            // this.cinematicsManager?.playCinematic?.('reverseIntro');
-          }
-        }
-      }
-    }
-  }
-
-  toggleColliders(v) {
-    this.showColliders = v;
-    this.helpers.forEach((h) => h.setVisible(v));
-  }
+  hasInteracted() { return this._interacted; }
+  markInteracted() { this._interacted = true; this.prompt.visible = false; }
 
   dispose() {
-    this.helpers.forEach(h => this.scene.remove(h.mesh));
-    this.objects.forEach(m => this.scene.remove(m));
-    this.objects = [];
-    this.helpers = [];
-    this.colliders = [];
-
-    this.reverseStation?.dispose?.();
-    this.nodeManager?.dispose?.();
-
-    if (this.enemyManager) { this.enemyManager.dispose(); this.enemyManager = null; }
-    if (this.cinematicsManager) { this.cinematicsManager.dispose(); this.cinematicsManager = null; }
-  }
-
-  getPlatforms() { return this.objects; }
-
-  getEnemies() { return this.enemyManager?.enemies || []; }
-
-  spawnFirstBug() {
-    if (this._firstBug) return this._firstBug;
-    const pos = Array.isArray(this.data.firstBugSpawn) ? this.data.firstBugSpawn : [6, 3, -4];
-    this._firstBug = this.enemyManager.spawn('runner', {
-      position: pos,
-      speed: 4.5,
-      chaseRange: 10,
-      modelUrl: 'src/assets/low_poly_male/scene.gltf'
+    const disposeMesh = (m) => {
+      if (!m) return;
+      if (m.geometry) m.geometry.dispose?.();
+      if (m.material) {
+        if (Array.isArray(m.material)) m.material.forEach(mt => mt.dispose?.());
+        else m.material.dispose?.();
+      }
+    };
+    this.root.traverse((o) => {
+      if (o.isMesh) disposeMesh(o);
+      if (o.isSprite) {
+        if (o.material?.map) o.material.map.dispose?.();
+        o.material?.dispose?.();
+      }
     });
-    return this._firstBug;
+    this.scene.remove(this.root);
   }
-
-  triggerLevelStartCinematic(camera, player) {
-    if (this.cinematicsManager?.cinematics?.onLevelStart) {
-      this.cinematicsManager.playCinematic('onLevelStart', camera, player);
-    }
-  }
-  triggerEnemyDefeatCinematic(camera, player) {
-    if (this.cinematicsManager?.cinematics?.onEnemyDefeat) {
-      this.cinematicsManager.playCinematic('onEnemyDefeat', camera, player);
-    }
-  }
-  triggerLevelCompleteCinematic(camera, player) {
-    if (this.cinematicsManager?.cinematics?.onLevelComplete) {
-      this.cinematicsManager.playCinematic('onLevelComplete', camera, player);
-    }
-  }
-
-  getCinematicsManager() { return this.cinematicsManager; }
 }

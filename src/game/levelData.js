@@ -375,8 +375,8 @@ export const levels = [
     fallbackObjects: [
       { type: "box", position: [0, 0, 0], size: [50, 1, 50], color: 7048739 }
     ]
-  }
-
+  },
 
   // --- Additional level from the other branch (kept alongside yours) --------
+
 ];

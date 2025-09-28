@@ -65,11 +65,9 @@ export class CinematicsManager {
       if (data.type === 'dialogue') {
         await this._playDialogue(data);
       } else {
-        // treat everything else as a cutscene (sequence/cameraPath + optional dialogue)
         await this._playCutscene(data, camera, player);
       }
 
-      // Optional "after" actions (e.g. spawnFirstBug)
       await this._runAfterHook(data?.after);
     } catch (err) {
       console.error('[Cinematics] error:', err);
@@ -85,6 +83,15 @@ export class CinematicsManager {
       // thaw & resume timer
       try { this._controls.freeze?.(false); } catch {}
       this._resumeTimer();
+
+      // NEW: keep world map closed after cinematics and re-lock pointer
+      try { this._ui?.get?.('worldmap')?.show?.(false); } catch {}
+      try {
+        const cam = this._controls?.getActiveCamera?.();
+        if (cam && document.pointerLockElement !== document.body) {
+          document.body.requestPointerLock();
+        }
+      } catch {}
 
       // cleanup
       this._restoreCam = null;
@@ -108,7 +115,6 @@ export class CinematicsManager {
 
     for (const line of lines) {
       await this._showDialogueLine(line, dialogueData.character);
-      // optional ambient micro-pan while the line is visible
       const pan = line.pan ?? { dYaw: 0.15, dPitch: 0.0, duration: Math.min(900, (line.duration || 2000) * 0.6) };
       const waitMs = line.duration || 2200;
       await Promise.race([
@@ -123,15 +129,12 @@ export class CinematicsManager {
   /* -------------------- Cutscenes -------------------- */
 
   async _playCutscene(cutsceneData, camera, player) {
-    // Preferred: "sequence" shots that map to FreeCamera API or fallbacks.
     if (Array.isArray(cutsceneData.sequence) && cutsceneData.sequence.length) {
       await this._playSequence(cutsceneData.sequence);
     } else if (Array.isArray(cutsceneData.cameraPath) && cutsceneData.cameraPath.length) {
-      // Fallback support for legacy cameraPath
       await this._playCameraPath(cutsceneData.cameraPath, this._controls?.getActiveCamera?.() || camera);
     }
 
-    // Optional embedded dialogue after shots
     if (cutsceneData.dialogue && Array.isArray(cutsceneData.dialogue)) {
       for (const line of cutsceneData.dialogue) {
         await this._showDialogueLine(line, line.character);
@@ -142,14 +145,10 @@ export class CinematicsManager {
   }
 
   async _playSequence(shots) {
-    // Expand special "useNodeTour" pseudo-shot(s) to concrete shots
     const expanded = [];
     for (const s of shots) {
-      if (s?.useNodeTour) {
-        expanded.push(...this._expandNodeTour(s));
-      } else {
-        expanded.push(s);
-      }
+      if (s?.useNodeTour) expanded.push(...this._expandNodeTour(s));
+      else expanded.push(s);
     }
 
     const fc = this._controls?.freeCamAPI;
@@ -158,7 +157,6 @@ export class CinematicsManager {
       return;
     }
 
-    // Manual step-through using our own bridges
     for (const s of expanded) {
       if (!s) continue;
       if (s.pan) await this._panTilt(s.pan);
@@ -169,7 +167,6 @@ export class CinematicsManager {
   }
 
   _expandNodeTour(opts) {
-    // Create simple per-node flyTo shots around the given node points.
     const pts = this._controls?.context?.nodePoints ?? [];
     if (!Array.isArray(pts) || pts.length === 0) return [];
 
@@ -218,7 +215,6 @@ export class CinematicsManager {
     if (fc?.orbitAround) {
       await fc.orbitAround(opts);
     } else {
-      // fallback: arc of flyTo steps
       const target = new THREE.Vector3(...(opts.target || [0, 0, 0]));
       const startA = THREE.MathUtils.degToRad(opts.startAngleDeg ?? 180);
       const endA = THREE.MathUtils.degToRad(opts.endAngleDeg ?? 360);
@@ -409,9 +405,9 @@ export class CinematicsManager {
     if (!after) return;
     if (after === 'spawnFirstBug') {
       this._controls?.spawnFirstBug?.();
-      // Optionally, focus that spawn for a beat
+      // Optional quick pan to the spawn point
       const p = this._controls?.context?.firstBugSpawn || [0, 3, 0];
-      await this._flyTo({ position: [p[0] + 4, p[1] + 4, p[2] + 4], lookAt: p, duration: 700, });
+      await this._flyTo({ position: [p[0] + 4, p[1] + 4, p[2] + 4], lookAt: p, duration: 700 });
       await this._wait(200);
     }
   }

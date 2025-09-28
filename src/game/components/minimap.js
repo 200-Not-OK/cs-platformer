@@ -28,7 +28,7 @@ export class Minimap extends UIComponent {
       backdropFilter: 'blur(2px)',
       boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
       overflow: 'hidden',
-      pointerEvents: 'auto', // allow zoom buttons
+      pointerEvents: 'auto',
       zIndex: 10
     });
 
@@ -51,10 +51,7 @@ export class Minimap extends UIComponent {
     this.canvas = document.createElement('canvas');
     this.canvas.width = this.width;
     this.canvas.height = this.height;
-    Object.assign(this.canvas.style, {
-      position: 'absolute',
-      inset: '0'
-    });
+    Object.assign(this.canvas.style, { position: 'absolute', inset: '0' });
     this.root.appendChild(this.canvas);
     this.g = this.canvas.getContext('2d');
 
@@ -75,28 +72,15 @@ export class Minimap extends UIComponent {
       return b;
     };
     const ui = document.createElement('div');
-    Object.assign(ui.style, {
-      position: 'absolute',
-      right: '6px',
-      bottom: '6px',
-      display: 'grid',
-      gridAutoFlow: 'column',
-      gap: '6px'
-    });
+    Object.assign(ui.style, { position: 'absolute', right: '6px', bottom: '6px', display: 'grid', gridAutoFlow: 'column', gap: '6px' });
     this.zoomOutBtn = makeBtn('−');
     this.zoomInBtn  = makeBtn('+');
     ui.appendChild(this.zoomOutBtn);
     ui.appendChild(this.zoomInBtn);
     this.root.appendChild(ui);
 
-    this.zoomInBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.zoom = Math.max(this.minZoom, this.zoom - 2);
-    });
-    this.zoomOutBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.zoom = Math.min(this.maxZoom, this.zoom + 2);
-    });
+    this.zoomInBtn.addEventListener('click', (e) => { e.stopPropagation(); this.zoom = Math.max(this.minZoom, this.zoom - 2); });
+    this.zoomOutBtn.addEventListener('click', (e) => { e.stopPropagation(); this.zoom = Math.min(this.maxZoom, this.zoom + 2); });
 
     // Compass (N)
     this.compass = document.createElement('div');
@@ -110,6 +94,8 @@ export class Minimap extends UIComponent {
       textShadow: '0 1px 1px rgba(0,0,0,0.5)'
     });
     this.root.appendChild(this.compass);
+
+    this._t = 0;
   }
 
   setProps(props) {
@@ -128,25 +114,30 @@ export class Minimap extends UIComponent {
     if (props.showBounds !== undefined) this.showBounds = !!props.showBounds;
   }
 
-  update(_delta, ctx) {
+  update(delta, ctx) {
+    this._t += delta;
     const g = this.g; if (!g) return;
     const w = this.canvas.width, h = this.canvas.height;
 
-    // Clear
     g.clearRect(0, 0, w, h);
-
-    // Soft grid background
     this._drawBackgroundGrid(g, w, h);
 
     // Gather context
-    const player = ctx?.playerModel;
-    const playerPos = player?.position;
-    const playerRotY = player?.rotation?.y ?? 0;
+    const playerModel = ctx?.playerModel;
+    const playerPos = playerModel?.position;
+    const playerRotY = playerModel?.rotation?.y ?? 0;
     const levelData = ctx?.map?.levelData;
     const enemies = (this.showEnemies ? (ctx?.map?.enemies || []) : []);
 
+    // Nodes can come from ctx.map.nodes; if not provided, fall back to levelData.nodePoints
+    const nodes = Array.isArray(ctx?.map?.nodes) ? ctx.map.nodes
+                : Array.isArray(levelData?.nodePoints)
+                  ? levelData.nodePoints.map((p, i) => ({ id: i, pos: p, isNext: false }))
+                  : [];
+
+    const nextNodeId = typeof ctx?.map?.nextNodeId === 'number' ? ctx.map.nextNodeId : null;
+
     if (!playerPos) {
-      // No player yet: draw disabled state
       g.fillStyle = 'rgba(220,230,255,0.85)';
       g.font = '600 12px system-ui';
       g.textAlign = 'center';
@@ -154,61 +145,67 @@ export class Minimap extends UIComponent {
       return;
     }
 
-    // World to screen transform
     // zoom is world units per 100px; derive scale (px per unit)
     const scale = 100 / this.zoom;
-
-    // Center on player
     const cx = w * 0.5, cy = h * 0.5;
 
-    // Pre-rotate if rotateWithPlayer
     g.save();
     g.translate(cx, cy);
-    let yaw = 0;
-    if (this.rotateWithPlayer) {
-      // Rotate so player's forward faces up on the minimap
-      yaw = -playerRotY; // assumes +Y rotation turns left; adjust if your player faces -Z by default
-      g.rotate(yaw);
-    }
+    if (this.rotateWithPlayer) g.rotate(-playerRotY);
 
-    // Draw bounds / geometry footprints (from fallbackObjects)
+    // Bounds (from fallback objects footprints)
     if (this.showBounds && Array.isArray(levelData?.fallbackObjects)) {
       for (const obj of levelData.fallbackObjects) {
         if (obj.type !== 'box') continue;
-        const [x, _y, z] = obj.position;
-        const [sxBox, _syBox, szBox] = obj.size;
-        // project corners relative to player
-        const x0 = (x - sxBox / 2 - playerPos.x) * scale;
-        const x1 = (x + sxBox / 2 - playerPos.x) * scale;
-        const z0 = (z - szBox / 2 - playerPos.z) * scale;
-        const z1 = (z + szBox / 2 - playerPos.z) * scale;
+        const [x, , z] = obj.position;
+        const [sx, , sz] = obj.size;
+        const x0 = (x - sx/2 - playerPos.x) * scale;
+        const x1 = (x + sx/2 - playerPos.x) * scale;
+        const z0 = (z - sz/2 - playerPos.z) * scale;
+        const z1 = (z + sz/2 - playerPos.z) * scale;
         g.fillStyle = '#16263f';
         g.strokeStyle = '#2c4676';
         g.lineWidth = 1;
-        g.fillRect(x0, -z1, x1 - x0, (z1 - z0)); // note: screen y is -world z
+        g.fillRect(x0, -z1, x1 - x0, (z1 - z0));
         g.strokeRect(x0, -z1, x1 - x0, (z1 - z0));
       }
     }
 
-    // Enemies (triangles)
+    // Nodes
+    for (const n of nodes) {
+      const [nx, , nz] = n.pos || n.position || [0,0,0];
+      const dx = (nx - playerPos.x) * scale;
+      const dz = (nz - playerPos.z) * scale;
+
+      // pulsing ring for the next node
+      if (n.isNext || (nextNodeId !== null && n.id === nextNodeId)) {
+        const pulse = 7 + 4 * Math.sin(this._t * 6);
+        g.strokeStyle = '#22c55e';
+        g.lineWidth = 3;
+        g.beginPath(); g.arc(dx, -dz, pulse, 0, Math.PI*2); g.stroke();
+        g.fillStyle = '#22c55e';
+        g.beginPath(); g.arc(dx, -dz, 4, 0, Math.PI*2); g.fill();
+      } else {
+        g.fillStyle = '#93c5fd';
+        g.beginPath(); g.arc(dx, -dz, 5, 0, Math.PI*2); g.fill();
+      }
+    }
+
+    // Enemies
     g.fillStyle = '#ff7b7b';
     for (const e of enemies) {
-      const [ex, _ey, ez] = e.position || [0, 0, 0];
+      const [ex, , ez] = e.position || [0,0,0];
       const dx = (ex - playerPos.x) * scale;
       const dz = (ez - playerPos.z) * scale;
       this._triangle(g, dx, -dz, 6);
     }
 
-    // Player (arrow)
+    // Player arrow
     this._drawPlayerArrow(g);
-
-    // Restore transform
     g.restore();
 
-    // Compass (north): when rotating with player, rotate label back so it remains meaningful
+    // compass tooltip
     if (this.rotateWithPlayer) {
-      // Determine north direction on the rotated map
-      // After rotating map by -playerRotY, north indicator should rotate by +playerRotY
       const deg = Math.round((playerRotY * 180 / Math.PI) % 360);
       this.compass.title = `North (player yaw ${deg}°)`;
     } else {
@@ -218,14 +215,12 @@ export class Minimap extends UIComponent {
 
   // Helpers
   _drawBackgroundGrid(g, w, h) {
-    // vignette
     const grad = g.createRadialGradient(w*0.5, h*0.5, 0, w*0.5, h*0.5, Math.max(w,h)*0.6);
     grad.addColorStop(0, 'rgba(22,30,48,0.9)');
     grad.addColorStop(1, 'rgba(9,13,22,1.0)');
     g.fillStyle = grad;
     g.fillRect(0, 0, w, h);
 
-    // grid
     g.strokeStyle = 'rgba(90,116,168,0.22)';
     g.lineWidth = 1;
     const step = 24;
@@ -233,7 +228,7 @@ export class Minimap extends UIComponent {
     for (let x = (w % step); x < w; x += step) { g.moveTo(x, 0); g.lineTo(x, h); }
     for (let y = (h % step); y < h; y += step) { g.moveTo(0, y); g.lineTo(w, y); }
     g.stroke();
-    // border
+
     g.strokeStyle = 'rgba(80,108,172,0.5)';
     g.lineWidth = 1;
     g.strokeRect(0.5, 0.5, w-1, h-1);
@@ -249,16 +244,13 @@ export class Minimap extends UIComponent {
   }
 
   _drawPlayerArrow(g) {
-    // Draw a small arrow pointing up (because we rotated the canvas if rotateWithPlayer)
     g.save();
-    // subtle glow
     g.shadowColor = 'rgba(121,210,255,0.45)';
     g.shadowBlur = 8;
     g.fillStyle = '#79d2ff';
     this._triangle(g, 0, 0, 9);
     g.restore();
 
-    // center dot
     g.beginPath();
     g.arc(0, 0, 2, 0, Math.PI * 2);
     g.fillStyle = '#d7f1ff';

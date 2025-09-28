@@ -12,7 +12,6 @@ import { Minimap } from './components/minimap.js';
 import { Objectives } from './components/objectives.js';
 import { SmallMenu } from './components/menu.js';
 import { FPS } from './components/fps.js';
-import { resolveMovement, meshesToColliders, enableDebug, disableDebug } from './collisionSystem.js';
 import { Crosshair } from './components/crosshair.js';
 import { Collectibles } from './components/collectibles.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
