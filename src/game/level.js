@@ -16,6 +16,7 @@ export class Level {
     this.showColliders = showColliders;
     this.enemyManager = new EnemyManager(this.scene);
     this.gltfLoaded = false;
+    this.gltfScene = null; // Track the GLTF scene for proper cleanup
     this.cinematicsManager = new CinematicsManager(scene);
   }
 
@@ -95,6 +96,7 @@ export class Level {
     
     // Add entire GLTF scene to our scene first
     this.scene.add(gltf.scene);
+    this.gltfScene = gltf.scene; // Store reference for cleanup
     
     // Second pass: process each mesh safely
     for (const child of meshesToProcess) {
@@ -195,6 +197,13 @@ export class Level {
     // remove meshes & helpers
     this.helpers.forEach(h => this.scene.remove(h.mesh));
     this.objects.forEach(m => this.scene.remove(m));
+    
+    // Remove GLTF scene if it exists
+    if (this.gltfScene) {
+      this.scene.remove(this.gltfScene);
+      this.gltfScene = null;
+    }
+    
     this.objects = [];
     this.helpers = [];
     this.colliders = [];
