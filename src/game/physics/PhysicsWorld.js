@@ -266,7 +266,7 @@ export class PhysicsWorld {
     body.addShape(cannonShape);
     body.position.set(position[0], position[1], position[2]);
     
-    body.linearDamping = 0.05; // Reduced from 0.1 to 0.02 for faster falling/jumping
+    body.linearDamping = 0.05; 
     body.angularDamping = 0.9;
     body.allowSleep = false;
     
