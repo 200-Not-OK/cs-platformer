@@ -7,21 +7,22 @@ import { CinematicsManager } from './cinematicsManager.js';
 
 // A Level that can load geometry from GLTF files or fallback to procedural objects
 export class Level {
-  constructor(scene, levelData, showColliders = true) {
+  constructor(scene, physicsWorld, levelData, showColliders = true) {
     this.scene = scene;
+    this.physicsWorld = physicsWorld;
     this.data = levelData;
     this.objects = []; // contains meshes
     this.colliders = []; // box3 for each mesh
     this.helpers = []; // collider helpers
     this.showColliders = showColliders;
-    this.enemyManager = new EnemyManager(this.scene);
+    this.enemyManager = new EnemyManager(this.scene, this.physicsWorld);
     this.gltfLoaded = false;
     this.cinematicsManager = new CinematicsManager(scene);
   }
 
   // Static factory method for async construction
-  static async create(scene, levelData, showColliders = true) {
-    const level = new Level(scene, levelData, showColliders);
+  static async create(scene, physicsWorld, levelData, showColliders = true) {
+    const level = new Level(scene, physicsWorld, levelData, showColliders);
     await level._buildFromData();
     return level;
   }

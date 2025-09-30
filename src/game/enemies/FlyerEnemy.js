@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { EnemyBase } from './EnemyBase.js';
 
 export class FlyerEnemy extends EnemyBase {
-  constructor(scene, options = {}) {
-    super(scene, options);
+  constructor(scene, physicsWorld, options = {}) {
+    super(scene, physicsWorld, options);
     this.speed = options.speed ?? 3.0;
     this.patrolPoints = options.patrolPoints || [];
     this._patrolIndex = 0;

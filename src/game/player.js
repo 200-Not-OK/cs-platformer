@@ -1,36 +1,37 @@
 import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
 import { ColliderHelper } from './colliderHelper.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { resolveMovement, meshesToColliders, enableDebug } from './collisionSystem.js';
 
 export class Player {
-  constructor(scene, options = {}) {
+  constructor(scene, physicsWorld, options = {}) {
     this.scene = scene;
+    this.physicsWorld = physicsWorld;
     this.speed = options.speed ?? 8;
     this.jumpStrength = options.jumpStrength ?? 10;
-    this.gravity = options.gravity ?? -30;
     this.size = options.size ?? [1, 1, 1];
     this.mesh = new THREE.Group(); // placeholder until model loads
     this.scene.add(this.mesh);
+    
+    // Physics body
+    this.body = null;
+    this._createPhysicsBody();
+    
+    // Collision helper for debugging
     this.collider = new THREE.Box3();
     this.helper = new ColliderHelper(this.collider, 0xff0000);
-    // Collider size (may differ from visual model size): same height, half x/z
     this.colliderSize = [this.size[0] * 0.5, this.size[1], this.size[2] * 0.5];
     this.scene.add(this.helper.mesh);
-    this.velocity = new THREE.Vector3();
+    
+    // Movement state
     this.onGround = false;
-    this._airTime = 0; // time spent not snapping to ground
-    this._airThreshold = 0.08; // seconds before considered truly in air
-    // ground grace: short time window to keep ground contact after transient lateral nudges
-    this._lastGround = null; // previously stood-on platform Box3
-    this._lastGroundY = -Infinity;
-    this._groundGrace = 0.12; // seconds
-    this._groundGraceRemaining = 0;
-    this._modelYawOffset = 0; // offset to align model forward with world forward
-    this._turnLerp = 0.14; // smoothing for rotation to face camera
-  // Sprinting
-  this.sprintMultiplier = options.sprintMultiplier ?? 1.6; // speed factor while holding Shift
-  this.isSprinting = false;
+    this._lastGroundCheck = 0;
+    this._groundCheckInterval = 0.1; // Check ground every 100ms
+    
+    // Sprinting
+    this.sprintMultiplier = options.sprintMultiplier ?? 1.6;
+    this.isSprinting = false;
+    
     // Animation
     this.mixer = null;
     this.actions = {
@@ -40,12 +41,25 @@ export class Player {
     };
     this.currentAction = null;
     this._jumpPlaying = false;
-    // Horizontal movement smoothing
-    this._hVelocity = new THREE.Vector3(); // horizontal velocity (x,z)
-    this._hAccel = options.hAcceleration ?? 40; // units per second^2-ish smoothing factor
-    // debug flag (can be toggled from game via window.__collisionDebugOn)
-    this.debug = (typeof window !== 'undefined' && !!window.__collisionDebugOn) || false; // Debug disabled by default
+    
+    // Debug flag
+    this.debug = (typeof window !== 'undefined' && !!window.__collisionDebugOn) || false;
+    
+    // Health for compatibility
+    this.health = options.health ?? 100;
+    
     this._loadModel();
+  }
+
+  _createPhysicsBody() {
+    if (this.body) {
+      this.physicsWorld.removeBody(this.body);
+    }
+    
+    this.body = this.physicsWorld.createPlayerBody(this.mesh.position);
+    console.log('🤖 Player physics body created:', this.body ? 'SUCCESS' : 'FAILED');
+    console.log('⚖️ Body mass:', this.body?.mass);
+    console.log('📍 Initial position:', this.body?.position);
   }
 
   _loadModel() {
@@ -287,10 +301,16 @@ export class Player {
 
   // Per-frame update called from Game._loop
   update(delta, input, camOrientation = null, platforms = [], playerActive = true) {
-    // decay ground-grace timer
-    this._groundGraceRemaining = Math.max(0, (this._groundGraceRemaining || 0) - (delta || 0));
+    if (!this.body) return;
+    
+    // Check if grounded
+    this._lastGroundCheck += delta;
+    if (this._lastGroundCheck >= this._groundCheckInterval) {
+      this.onGround = this.physicsWorld.isGrounded(this.body, 0.2);
+      this._lastGroundCheck = 0;
+    }
 
-    // Read input to form desired horizontal movement in camera space
+    // Read input to form desired horizontal movement
     let moveForward = 0;
     let moveRight = 0;
     if (input && input.isKey) {
@@ -300,126 +320,168 @@ export class Player {
       if (input.isKey('KeyA')) moveRight -= 1;
     }
 
-    // Build world-space horizontal target velocity
-    const targetVel = new THREE.Vector3(0, 0, 0);
+    // Apply movement forces in world space
     if (playerActive && (moveForward !== 0 || moveRight !== 0)) {
-      // camOrientation is expected to provide forward and right vectors
+      // Build world-space movement direction
       const f = camOrientation?.forward ? new THREE.Vector3(camOrientation.forward.x, 0, camOrientation.forward.z).normalize() : new THREE.Vector3(0, 0, -1);
       const r = camOrientation?.right ? new THREE.Vector3(camOrientation.right.x, 0, camOrientation.right.z).normalize() : new THREE.Vector3(1, 0, 0);
-      targetVel.addScaledVector(f, moveForward);
-      targetVel.addScaledVector(r, moveRight);
-      // Sprint if Shift is held
-      const sprint = (input && input.isKey) ? (input.isKey('ShiftLeft') || input.isKey('ShiftRight')) : false;
-      this.isSprinting = sprint;
-      const speedScale = sprint ? this.sprintMultiplier : 1;
-      if (targetVel.lengthSq() > 0) targetVel.normalize().multiplyScalar(this.speed * speedScale);
-    }
-
-    // Smooth horizontal velocity (_hVelocity holds x/z components)
-    const currH = new THREE.Vector3(this._hVelocity.x, 0, this._hVelocity.z);
-    const dv = targetVel.clone().sub(currH);
-    const maxDelta = this._hAccel * delta;
-    if (dv.length() > maxDelta) dv.setLength(maxDelta);
-    currH.add(dv);
-    this._hVelocity.x = currH.x; this._hVelocity.z = currH.z;
-
-    // Apply gravity (vertical velocity in this.velocity.y)
-    if (!this.onGround) {
-      this.velocity.y += this.gravity * delta;
-    } else {
-      // keep vertical velocity non-positive on ground
-      this.velocity.y = Math.min(0, this.velocity.y);
-    }
-
-    // Jump (allow jump during short ground-grace window)
-    if (input && input.isKey && input.isKey('Space') && (this.onGround || this._groundGraceRemaining > 0)) {
-      this.velocity.y = this.jumpStrength;
-      this.onGround = false;
-      this._groundGraceRemaining = 0;
-    }
-
-    // Compose movement for this frame (units = world units)
-    const movementThisFrame = new THREE.Vector3(this._hVelocity.x * delta, this.velocity.y * delta, this._hVelocity.z * delta);
-    // Use regular collision resolution (no slopes)
-    const size = new THREE.Vector3();
-    this.collider.getSize(size);
-    const prevBottomY = this.mesh.position.y - (size.y * 0.5);
-    if (this.debug) {
-      try { enableDebug(this.scene); } catch (e) { /* ignore if already enabled */ }
-    }
-    
-    const colliders = meshesToColliders(platforms || []);
-    const res = resolveMovement(this.collider.clone(), movementThisFrame, colliders, { prevBottomY, landThreshold: 0.06, penetrationAllowance: 0.01, minVerticalOverlap: 0.02 });
-
-    // Apply the resolved offset to the player
-    this.mesh.position.add(res.offset);
-    this._updateCollider();
-
-    // Update on-ground and velocity state per resolver result
-    if (res.onGround) {
-      this.onGround = true;
-      this.velocity.y = 0;
-      this._airTime = 0;
       
-      if (res.groundCollider) {
-        // Player is on regular ground
-        this._lastGround = res.groundCollider;
-        this._lastGroundY = res.groundCollider.max.y;
-        this._groundGraceRemaining = this._groundGrace;
+      const moveDirection = new THREE.Vector3();
+      moveDirection.addScaledVector(f, moveForward);
+      moveDirection.addScaledVector(r, moveRight);
+      
+      if (moveDirection.lengthSq() > 0) {
+        // IMPORTANT: Normalize the direction BEFORE scaling
+        moveDirection.normalize();
+        
+        // Check if sprinting
+        const sprint = (input && input.isKey) ? (input.isKey('ShiftLeft') || input.isKey('ShiftRight')) : false;
+        this.isSprinting = sprint;
+        const speedScale = sprint ? this.sprintMultiplier : 1;
+        
+        // Use direct velocity manipulation instead of forces for immediate response
+        const targetSpeed = this.speed * speedScale;
+        const targetVelocity = moveDirection.clone().multiplyScalar(targetSpeed);
+        
+        // Apply velocity directly but preserve Y velocity (gravity)
+        this.body.velocity.x = targetVelocity.x;
+        this.body.velocity.z = targetVelocity.z;
+        // Keep existing Y velocity for gravity/jumping
+        
+        // Wake up the body to ensure it moves
+        this.body.wakeUp();
+        
+        console.log('🎮 Player movement (velocity-based):', {
+          moveForward,
+          moveRight,
+          normalizedDirection: moveDirection,
+          targetVelocity: targetVelocity,
+          bodyVelocity: this.body.velocity,
+          position: this.body.position,
+          bodyType: this.body.type,
+          bodyMass: this.body.mass
+        });
       }
     } else {
-      // if we collided with an underside and were moving upward, cancel upward velocity
-      if (res.collided && this.velocity.y > 0) this.velocity.y = 0;
-      this._airTime += delta;
-      if (this._airTime >= this._airThreshold) this.onGround = false;
+      // Apply damping when no input - preserve Y velocity
+      this.body.velocity.x *= 0.8;
+      this.body.velocity.z *= 0.8;
     }
 
-    // Update animations
-    try {
-      if (this.mixer) this.mixer.update(delta);
-    } catch (e) {
-      console.warn('Animation mixer update failed:', e);
+    // Jump
+    if (input && input.isKey && input.isKey('Space') && this.onGround) {
+      this.body.applyImpulse(new CANNON.Vec3(0, this.jumpStrength, 0));
+      this.onGround = false;
     }
 
-    // Determine which action should play: jump > walk > idle
-    const moving = (this._hVelocity.x * this._hVelocity.x + this._hVelocity.z * this._hVelocity.z) > 1e-6;
+    // Sync Three.js mesh with physics body
+    this.mesh.position.copy(this.body.position);
+    this.mesh.quaternion.copy(this.body.quaternion);
+    
+    // Update collider for debug visualization
+    this._updateCollider();
+    if (this.helper) this.helper.update();
 
-    // If we just started a jump (left ground and jump action exists), play jump
-    if (!this.onGround && !this._jumpPlaying && this.actions.jump) {
-      this._playAction(this.actions.jump, 0.1, false);
+    // Handle animations
+    this._updateAnimations(moveForward, moveRight, playerActive);
+
+    // Update animation mixer
+    if (this.mixer) this.mixer.update(delta);
+  }
+
+  _updateAnimations(moveForward, moveRight, playerActive) {
+    const isMoving = playerActive && (moveForward !== 0 || moveRight !== 0);
+    
+    // Determine which animation to play
+    let targetAction = null;
+    if (!this.onGround && this.actions.jump && !this._jumpPlaying) {
+      targetAction = this.actions.jump;
       this._jumpPlaying = true;
-      const jumpAction = this.actions.jump;
-      const onFinished = () => {
+      
+      // Reset jump animation when landing
+      if (this.onGround) {
         this._jumpPlaying = false;
-        try { jumpAction.getMixer().removeEventListener('finished', onFinished); } catch (e) { /* ignore */ }
-      };
-      try { jumpAction.getMixer().addEventListener('finished', onFinished); } catch (e) { /* ignore */ }
+      }
+    } else if (isMoving && this.actions.walk) {
+      targetAction = this.actions.walk;
+    } else if (this.actions.idle) {
+      targetAction = this.actions.idle;
     }
 
-    if (this._jumpPlaying) return;
+    // Switch animation if needed
+    if (targetAction && targetAction !== this.currentAction) {
+      if (this.currentAction) {
+        this.currentAction.fadeOut(0.2);
+      }
+      targetAction.reset().fadeIn(0.2).play();
+      this.currentAction = targetAction;
+    }
+  }
 
-    if (moving) {
-      if (this.actions.walk && this.currentAction !== this.actions.walk) {
-        this._playAction(this.actions.walk, 0.15, true);
-      }
-      // rotate model to face horizontal velocity
-      const dir = new THREE.Vector3(this._hVelocity.x, 0, this._hVelocity.z);
-      if (dir.lengthSq() > 1e-6) {
-        const desiredYaw = Math.atan2(dir.x, dir.z);
-        this.mesh.rotation.y = THREE.MathUtils.lerp(this.mesh.rotation.y, desiredYaw + (this._modelYawOffset || 0), this._turnLerp || 0.14);
-        if (this.helper) this.helper.updateWithRotation(this.mesh.rotation);
-      }
+  // Set the position of the player (moves both mesh and physics body)
+  setPosition(vec3) {
+    if (!vec3 || !vec3.isVector3) return;
+    this.mesh.position.copy(vec3);
+    if (this.body) {
+      this.body.position.set(vec3.x, vec3.y, vec3.z);
+      this.body.velocity.set(0, 0, 0); // Reset velocity when teleporting
+      console.log('📍 Player position set to:', vec3, 'Body position:', this.body.position);
+    }
+    this._updateCollider();
+    if (this.helper) this.helper.updateWithRotation(this.mesh.rotation);
+  }
+
+  // Recompute this.collider from current mesh.position and this.colliderSize
+  _updateCollider() {
+    const half = new THREE.Vector3(
+      (this.colliderSize[0] ?? 1) * 0.5,
+      (this.colliderSize[1] ?? 1) * 0.5,
+      (this.colliderSize[2] ?? 1) * 0.5
+    );
+    const center = this.mesh.position.clone();
+    this.collider.min.copy(center).sub(half);
+    this.collider.max.copy(center).add(half);
+  }
+
+  // Update collider size (array [x,y,z]) and refresh helper
+  setColliderSize(sizeArr) {
+    if (!sizeArr || sizeArr.length < 3) return;
+    this.colliderSize = [sizeArr[0], sizeArr[1], sizeArr[2]];
+    this._updateCollider();
+    if (this.helper) this.helper.update();
+  }
+
+  // Helper method to play animation action
+  _playAction(action, fadeDuration = 0.2, loop = true) {
+    if (!action) return;
+    if (this.currentAction && this.currentAction !== action) {
+      this.currentAction.fadeOut(fadeDuration);
+    }
+    action.reset().fadeIn(fadeDuration).play();
+    if (loop) {
+      action.setLoop(THREE.LoopRepeat);
     } else {
-      if (this.actions.idle) {
-        if (this.currentAction !== this.actions.idle) {
-          this._playAction(this.actions.idle, 0.2, true);
-        }
-      } else {
-        if (this.currentAction && this.currentAction === this.actions.walk) {
-          try { this.currentAction.fadeOut(0.2); } catch (e) { try { this.currentAction.stop(); } catch (e2) {} }
-          this.currentAction = null;
-        }
-      }
+      action.setLoop(THREE.LoopOnce);
+    }
+    this.currentAction = action;
+  }
+
+  // Toggle visibility of collision helper
+  toggleHelperVisible(visible) {
+    if (this.helper) this.helper.setVisible(visible);
+  }
+
+  // Clean up resources
+  dispose() {
+    if (this.body) {
+      this.physicsWorld.removeBody(this.body);
+      this.body = null;
+    }
+    if (this.mesh) {
+      this.scene.remove(this.mesh);
+    }
+    if (this.helper && this.helper.mesh) {
+      this.scene.remove(this.helper.mesh);
     }
   }
 }

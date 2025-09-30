@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { EnemyBase } from './EnemyBase.js';
 
 export class WalkerEnemy extends EnemyBase {
-  constructor(scene, options = {}) {
-    super(scene, options);
+  constructor(scene, physicsWorld, options = {}) {
+    super(scene, physicsWorld, options);
     this.patrolPoints = options.patrolPoints || [];
     this._patrolIndex = 0;
     this.waitTime = options.waitTime ?? 0.5;

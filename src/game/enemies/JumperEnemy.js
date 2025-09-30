@@ -1,9 +1,10 @@
 import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
 import { WalkerEnemy } from './WalkerEnemy.js';
 
 export class JumperEnemy extends WalkerEnemy {
-  constructor(scene, options = {}) {
-    super(scene, options);
+  constructor(scene, physicsWorld, options = {}) {
+    super(scene, physicsWorld, options);
     this.jumpInterval = options.jumpInterval ?? 2.5; // seconds
     this._jumpTimer = 0;
     this.jumpStrength = options.jumpStrength ?? 10;
@@ -15,10 +16,10 @@ export class JumperEnemy extends WalkerEnemy {
     super.update(delta, player, platforms);
 
     this._jumpTimer += delta;
-    if (this._jumpTimer >= this.jumpInterval && this.onGround) {
+    if (this._jumpTimer >= this.jumpInterval && this.onGround && this.body) {
       this._jumpTimer = 0;
-      // trigger an upward velocity; EnemyBase resolves vertical motion
-      this.velocity.y = this.jumpStrength;
+      // Apply jump impulse using physics
+      this.body.applyImpulse(new CANNON.Vec3(0, this.jumpStrength, 0));
       this.onGround = false;
     }
   }

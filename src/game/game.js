@@ -14,12 +14,16 @@ import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
 import { enableDebug, disableDebug } from './collisionSystem.js';
+import { PhysicsWorld } from './physics/PhysicsWorld.js';
 
 export class Game {
   constructor() {
     const { scene, renderer } = createSceneAndRenderer();
     this.scene = scene;
     this.renderer = renderer;
+
+    // Initialize physics world
+    this.physicsWorld = new PhysicsWorld();
 
     // enable collision debug visuals/logging (remove for production)
     //enableDebug(this.scene);
@@ -42,11 +46,11 @@ export class Game {
     this.input = new InputManager(window);
 
   // Level system
-  this.levelManager = new LevelManager(this.scene);
+  this.levelManager = new LevelManager(this.scene, this.physicsWorld);
   this.level = null;
 
   // Player
-  this.player = new Player(this.scene, { speed: 11, jumpStrength: 12, size: [1, 1.5, 1] });
+  this.player = new Player(this.scene, this.physicsWorld, { speed: 11, jumpStrength: 12, size: [1, 1.5, 1] });
   // Player position will be set by loadLevel() call
 
     // Cameras
@@ -216,6 +220,9 @@ export class Game {
       return;
     }
 
+    // Step physics simulation
+    this.physicsWorld.step(delta);
+
     // update level (updates colliders/helpers and enemies) - only if level is loaded
     if (this.level && this.level.update) {
       this.level.update(delta, this.player, this.level.getPlatforms());
@@ -261,13 +268,18 @@ export class Game {
   async loadLevel(index) {
     if (this.level) this.level.dispose();
     
+    // Clear existing physics bodies
+    this.physicsWorld.cleanup();
+    
     console.log('Loading level...', index);
     this.level = await this.levelManager.loadIndex(index);
+    
+    // Add level meshes to physics world as static colliders
+    this._addLevelToPhysics();
     
     // Position player at start position
     const start = this.level.data.startPosition;
     this.player.setPosition(new THREE.Vector3(...start));
-    this.player.velocity.set(0, 0, 0);
     
     // Apply debug settings
     if (this.level.toggleColliders) {
@@ -285,6 +297,23 @@ export class Game {
     // swap lighting according to level.data.lights (array of descriptors)
     this.applyLevelLights(this.level.data);
     return this.level;
+  }
+
+  _addLevelToPhysics() {
+    if (!this.level || !this.physicsWorld) return;
+    
+    console.log('🔧 Adding level geometry to physics world...');
+    let meshCount = 0;
+    
+    // Add all level meshes as static colliders
+    for (const mesh of this.level.objects) {
+      if (mesh.isMesh && mesh.geometry) {
+        this.physicsWorld.addStaticMesh(mesh);
+        meshCount++;
+      }
+    }
+    
+    console.log(`✅ Added ${meshCount} meshes to physics world`);
   }
 
   applyLevelLights(levelData) {
