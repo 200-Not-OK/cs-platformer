@@ -16,7 +16,7 @@ export class Player {
     // Collider sizing options
     this.colliderScale = {
       width: options.colliderWidthScale ?? 0.4,    // Scale factor for width (X/Z)
-      height: options.colliderHeightScale ?? 0.9,  // Scale factor for height (Y)
+      height: options.colliderHeightScale ?? 1,  // Scale factor for height (Y)
       depth: options.colliderDepthScale ?? 0.4     // Scale factor for depth (Z)
     };
     
