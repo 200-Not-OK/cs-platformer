@@ -44,43 +44,36 @@ export class Player {
     
     // Load 3D model first, then create physics body
     this.loadModel();
-    
-    console.log('🎮 Player created - loading model first, then physics body...');
   }
 
   async loadModel() {
-    console.log('🎭 Starting to load player model...');
     const loader = new GLTFLoader();
     
     // Try different path formats for the model
     const modelPaths = [
-      'src/assets/low_poly_female/scene.gltf',
-      './src/assets/low_poly_female/scene.gltf',
-      '/src/assets/low_poly_female/scene.gltf'
+      'src/assets/Knight/Knight.gltf',
+      './src/assets/Knight/Knight.gltf',
+      '/src/assets/Knight/Knight.gltf'
     ];
     
     let currentPathIndex = 0;
     
     const tryLoadModel = () => {
       const currentPath = modelPaths[currentPathIndex];
-      console.log(`🔄 Trying to load model from: ${currentPath}`);
       
       loader.load(
         currentPath,
         (gltf) => {
-          console.log('🎭 GLTF loaded successfully:', gltf);
           
           // Clear any existing mesh children
           while (this.mesh.children.length > 0) {
             this.mesh.remove(this.mesh.children[0]);
           }
-          console.log('🧹 Cleared any existing mesh children');
         
           // Compute bounding box for the whole scene
           const bbox = new THREE.Box3().setFromObject(gltf.scene);
           const sizeVec = new THREE.Vector3();
           bbox.getSize(sizeVec);
-          console.log('📏 Model size:', sizeVec);
           
           // Create physics body now that we know the model dimensions
           this.createPhysicsBody(sizeVec);
@@ -95,11 +88,9 @@ export class Player {
           
           // Add the loaded model to our mesh group
           this.mesh.add(gltf.scene);
-          console.log('📦 Model added to mesh group');
           
           // Setup animations if available
           if (gltf.animations && gltf.animations.length > 0) {
-            console.log('🎬 Setting up animations:', gltf.animations.map(a => a.name));
             this.mixer = new THREE.AnimationMixer(gltf.scene);
             
             // Find animation clips
@@ -121,32 +112,25 @@ export class Player {
             if (idleClip) {
               this.actions.idle = this.mixer.clipAction(idleClip);
               this.actions.idle.setLoop(THREE.LoopRepeat);
-              console.log('✅ Idle animation set up');
             }
             
             if (walkClip) {
               this.actions.walk = this.mixer.clipAction(walkClip);
               this.actions.walk.setLoop(THREE.LoopRepeat);
-              console.log('✅ Walk animation set up');
             }
             
             if (jumpClip) {
               this.actions.jump = this.mixer.clipAction(jumpClip);
               this.actions.jump.setLoop(THREE.LoopOnce);
-              console.log('✅ Jump animation set up');
             }
             
             // Start with idle animation
             if (this.actions.idle) {
               this.actions.idle.play();
               this.currentAction = this.actions.idle;
-              console.log('▶️ Started idle animation');
             }
           } else {
-            console.log('⚠️ No animations found in model');
           }
-          
-          console.log('🎭 Player model loaded and set up successfully');
         },
         (progress) => {
           console.log('⏳ Loading progress:', (progress.loaded / progress.total * 100) + '%');
@@ -174,8 +158,6 @@ export class Player {
             
             // Create physics body for fallback geometry
             this.createPhysicsBody(new THREE.Vector3(1, 2, 1));
-            
-            console.log('📦 Fallback geometry created');
           }
         }
       );
@@ -186,8 +168,6 @@ export class Player {
   }
 
   createPhysicsBody(modelSize) {
-    console.log('🔧 Creating physics body from model dimensions:', modelSize);
-    
     // Store original model size for future collider updates
     this.originalModelSize = {
       x: modelSize.x,
@@ -199,9 +179,6 @@ export class Player {
     const width = Math.max(modelSize.x, modelSize.z) * this.colliderScale.width;
     const height = modelSize.y * this.colliderScale.height;
     const depth = Math.max(modelSize.x, modelSize.z) * this.colliderScale.depth;
-    
-    console.log(`🔧 Physics body dimensions: ${width.toFixed(2)} x ${height.toFixed(2)} x ${depth.toFixed(2)}`);
-    console.log(`🔧 Collider scale factors: width=${this.colliderScale.width}, height=${this.colliderScale.height}, depth=${this.colliderScale.depth}`);
     
     // Create physics body using our PhysicsWorld
     this.body = this.physicsWorld.createDynamicBody({
@@ -215,15 +192,12 @@ export class Player {
     // Configure body for character movement
     this.body.fixedRotation = true; // Prevent tipping over
     this.body.updateMassProperties();
-    
-    console.log('✅ Physics body created and configured for player movement');
   }
 
   update(delta, input, camOrientation = null, platforms = [], playerActive = true) {
     // l
     
     if (!this.body) {
-      console.log('⚠️ Player update skipped - no physics body yet');
       return;
     }
     
@@ -254,30 +228,18 @@ export class Player {
     const wasGrounded = this.isGrounded;
     this.isGrounded = this.physicsWorld.isBodyGrounded(this.body, this.groundNormalThreshold);
     
-    if (wasGrounded !== this.isGrounded) {
-      console.log('👀 Ground state changed:', { 
-        wasGrounded, 
-        isGrounded: this.isGrounded,
-        bodyY: this.body.position.y.toFixed(2),
-        velocityY: this.body.velocity.y.toFixed(2)
-      });
-    }
-    
     // Reset jumping flag when player lands
     if (this.isGrounded && this.isJumping && this.body.velocity.y <= 0.1) {
       this.isJumping = false;
-      console.log('🛬 Landing detected - jump flag reset');
     }
   }
 
   handleMovementInput(input, camOrientation, delta) {
     if (!input || !input.isKey) {
-      console.log('⚠️ No input or isKey method available');
       return;
     }
     
     if (!this.body) {
-      console.log('⚠️ Player physics body not ready yet');
       return;
     }
     
@@ -289,11 +251,6 @@ export class Player {
     if (input.isKey('KeyS')) moveForward = -1;
     if (input.isKey('KeyA')) moveRight = -1;
     if (input.isKey('KeyD')) moveRight = 1;
-    
-    // Debug input detection
-    if (moveForward !== 0 || moveRight !== 0) {
-      console.log('🎮 Movement input detected:', { moveForward, moveRight });
-    }
     
     // Check for sprint
     this.isSprinting = input.isKey('ShiftLeft') || input.isKey('ShiftRight');
@@ -318,20 +275,11 @@ export class Player {
       const targetVelX = moveDirection.x * targetSpeed;
       const targetVelZ = moveDirection.z * targetSpeed;
       
-      console.log('🏃 Movement calculation:', {
-        isGrounded: this.isGrounded,
-        targetSpeed,
-        moveDirection: { x: moveDirection.x, z: moveDirection.z },
-        targetVel: { x: targetVelX, z: targetVelZ },
-        currentVel: { x: this.body.velocity.x, y: this.body.velocity.y, z: this.body.velocity.z }
-      });
-      
       // Apply movement based on grounded state
       if (this.isGrounded) {
         // When grounded, use direct velocity for stable movement
         this.body.velocity.x = targetVelX;
         this.body.velocity.z = targetVelZ;
-        console.log('🌍 Applied grounded movement - direct velocity');
       } else {
         // When airborne, use blended velocity for responsive but realistic movement
         const airControl = 0.3; // Reduce air control compared to ground movement
@@ -341,8 +289,6 @@ export class Player {
         // Blend current velocity with target velocity for air control
         this.body.velocity.x = THREE.MathUtils.lerp(currentVelX, targetVelX * airControl, 0.2);
         this.body.velocity.z = THREE.MathUtils.lerp(currentVelZ, targetVelZ * airControl, 0.2);
-        
-        console.log('🌬️ Applied airborne movement - blended velocity');
       }
       
       // Rotate player to face movement direction
@@ -367,21 +313,10 @@ export class Player {
     if (!input || !input.isKey) return;
     
     if (input.isKey('Space')) {
-      console.log('🚀 Space key pressed, checking jump conditions:', {
-        isGrounded: this.isGrounded,
-        isJumping: this.isJumping,
-        velocity: this.body.velocity.y.toFixed(2)
-      });
-      
       if (this.isGrounded && !this.isJumping) {
         // Apply upward impulse for jumping
         this.body.velocity.y = this.jumpStrength;
         this.isJumping = true;
-        console.log(`🚀 JUMP! Applied velocity: ${this.jumpStrength}`);
-      } else {
-        console.log('🚫 Jump blocked:', {
-          reason: !this.isGrounded ? 'not grounded' : 'already jumping'
-        });
       }
     }
   }
@@ -438,8 +373,6 @@ export class Player {
     this.body.position.set(position.x, position.y, position.z);
     this.body.velocity.set(0, 0, 0);
     this.syncMeshWithBody();
-    
-    console.log('📍 Player position set to:', position);
   }
 
   // Method to update collider size at runtime
@@ -472,16 +405,12 @@ export class Player {
     // Restore position and velocity
     this.body.position.copy(currentPos);
     this.body.velocity.copy(currentVel);
-    
-    console.log(`🔧 Collider size updated - scales: width=${this.colliderScale.width}, height=${this.colliderScale.height}, depth=${this.colliderScale.depth}`);
   }
 
   dispose() {
-    console.log('🚨 Player dispose() called!');
     
     // Remove physics body
     if (this.body) {
-      console.log('🗑️ Removing player physics body from world');
       this.physicsWorld.removeBody(this.body);
     }
     
