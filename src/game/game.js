@@ -10,6 +10,7 @@ import { HUD } from './components/hud.js';
 import { Minimap } from './components/minimap.js';
 import { Objectives } from './components/objectives.js';
 import { SmallMenu } from './components/menu.js';
+import { FPS } from './components/fps.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
@@ -105,6 +106,8 @@ export class Game {
   this.ui = new UIManager(document.getElementById('app'));
   // register a default HUD — actual per-level UI will be loaded by loadLevel
   this.ui.add('hud', HUD, { health: 100 });
+  // Add FPS counter
+  this.ui.add('fps', FPS, { showFrameTime: true });
 
   // Lighting manager (modular per-level lights)
   this.lights = new LightManager(this.scene);
@@ -390,17 +393,51 @@ export class Game {
   applyLevelUI(levelData) {
     // Clear existing UI and re-add defaults according to level metadata
     if (!this.ui) return;
+    
+    console.log('🎯 applyLevelUI called, current components:', Array.from(this.ui.components.keys()));
+    
+    // Store global components that should persist across levels
+    const globalComponents = new Map();
+    if (this.ui.get('fps')) {
+      globalComponents.set('fps', this.ui.get('fps'));
+      console.log('🎯 Stored FPS component for preservation');
+    }
+    
     this.ui.clear();
+    console.log('🎯 UI cleared, components after clear:', Array.from(this.ui.components.keys()));
+    
+    // Re-add global components first
+    for (const [key, component] of globalComponents) {
+      this.ui.components.set(key, component);
+      // Re-mount the component since it was unmounted during clear
+      if (component.mount) {
+        component.mount();
+        console.log('🎯 Re-mounted global component:', key);
+      }
+      console.log('🎯 Restored global component:', key);
+    }
+    
+    console.log('🎯 Components after restoring globals:', Array.from(this.ui.components.keys()));
+    
     const uiList = (levelData && levelData.ui) ? levelData.ui : ['hud'];
+    console.log('🎯 Level UI list:', uiList);
+    
     for (const key of uiList) {
       if (key === 'hud') this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
       else if (key === 'minimap') this.ui.add('minimap', Minimap, {});
       else if (key === 'objectives') this.ui.add('objectives', Objectives, { items: levelData.objectives ?? ['Reach the goal'] });
       else if (key === 'menu') this.ui.add('menu', SmallMenu, { onResume: () => this.setPaused(false) });
+      else if (key === 'fps') {
+        // FPS is already added as a global component, skip warning
+        console.log('🎯 FPS found in level UI list, skipping (already global)');
+        continue;
+      }
       else {
         console.warn('Unknown UI key in level data:', key);
       }
     }
+    
+    console.log('🎯 Final components after applyLevelUI:', Array.from(this.ui.components.keys()));
   }
 
   setPaused(v) {
