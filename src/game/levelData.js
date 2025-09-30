@@ -5,7 +5,7 @@ export const levels = [
     name: 'Intro Level',
     //gltfUrl: 'src/assets/levels/introLevel.gltf',
     startPosition: [0, 15, 8],
-    ui: ['hud', 'minimap'],
+    ui: ['hud', 'fps'],
     lights: [ 'BasicLights' ],
     // enemies: [
     //   { type: 'walker', position: [5, 6, 8], modelUrl: 'src/assets/low_poly_female/scene.gltf', patrolPoints: [[7,2,-8,0.5], [13,2,-8,0.5]], speed: 2.4, chaseRange: 5 },
