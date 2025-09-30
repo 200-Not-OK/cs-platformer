@@ -50,11 +50,14 @@ export class Player {
     
     console.log(`🔧 Physics body dimensions: radius=${radius.toFixed(2)}, height=${height.toFixed(2)}`);
     
-    // Create box shape instead of cylinder for simpler, more stable collision
-    // Box has clean contact points and no complex curved surface interactions
-    const width = radius * 2; // Convert radius to box width
-    const depth = radius * 2; // Convert radius to box depth
-    this.bodyShape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, depth/2));
+    // Create box shape optimized to reduce contact complexity
+    // Make it taller and narrower to minimize ground contact area
+    const width = radius * 1.2;  // Reduced from radius * 2
+    const depth = radius * 1.2;  // Reduced from radius * 2  
+    const boxHeight = height;    // Keep full height
+    
+    console.log(`🔧 Optimized box dimensions: ${width.toFixed(2)} x ${boxHeight.toFixed(2)} x ${depth.toFixed(2)}`);
+    this.bodyShape = new CANNON.Box(new CANNON.Vec3(width/2, boxHeight/2, depth/2));
     
     // Create physics body
     this.body = new CANNON.Body({
@@ -515,27 +518,40 @@ export class Player {
       const targetVelX = moveDirection.x * targetSpeed;
       const targetVelZ = moveDirection.z * targetSpeed;
       
-      // Apply force towards target velocity (simpler approach with box collider)
-      const acceleration = 20; // Moderate force for box collider
-      const forceX = (targetVelX - currentVelX) * acceleration;
-      const forceZ = (targetVelZ - currentVelZ) * acceleration;
-      
-      // Debug logging every 30 frames (about every 0.5 seconds at 60fps)
-      if (this._movementDebugCounter % 30 === 0) {
-        console.log('🏃‍♂️ Movement Debug:', {
-          input: `F:${moveForward} R:${moveRight}`,
-          currentVel: `${currentVelX.toFixed(2)}, ${currentVelY.toFixed(2)}, ${currentVelZ.toFixed(2)}`,
-          targetVel: `${targetVelX.toFixed(2)}, 0, ${targetVelZ.toFixed(2)}`,
-          force: `${forceX.toFixed(2)}, 0, ${forceZ.toFixed(2)}`,
-          forceMagnitude: Math.sqrt(forceX*forceX + forceZ*forceZ).toFixed(2),
-          speed: targetSpeed.toFixed(2),
-          isGrounded: this.isGrounded,
-          colliderType: 'BOX',
-          bouncing: Math.abs(currentVelY) > 0.5 ? '🚨 BOUNCING!' : '✅ stable'
-        });
+      // Use direct velocity setting for grounded movement to prevent contact loss
+      // Forces can cause the physics body to "jump" slightly, breaking ground contact
+      if (this.isGrounded) {
+        // When grounded, use direct velocity for stable movement
+        this.body.velocity.x = targetVelX;
+        this.body.velocity.z = targetVelZ;
+        
+        if (this._movementDebugCounter % 30 === 0) {
+          console.log('🏃‍♂️ GROUNDED Movement (direct velocity):', {
+            input: `F:${moveForward} R:${moveRight}`,
+            setVelocity: `${targetVelX.toFixed(2)}, preserve, ${targetVelZ.toFixed(2)}`,
+            actualVel: `${this.body.velocity.x.toFixed(2)}, ${this.body.velocity.y.toFixed(2)}, ${this.body.velocity.z.toFixed(2)}`,
+            isGrounded: this.isGrounded,
+            colliderType: 'BOX-OPTIMIZED'
+          });
+        }
+      } else {
+        // When airborne, use forces for realistic physics
+        const acceleration = 15; // Reduced force for airborne movement
+        const forceX = (targetVelX - currentVelX) * acceleration;
+        const forceZ = (targetVelZ - currentVelZ) * acceleration;
+        
+        this.body.applyForce(new CANNON.Vec3(forceX, 0, forceZ), this.body.position);
+        
+        if (this._movementDebugCounter % 30 === 0) {
+          console.log('🏃‍♂️ AIRBORNE Movement (forces):', {
+            input: `F:${moveForward} R:${moveRight}`,
+            force: `${forceX.toFixed(2)}, 0, ${forceZ.toFixed(2)}`,
+            velocity: `${this.body.velocity.x.toFixed(2)}, ${this.body.velocity.y.toFixed(2)}, ${this.body.velocity.z.toFixed(2)}`,
+            isGrounded: this.isGrounded,
+            colliderType: 'BOX-OPTIMIZED'
+          });
+        }
       }
-      
-      this.body.applyForce(new CANNON.Vec3(forceX, 0, forceZ), this.body.position);
       
       // Rotate player to face movement direction
       if (moveDirection.lengthSq() > 0) {
