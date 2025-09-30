@@ -1,11 +1,17 @@
 import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
+import CannonDebugger from 'cannon-es-debugger';
 
 export class PhysicsWorld {
-  constructor() {
+  constructor(scene = null) {
     this.world = new CANNON.World({
       gravity: new CANNON.Vec3(0, -9.82, 0)
     });
+    
+    // Store reference to Three.js scene for debug rendering
+    this.scene = scene;
+    this.debugRenderer = null;
+    this.debugEnabled = false;
     
     // Improve performance
     this.world.broadphase = new CANNON.NaiveBroadphase();
@@ -26,8 +32,8 @@ export class PhysicsWorld {
       this.playerMaterial,
       this.groundMaterial,
       {
-        friction: 0.4,
-        restitution: 0.1,
+        friction: 0.8, // Increased friction for better control
+        restitution: 0.0,
         contactEquationStiffness: 1e9,
         contactEquationRelaxation: 4
       }
@@ -50,8 +56,47 @@ export class PhysicsWorld {
     // Debug logging
     console.log('🔧 Physics world initialized with gravity:', this.world.gravity);
     
+    // Initialize debug renderer if scene is provided
+    if (this.scene) {
+      this.initDebugRenderer();
+    }
+    
     // Create a simple test body to verify physics is working
     this.createTestBody();
+  }
+
+  initDebugRenderer() {
+    try {
+      this.debugRenderer = new CannonDebugger(this.scene, this.world, {
+        color: 0x00ff00, // Green wireframes
+        scale: 1.0,
+        onInit: (body, mesh) => {
+          // Customize debug mesh appearance
+          if (mesh.material) {
+            mesh.material.wireframe = true;
+            mesh.material.transparent = true;
+            mesh.material.opacity = 0.3;
+          }
+        }
+      });
+      console.log('🔧 Physics debug renderer initialized');
+    } catch (error) {
+      console.warn('Failed to initialize physics debug renderer:', error);
+      this.debugRenderer = null;
+    }
+  }
+
+  enableDebug(enabled = true) {
+    this.debugEnabled = enabled;
+    if (this.debugRenderer) {
+      // The debug renderer automatically shows/hides based on update calls
+      console.log(`🔧 Physics debug visualization ${enabled ? 'enabled' : 'disabled'}`);
+    }
+    return this.debugRenderer !== null;
+  }
+
+  isDebugEnabled() {
+    return this.debugEnabled && this.debugRenderer !== null;
   }
 
   createTestBody() {
@@ -268,18 +313,18 @@ export class PhysicsWorld {
     const clampedDelta = Math.min(deltaTime, 1/30);
     
     // Debug: List ALL bodies and their properties
-    console.log('🔍 All bodies in world:', this.world.bodies.map(body => ({
-      id: body.id,
-      type: body.type,
-      typeName: body.type === CANNON.Body.DYNAMIC ? 'DYNAMIC' : 
-                body.type === CANNON.Body.STATIC ? 'STATIC' : 
-                body.type === CANNON.Body.KINEMATIC ? 'KINEMATIC' : 'UNKNOWN',
-      mass: body.mass,
-      pos: `${body.position.x.toFixed(2)}, ${body.position.y.toFixed(2)}, ${body.position.z.toFixed(2)}`,
-      vel: `${body.velocity.x.toFixed(2)}, ${body.velocity.y.toFixed(2)}, ${body.velocity.z.toFixed(2)}`,
-      awake: body.sleepState === CANNON.Body.AWAKE,
-      shapes: body.shapes.length
-    })));
+    // console.log('🔍 All bodies in world:', this.world.bodies.map(body => ({
+    //   id: body.id,
+    //   type: body.type,
+    //   typeName: body.type === CANNON.Body.DYNAMIC ? 'DYNAMIC' : 
+    //             body.type === CANNON.Body.STATIC ? 'STATIC' : 
+    //             body.type === CANNON.Body.KINEMATIC ? 'KINEMATIC' : 'UNKNOWN',
+    //   mass: body.mass,
+    //   pos: `${body.position.x.toFixed(2)}, ${body.position.y.toFixed(2)}, ${body.position.z.toFixed(2)}`,
+    //   vel: `${body.velocity.x.toFixed(2)}, ${body.velocity.y.toFixed(2)}, ${body.velocity.z.toFixed(2)}`,
+    //   awake: body.sleepState === CANNON.Body.AWAKE,
+    //   shapes: body.shapes.length
+    // })));
 
     // Find player body - try multiple methods
     let playerBody = this.world.bodies.find(body => body.id === 1); // Try by ID first
@@ -321,6 +366,11 @@ export class PhysicsWorld {
     });
     
     this.world.step(clampedDelta);
+    
+    // Update debug renderer if enabled
+    if (this.debugEnabled && this.debugRenderer) {
+      this.debugRenderer.update();
+    }
     
     // Log body states after step
     const afterStep = playerBody ? {

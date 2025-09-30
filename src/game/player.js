@@ -17,8 +17,7 @@ export class Player {
     this.mesh = new THREE.Group();
     this.scene.add(this.mesh);
     
-    // Add a temporary visible cube until model loads
-    this.createTemporaryMesh();
+    // No temporary mesh - wait for model to load
     
     // Physics body (Cannon.js)
     this.body = null;
@@ -34,32 +33,24 @@ export class Player {
     this.isSprinting = false;
     this.isJumping = false;
     
+    // Model and physics dimensions for position adjustment
+    this.modelHeight = 1.6; // Default height
+    this.physicsHeight = 1.44; // Default physics height (90% of model)
+    
     // Load 3D model
     this.loadModel();
     
-    console.log('🎮 Player created with physics body:', this.body?.id);
-  }
-
-  createTemporaryMesh() {
-    // Create a bright colored cube as a temporary placeholder
-    const geometry = new THREE.BoxGeometry(0.8, 1.8, 0.8);
-    const material = new THREE.MeshStandardMaterial({ 
-      color: 0x00ff00, // Bright green
-      transparent: true,
-      opacity: 0.8
-    });
-    this.tempMesh = new THREE.Mesh(geometry, material);
-    this.mesh.add(this.tempMesh);
-    console.log('🟢 Temporary green cube added as placeholder');
+    console.log('Player created with physics body:', this.body?.id);
   }
 
   createPhysicsBody() {
-    // Create a box-shaped physics body for the player
-    const width = 0.8;
-    const height = 1.8;
-    const depth = 0.8;
+    // Create a cylinder physics body for the player
+    // Start with reasonable default dimensions, will be updated when model loads
+    const radius = 0.3; // Smaller radius for tighter collision
+    const height = 1.6; // Reasonable height for character
     
-    const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, depth/2));
+    // Create cylinder shape (good approximation of capsule for character movement)
+    const shape = new CANNON.Cylinder(radius, radius, height, 8);
     
     this.body = new CANNON.Body({
       mass: 1,
@@ -68,6 +59,9 @@ export class Player {
     
     // Add shape to body
     this.body.addShape(shape);
+    
+    // Store shape reference for potential resizing
+    this.bodyShape = shape;
     
     // Set material
     this.body.material = this.physicsWorld.playerMaterial;
@@ -80,9 +74,12 @@ export class Player {
     this.body.sleepState = CANNON.Body.AWAKE;
     this.body.type = CANNON.Body.DYNAMIC;
     
-    // Add some damping to prevent sliding
-    this.body.linearDamping = 0.1;
+    // Add damping to prevent sliding and bouncing
+    this.body.linearDamping = 0.1; // Reduced damping for better movement
     this.body.angularDamping = 0.9;
+    
+    // Don't use fixedRotation as it can cause physics issues
+    // Instead we'll handle rotation manually in the visual mesh
     
     // Add body to physics world using the proper method
     this.physicsWorld.world.addBody(this.body);
@@ -165,17 +162,20 @@ export class Player {
         (gltf) => {
           console.log('🎭 GLTF loaded successfully:', gltf);
           
-          // Clear any existing mesh children (including temp mesh)
+          // Clear any existing mesh children
           while (this.mesh.children.length > 0) {
             this.mesh.remove(this.mesh.children[0]);
           }
-          console.log('🧹 Cleared temporary mesh and other children');
+          console.log('🧹 Cleared any existing mesh children');
         
         // Compute bounding box for the whole scene (like old code)
         const bbox = new THREE.Box3().setFromObject(gltf.scene);
         const sizeVec = new THREE.Vector3();
         bbox.getSize(sizeVec);
         console.log('📏 Model size:', sizeVec);
+        
+        // Update physics body to match model size
+        this.updatePhysicsBodySize(sizeVec);
         
         // Center model horizontally and vertically (like old code)
         const centerX = (bbox.max.x + bbox.min.x) / 2;
@@ -207,7 +207,7 @@ export class Player {
           };
           
           const idleClip = findClip(['idle', 'stand', 'rest']) || null;
-          const walkClip = findClip(['walk', 'run', 'strafe']) || gltf.animations[0] || null;
+          const walkClip = findClip(['walking', 'run', 'strafe']) || gltf.animations[0] || null;
           const jumpClip = findClip(['jump', 'leap']) || null;
           
           if (idleClip) {
@@ -258,7 +258,7 @@ export class Player {
             const material = new THREE.MeshStandardMaterial({ color: 0xff6b6b });
             const fallbackMesh = new THREE.Mesh(geometry, material);
             
-            // Clear temp mesh and add fallback
+            // Clear any existing meshes and add fallback
             while (this.mesh.children.length > 0) {
               this.mesh.remove(this.mesh.children[0]);
             }
@@ -271,6 +271,35 @@ export class Player {
     
     // Start loading
     tryLoadModel();
+  }
+
+  updatePhysicsBodySize(modelSize) {
+    if (!this.body || !this.bodyShape) return;
+    
+    // Store model dimensions for position adjustment
+    this.modelHeight = modelSize.y;
+    
+    // Calculate appropriate cylinder dimensions based on model size
+    // Use slightly smaller dimensions than the model for tighter collision
+    const radius = Math.max(modelSize.x, modelSize.z) * 0.35; // 35% of the wider horizontal dimension
+    const height = modelSize.y * 0.9; // 90% of model height
+    
+    // Store physics height for position offset calculation
+    this.physicsHeight = height;
+    
+    console.log(`🔧 Updating physics body size: radius=${radius.toFixed(2)}, height=${height.toFixed(2)} (model height: ${this.modelHeight.toFixed(2)})`);
+    
+    // Remove old shape
+    this.body.removeShape(this.bodyShape);
+    
+    // Create new cylinder with updated dimensions
+    this.bodyShape = new CANNON.Cylinder(radius, radius, height, 8);
+    this.body.addShape(this.bodyShape);
+    
+    // Update mass properties
+    this.body.updateMassProperties();
+    
+    console.log('✅ Physics body size updated to match model');
   }
 
   update(delta, input, camOrientation = null, platforms = [], playerActive = true) {
@@ -299,17 +328,65 @@ export class Player {
     this.updateAnimations(delta);
     
     // Debug logging
-    this.debugLog();
+    //this.debugLog();
   }
 
   updateGroundCheck() {
-    // Simple ground check using raycast
-    const rayStart = this.body.position.clone();
-    const rayEnd = rayStart.clone();
-    rayEnd.y -= 1.0; // Ray length
+    // Primary ground check using physics contacts (more reliable)
+    let groundContactFound = false;
     
-    const result = this.physicsWorld.raycast(rayStart, rayEnd);
-    this.isGrounded = result.hasHit;
+    // Check all contacts involving the player body
+    for (let i = 0; i < this.physicsWorld.world.contacts.length; i++) {
+      const contact = this.physicsWorld.world.contacts[i];
+      
+      // Check if this contact involves the player
+      if (contact.bi === this.body || contact.bj === this.body) {
+        // Get the contact normal (direction of contact)
+        const normal = contact.ni;
+        
+        // If the normal points mostly upward, it's likely ground contact
+        // (normal.y > 0.5 means the contact surface is angled less than 60 degrees from horizontal)
+        if (normal.y > 0.5) {
+          groundContactFound = true;
+          break;
+        }
+      }
+    }
+    
+    this.isGrounded = groundContactFound;
+    
+    // Reset jumping flag when player lands
+    if (this.isGrounded && this.isJumping && this.body.velocity.y <= 0.1) {
+      this.isJumping = false;
+      console.log('🛬 Landing detected - jump flag reset');
+    }
+    
+    // Optional: Try raycast as backup (currently not working reliably)
+    if (!this.isGrounded) {
+      const rayStart = this.body.position.clone();
+      const rayEnd = rayStart.clone();
+      rayEnd.y -= 1.2;
+      
+      const result = this.physicsWorld.raycast(rayStart, rayEnd);
+      if (result.hasHit) {
+        this.isGrounded = true;
+        // Also reset jumping flag if we hit ground via raycast
+        if (this.isJumping && this.body.velocity.y <= 0.1) {
+          this.isJumping = false;
+          console.log('🛬 Landing detected via raycast - jump flag reset');
+        }
+      }
+    }
+    
+    // Debug logging (less frequent now that contact detection works)
+    if (this._debugCounter % 180 === 0) { // Every 3 seconds
+      console.log('🌍 Ground check:', {
+        isGrounded: this.isGrounded,
+        method: groundContactFound ? 'contacts' : (this.isGrounded ? 'raycast' : 'none'),
+        bodyPosition: `${this.body.position.x.toFixed(2)}, ${this.body.position.y.toFixed(2)}, ${this.body.position.z.toFixed(2)}`,
+        contacts: this.physicsWorld.world.contacts.length
+      });
+    }
   }
 
   handleMovementInput(input, camOrientation, delta) {
@@ -343,7 +420,7 @@ export class Player {
       // Calculate speed
       const speed = this.speed * (this.isSprinting ? this.sprintMultiplier : 1);
       
-      // Apply velocity directly to physics body
+      // Apply velocity directly for responsive movement
       this.body.velocity.x = moveDirection.x * speed;
       this.body.velocity.z = moveDirection.z * speed;
       
@@ -362,47 +439,43 @@ export class Player {
   handleJumpInput(input) {
     if (!input || !input.isKey) return;
     
-    if (input.isKey('Space') && this.isGrounded && !this.isJumping) {
-      // Apply upward impulse for jumping
-      this.body.velocity.y = this.jumpStrength;
-      this.isJumping = true;
+    if (input.isKey('Space')) {
+      console.log('🚀 Space key pressed, checking jump conditions:', {
+        isGrounded: this.isGrounded,
+        isJumping: this.isJumping,
+        velocity: this.body.velocity.y.toFixed(2)
+      });
       
-      // Reset jumping flag when we land
-      setTimeout(() => {
-        if (this.isGrounded) {
-          this.isJumping = false;
-        }
-      }, 100);
+      if (this.isGrounded && !this.isJumping) {
+        // Apply upward impulse for jumping
+        this.body.velocity.y = this.jumpStrength;
+        this.isJumping = true;
+        console.log(`🚀 JUMP! Applied velocity: ${this.jumpStrength}`);
+      } else {
+        console.log('🚫 Jump blocked:', {
+          reason: !this.isGrounded ? 'not grounded' : 'already jumping'
+        });
+      }
     }
   }
 
   syncMeshWithBody() {
     if (!this.body) return;
     
-    // Debug: Log positions before sync
-    const bodyPos = this.body.position;
-    const meshPos = this.mesh.position;
-    
-    if (Math.abs(bodyPos.x - meshPos.x) > 0.01 || 
-        Math.abs(bodyPos.y - meshPos.y) > 0.01 || 
-        Math.abs(bodyPos.z - meshPos.z) > 0.01) {
-      console.log('🔄 Syncing mesh with body:', {
-        bodyPos: `${bodyPos.x.toFixed(2)}, ${bodyPos.y.toFixed(2)}, ${bodyPos.z.toFixed(2)}`,
-        meshPos: `${meshPos.x.toFixed(2)}, ${meshPos.y.toFixed(2)}, ${meshPos.z.toFixed(2)}`,
-        bodyVel: `${this.body.velocity.x.toFixed(2)}, ${this.body.velocity.y.toFixed(2)}, ${this.body.velocity.z.toFixed(2)}`
-      });
-    }
-    
     // Copy position from physics body to visual mesh
-    // Use explicit assignment to ensure compatibility between CANNON.Vec3 and THREE.Vector3
+    // Adjust Y position to account for the difference between physics body height and model height
+    // Physics body center should align with model's center, not its base
+    const heightOffset = this.modelHeight ? (this.modelHeight - this.physicsHeight) * 0.5 : 0;
+    
     this.mesh.position.set(
       this.body.position.x,
-      this.body.position.y,
+      this.body.position.y + heightOffset,
       this.body.position.z
     );
     
-    // Don't copy rotation for X and Z axes to keep player upright
-    // Only use Y rotation for turning
+    // Keep the physics body upright by resetting its rotation
+    // This prevents the body from tipping over without using fixedRotation
+    this.body.quaternion.set(0, 0, 0, 1);
   }
 
   updateAnimations(delta) {
@@ -411,8 +484,24 @@ export class Player {
     // Update animation mixer
     this.mixer.update(delta);
     
-    // Determine which animation to play
-    const isMoving = Math.abs(this.body.velocity.x) > 0.1 || Math.abs(this.body.velocity.z) > 0.1;
+    // Determine which animation to play with better movement detection
+    const velocity = this.body.velocity;
+    const horizontalSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+    const isMoving = horizontalSpeed > 0.2; // Lowered threshold for more responsive detection
+    
+    // Debug animation state every second
+    // if (this._debugCounter % 60 === 0) {
+    //   console.log('🎬 Animation debug:', {
+    //     horizontalSpeed: horizontalSpeed.toFixed(3),
+    //     velocity: `${velocity.x.toFixed(2)}, ${velocity.y.toFixed(2)}, ${velocity.z.toFixed(2)}`,
+    //     isMoving,
+    //     isGrounded: this.isGrounded,
+    //     availableAnimations: Object.keys(this.actions),
+    //     currentAction: this.currentAction?.getClip()?.name || 'none',
+    //     walkAnimationExists: !!this.actions.walk,
+    //     idleAnimationExists: !!this.actions.idle
+    //   });
+    // }
     
     let targetAction = null;
     
@@ -420,17 +509,26 @@ export class Player {
       targetAction = this.actions.jump;
     } else if (isMoving && this.actions.walk) {
       targetAction = this.actions.walk;
+      // Ensure walk animation is not paused when moving
+      this.actions.walk.paused = false;
     } else if (this.actions.idle) {
       targetAction = this.actions.idle;
+    } else if (this.actions.walk && !isMoving) {
+      // If no idle animation exists, stop the walk animation instead of pausing
+      targetAction = null; // This will stop the current animation
     }
     
     // Switch animation if needed
-    if (targetAction && targetAction !== this.currentAction) {
+    if (targetAction !== this.currentAction) {
       if (this.currentAction) {
         this.currentAction.fadeOut(0.2);
       }
-      targetAction.reset().fadeIn(0.2).play();
-      this.currentAction = targetAction;
+      if (targetAction) {
+        targetAction.reset().fadeIn(0.2).play();
+        this.currentAction = targetAction;
+      } else {
+        this.currentAction = null;
+      }
     }
   }
 

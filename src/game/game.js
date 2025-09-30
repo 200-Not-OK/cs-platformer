@@ -22,8 +22,8 @@ export class Game {
     this.scene = scene;
     this.renderer = renderer;
 
-    // Initialize physics world
-    this.physicsWorld = new PhysicsWorld();
+    // Initialize physics world with scene for debug rendering
+    this.physicsWorld = new PhysicsWorld(this.scene);
 
     // enable collision debug visuals/logging (remove for production)
     //enableDebug(this.scene);
@@ -154,6 +154,28 @@ export class Game {
     await this.loadLevel(0);
     // Apply lights for current level   
     this.applyLevelLights(this.level?.data);
+    
+    // Expose debug functions globally for console access
+    this._setupGlobalDebugFunctions();
+  }
+
+  _setupGlobalDebugFunctions() {
+    // Make physics debug toggle available globally
+    window.togglePhysicsDebug = () => {
+      const enabled = this.physicsWorld.enableDebug(!this.physicsWorld.isDebugEnabled());
+      console.log(`🔧 Physics debug visualization ${enabled ? 'ON' : 'OFF'}`);
+      return enabled;
+    };
+    
+    // Show current debug status
+    window.physicsDebugStatus = () => {
+      return this.physicsWorld.isDebugEnabled();
+    };
+    
+    console.log('🔧 Debug functions available:');
+    console.log('  togglePhysicsDebug() - Toggle physics collision visualization');
+    console.log('  physicsDebugStatus() - Check if physics debug is enabled');
+    console.log('  Press G to toggle physics debug visualization');
   }
 
   _bindKeys() {
@@ -202,6 +224,10 @@ export class Game {
           this.level.toggleColliders(this.showColliders);
         }
         this.player.toggleHelperVisible(this.showColliders);
+      } else if (code === 'KeyG') {
+        // toggle physics debug visualization
+        const debugEnabled = this.physicsWorld.enableDebug(!this.physicsWorld.isDebugEnabled());
+        console.log(`🔧 Physics debug visualization ${debugEnabled ? 'ON' : 'OFF'}`);
       }
     });
   }
