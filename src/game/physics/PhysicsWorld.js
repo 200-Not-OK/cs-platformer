@@ -114,7 +114,7 @@ export class PhysicsWorld {
     const body = new CANNON.Body({ 
       mass: 0, // Static body
       material: this.groundMaterial,
-      type: CANNON.Body.KINEMATIC
+      type: CANNON.Body.STATIC // Use STATIC for solid level geometry
     });
     
     body.addShape(trimeshShape);
@@ -127,7 +127,12 @@ export class PhysicsWorld {
   }
 
   addStaticMesh(mesh) {
-    // Create static body from Three.js mesh
+    // Check if this is a simple box geometry for more efficient collision
+    if (mesh.geometry.type === 'BoxGeometry') {
+      return this.addStaticBox(mesh);
+    }
+    
+    // Create static body from Three.js mesh using trimesh
     const body = this.addStaticMeshFromGeometry(
       mesh.geometry,
       mesh.position,
@@ -139,6 +144,38 @@ export class PhysicsWorld {
     if (body) {
       mesh.userData.physicsBody = body;
     }
+    
+    return body;
+  }
+
+  addStaticBox(mesh) {
+    // Create a more efficient box collision shape for box geometries
+    const geometry = mesh.geometry;
+    const scale = mesh.scale;
+    
+    // Get box dimensions from geometry parameters
+    const width = geometry.parameters.width * scale.x;
+    const height = geometry.parameters.height * scale.y;
+    const depth = geometry.parameters.depth * scale.z;
+    
+    console.log(`📦 Creating box collider: ${width}x${height}x${depth} at ${mesh.position.x}, ${mesh.position.y}, ${mesh.position.z}`);
+    
+    const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, depth/2));
+    const body = new CANNON.Body({ 
+      mass: 0, // Static body
+      material: this.groundMaterial,
+      type: CANNON.Body.STATIC
+    });
+    
+    body.addShape(shape);
+    body.position.set(mesh.position.x, mesh.position.y, mesh.position.z);
+    body.quaternion.set(mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w);
+    
+    this.world.addBody(body);
+    this.bodies.add(body);
+    
+    // Store reference for cleanup
+    mesh.userData.physicsBody = body;
     
     return body;
   }
