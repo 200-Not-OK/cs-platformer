@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { EnemyBase } from './EnemyBase.js';
 
 export class WalkerEnemy extends EnemyBase {
-  constructor(scene, options = {}) {
-    super(scene, options);
+  constructor(scene, physicsWorld, options = {}) {
+    super(scene, physicsWorld, options);
     this.patrolPoints = options.patrolPoints || [];
     this._patrolIndex = 0;
     this.waitTime = options.waitTime ?? 0.5;
@@ -50,7 +50,7 @@ export class WalkerEnemy extends EnemyBase {
         const dirXZ = new THREE.Vector3(dir.x, 0, dir.z);
         if (dirXZ.lengthSq() > 1e-6) {
           dirXZ.normalize();
-          this.setDesiredMovement(dirXZ.clone().multiplyScalar(this.speed));
+          this.setDesiredMovement(dirXZ); // Let EnemyBase handle speed multiplication
           isMoving = true;
           const yaw = Math.atan2(dirXZ.x, dirXZ.z);
           this.mesh.rotation.y = yaw;
@@ -66,7 +66,7 @@ export class WalkerEnemy extends EnemyBase {
       const near = toPlayerXZ.length() < (this.options.chaseRange ?? 4);
       if (near && toPlayerXZ.lengthSq() > 1e-6) {
         const chaseDirXZ = toPlayerXZ.clone().normalize();
-        this.setDesiredMovement(chaseDirXZ.clone().multiplyScalar(this.speed * 1.2));
+        this.setDesiredMovement(chaseDirXZ.multiplyScalar(1.2)); // Let EnemyBase handle base speed, just apply 1.2x multiplier
         isMoving = true;
         // face the player (yaw only)
         const yaw = Math.atan2(chaseDirXZ.x, chaseDirXZ.z);
@@ -83,7 +83,5 @@ export class WalkerEnemy extends EnemyBase {
         if (this.actions.idle) this._playAction(this.actions.idle, 0.2, true);
       }
     } catch (e) {}
-
-    this._updateCollider();
   }
 }

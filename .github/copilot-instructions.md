@@ -2,15 +2,17 @@
 
 ## Architecture Overview
 
-This is a **Three.js-based 3D platformer** with dual editor system and modular component architecture. The codebase follows ES6 modules with a clear separation between game logic, editing tools, and content creation.
+This is a **Three.js-based 3D platformer** with **Cannon.js physics engine**, dual editor system, and modular component architecture. The codebase follows ES6 modules with clear separation between visual rendering (Three.js) and physics simulation (Cannon.js).
 
 ### Core System Boundaries
 
-- **Game Core** (`src/game/`): Main game loop, player physics, collision detection
+- **Game Core** (`src/game/`): Main game loop, physics integration, player controls
+- **Physics Layer** (`src/game/physics/PhysicsWorld.js`): Cannon.js physics world with materials and contact handling
+- **Visual Layer**: Three.js scene management, GLTF loading, and rendering
 - **Editor Systems**: Dual editors - in-game (`src/game/editor/`) and standalone (`src/editor/`)
 - **Component Systems**: Enemies, Lights, UI components with mount/unmount lifecycle
-- **Asset Pipeline**: GLTF models, JSON level data, Three.js scene management
-- **Cinematics System**: `CinematicsManager` handles dialogue and cutscenes
+- **Asset Pipeline**: GLTF models, JSON level data, physics body generation
+- **Cinematics System**: Level-specific dialogue and cutscenes via `CinematicsManager`
 
 ## Critical Workflows
 
@@ -21,13 +23,34 @@ npm run build    # Production build
 npm run preview  # Preview built version
 ```
 
-### Debugging Patterns
+### Physics Debugging Patterns
 - `window.__GAME__` exposes game instance to console
-- `window.toggleCollisionDebug()` toggles collision visualization wireframes
+- `window.togglePhysicsDebug()` toggles Cannon.js physics wireframes
+- `physicsWorld.enableDebugRenderer()` shows Cannon.js physics bodies with green wireframes
+- Player physics debugging via extensive console logging in `player.js`
 - Level editor accessible via 'E' key in-game or standalone at `/editor.html`
-- Cinematics debugging: `CinematicsManager.isPlaying` indicates active cutscenes
+- Press 'L' in-game to toggle physics debug visualization
 
 ## Key Architectural Patterns
+
+### Physics-Visual Separation Pattern
+The architecture maintains strict separation between physics simulation and visual representation:
+```javascript
+// Player class example - physics body drives visual mesh
+export class Player {
+  constructor(scene, physicsWorld) {
+    this.scene = scene;           // Three.js scene
+    this.physicsWorld = physicsWorld; // Cannon.js world
+    this.mesh = new THREE.Group(); // Visual representation
+    this.body = null;             // Physics body (created after model loads)
+  }
+  
+  syncMeshWithBody() {
+    // Copy position from physics to visual
+    this.mesh.position.copy(this.body.position);
+  }
+}
+```
 
 ### Component Lifecycle Pattern
 All game components (lights, enemies, UI) follow mount/unmount pattern:
@@ -40,11 +63,12 @@ export class MyComponent extends ComponentBase {
 }
 ```
 
-### Collision System Architecture
-- **Custom Box3-based collision** (not physics engine)
-- **Axis-separation resolution**: X, Z, then Y movement resolution
-- Ground detection via `_airTime` and `_groundGrace` timing
-- Debug wireframes via `ColliderHelper` class
+### Physics System Architecture
+- **Cannon.js Physics Engine**: Full rigid body dynamics with materials and contact resolution
+- **Custom Materials**: Ground, player, enemy materials with specific friction/restitution
+- **Model-First Physics**: Physics bodies created after GLTF model loads to match dimensions
+- **Ground Detection**: Contact normal analysis (`contact.ni.y > 0.5`) for reliable ground state
+- **Debug Physics**: Cannon-ES-Debugger integration for wireframe visualization
 
 ### Level Data Structure
 Levels are stored in `src/game/levelData.js` with hybrid GLTF + procedural schema:
@@ -105,6 +129,19 @@ Camera switching automatically handles pointer lock acquisition/release and paus
 
 ## Critical Integration Points
 
+### Physics-Movement Integration
+Player movement uses hybrid approach based on ground state:
+```javascript
+// Grounded: direct velocity for stable movement
+if (this.isGrounded) {
+  this.body.velocity.x = targetVelX;
+  this.body.velocity.z = targetVelZ;
+} else {
+  // Airborne: forces for realistic physics
+  this.body.applyForce(new CANNON.Vec3(forceX, 0, forceZ), this.body.position);
+}
+```
+
 ### Enemy-Level Communication
 Enemies receive patrol points from level data and register with `EnemyManager` for centralized updates. GLTF model loading is async with bbox calculation for collision setup.
 
@@ -114,5 +151,5 @@ Lights registered in `lights/index.js` are dynamically instantiated by `LightMan
 ### UI-Game State Binding
 UI components subscribe to game state changes via props system. `UIManager` handles component lifecycle synchronized with level loading/unloading.
 
-### Collision-Movement Pipeline
-Movement resolution in `collisionSystem.js` operates on Box3 arrays converted from scene meshes. Ground detection affects jump mechanics and animation state transitions.
+### Physics Body Generation
+Level geometry automatically generates physics bodies from GLTF meshes. Fallback procedural objects also create corresponding Cannon.js bodies for collision.
