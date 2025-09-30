@@ -51,7 +51,8 @@ export class Player {
   _loadModel() {
     const loader = new GLTFLoader();
     loader.load(
-      'src/assets/low_poly_male/scene.gltf',
+      //'src/assets/low_poly_male/scene.gltf',
+      'src/assets/Knight.gltf',
       (gltf) => {
         // Remove placeholder children
         while (this.mesh.children.length > 0) this.mesh.remove(this.mesh.children[0]);
@@ -77,6 +78,7 @@ export class Player {
         if (gltf.animations && gltf.animations.length > 0) {
           this.mixer = new THREE.AnimationMixer(gltf.scene);
           const clips = gltf.animations;
+          console.log(`🎬 Player model has ${clips.length} animation clips:`, clips.map(c => c.name));
           const findClip = (names) => {
             if (!names) return null;
             for (const n of names) {
@@ -87,9 +89,9 @@ export class Player {
             }
             return null;
           };
-          const idleClip = findClip(['idle', 'stand', 'rest']) || null;
-          const walkClip = findClip(['walk', 'run', 'strafe']) || clips[0] || null;
-          const jumpClip = findClip(['jump', 'leap']) || null;
+          const idleClip = findClip(['Idle']) || null;
+          const walkClip = findClip(['walking_A', 'run', 'strafe']) || clips[0] || null;
+          const jumpClip = findClip(['Jump_Full_Short']) || null;
           if (idleClip) this.actions.idle = this.mixer.clipAction(idleClip);
           if (walkClip) this.actions.walk = this.mixer.clipAction(walkClip);
           if (jumpClip) this.actions.jump = this.mixer.clipAction(jumpClip);
