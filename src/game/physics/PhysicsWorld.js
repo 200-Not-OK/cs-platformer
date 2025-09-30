@@ -13,10 +13,8 @@ export class PhysicsWorld {
     this.world.defaultContactMaterial.contactEquationStiffness = 1e9;
     this.world.defaultContactMaterial.contactEquationRelaxation = 4;
     
-    // Allow sleeping for better performance
-    this.world.allowSleep = true;
-    this.world.sleepSpeedLimit = 0.1;
-    this.world.sleepTimeLimit = 1;
+    // Disable sleeping entirely for debugging
+    this.world.allowSleep = false;
     
     // Materials for different types of objects
     this.groundMaterial = new CANNON.Material('ground');
@@ -51,6 +49,35 @@ export class PhysicsWorld {
     
     // Debug logging
     console.log('🔧 Physics world initialized with gravity:', this.world.gravity);
+    
+    // Create a simple test body to verify physics is working
+    this.createTestBody();
+  }
+
+  createTestBody() {
+    console.log('🧪 Creating test physics body...');
+    const testShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5));
+    const testBody = new CANNON.Body({
+      mass: 1,
+      type: CANNON.Body.DYNAMIC
+    });
+    testBody.addShape(testShape);
+    testBody.position.set(5, 15, 5); // Place it away from player
+    testBody.allowSleep = false;
+    
+    this.world.addBody(testBody);
+    this.bodies.add(testBody);
+    
+    console.log('🧪 Test body created at position:', testBody.position);
+    
+    // Check if it falls after 2 seconds
+    setTimeout(() => {
+      console.log('🧪 Test body after 2 seconds:', {
+        position: testBody.position,
+        velocity: testBody.velocity,
+        fell: testBody.position.y < 14
+      });
+    }, 2000);
   }
 
   addStaticMeshFromGeometry(geometry, position = new THREE.Vector3(), quaternion = new THREE.Quaternion(), scale = new THREE.Vector3(1, 1, 1)) {
@@ -117,38 +144,55 @@ export class PhysicsWorld {
   }
 
   createPlayerBody(position = new THREE.Vector3()) {
-    // Use cylinder shape for player (closest to capsule in Cannon.js)
-    const radius = 0.3;
-    const height = 1.4;
-    const shape = new CANNON.Cylinder(radius, radius, height, 8);
+    // Use a simple box shape first to test if physics works
+    const width = 0.6;
+    const height = 1.8;
+    const depth = 0.6;
+    const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, depth/2));
     
     const body = new CANNON.Body({
       mass: 1,
-      material: this.playerMaterial,
-      type: CANNON.Body.DYNAMIC, // Explicitly set as dynamic
-      fixedRotation: true // Prevent player from tipping over
+      material: this.playerMaterial
     });
     
     body.addShape(shape);
     body.position.set(position.x, position.y, position.z);
     
-    // Set damping for realistic movement
-    body.angularDamping = 0.9;
-    body.linearDamping = 0.1;
+    // Minimal damping for testing
+    body.angularDamping = 0.01;
+    body.linearDamping = 0.01;
     
-    // Make sure the body can move
-    body.allowSleep = false; // Prevent the body from sleeping
+    // Ensure the body is active and can be affected by physics
+    body.allowSleep = false;
     body.sleepState = CANNON.Body.AWAKE;
+    body.type = CANNON.Body.DYNAMIC;
+    
+    // Don't lock rotation initially to test if physics works at all
+    // body.fixedRotation = true;
+    
+    // Manually update mass properties
+    body.updateMassProperties();
     
     this.world.addBody(body);
     this.bodies.add(body);
     
-    console.log('🚀 Player body created:', {
+    // Test: manually apply a downward force to see if it responds
+    setTimeout(() => {
+      console.log('🧪 Testing physics with manual force...');
+      body.applyImpulse(new CANNON.Vec3(0, -10, 0));
+      console.log('Applied downward impulse, velocity should change:', body.velocity);
+    }, 1000);
+    
+    console.log('🚀 Player body created (box shape):', {
       mass: body.mass,
       type: body.type,
       position: body.position,
+      velocity: body.velocity,
       material: body.material?.name,
-      canSleep: body.allowSleep
+      canSleep: body.allowSleep,
+      inWorld: this.world.bodies.includes(body),
+      worldGravity: this.world.gravity,
+      bodyId: body.id
     });
     
     return body;
@@ -185,16 +229,92 @@ export class PhysicsWorld {
   step(deltaTime) {
     // Clamp deltaTime to prevent physics explosion
     const clampedDelta = Math.min(deltaTime, 1/30);
+    
+    // Debug: List ALL bodies and their properties
+    console.log('🔍 All bodies in world:', this.world.bodies.map(body => ({
+      id: body.id,
+      type: body.type,
+      typeName: body.type === CANNON.Body.DYNAMIC ? 'DYNAMIC' : 
+                body.type === CANNON.Body.STATIC ? 'STATIC' : 
+                body.type === CANNON.Body.KINEMATIC ? 'KINEMATIC' : 'UNKNOWN',
+      mass: body.mass,
+      pos: `${body.position.x.toFixed(2)}, ${body.position.y.toFixed(2)}, ${body.position.z.toFixed(2)}`,
+      vel: `${body.velocity.x.toFixed(2)}, ${body.velocity.y.toFixed(2)}, ${body.velocity.z.toFixed(2)}`,
+      awake: body.sleepState === CANNON.Body.AWAKE,
+      shapes: body.shapes.length
+    })));
+
+    // Find player body - try multiple methods
+    let playerBody = this.world.bodies.find(body => body.id === 1); // Try by ID first
+    if (!playerBody) {
+      playerBody = this.world.bodies.find(body => 
+        body.mass === 1 && body.type === CANNON.Body.DYNAMIC
+      );
+    }
+    if (!playerBody) {
+      // Find any dynamic body with mass > 0
+      playerBody = this.world.bodies.find(body => 
+        body.type === CANNON.Body.DYNAMIC && body.mass > 0
+      );
+    }
+    
+    // Log body states before step
+    const beforeStep = playerBody ? {
+      id: playerBody.id,
+      pos: {...playerBody.position},
+      vel: {...playerBody.velocity},
+      awake: playerBody.sleepState === CANNON.Body.AWAKE,
+      type: playerBody.type,
+      mass: playerBody.mass
+    } : null;
+    
+    // Wake up all dynamic bodies to ensure they respond to gravity
+    this.world.bodies.forEach(body => {
+      if (body.type === CANNON.Body.DYNAMIC && body.sleepState !== CANNON.Body.AWAKE) {
+        console.log(`💤 Waking up sleeping body ${body.id}`);
+        body.wakeUp();
+      }
+      
+      // MANUAL GRAVITY TEST: Apply gravity force manually to see if forces work
+      if (body.type === CANNON.Body.DYNAMIC && body.mass > 0) {
+        // Apply gravity manually: F = mg
+        const gravityForce = new CANNON.Vec3(0, -9.82 * body.mass, 0);
+        body.force.vadd(gravityForce, body.force);
+      }
+    });
+    
     this.world.step(clampedDelta);
+    
+    // Log body states after step
+    const afterStep = playerBody ? {
+      id: playerBody.id,
+      pos: {...playerBody.position},
+      vel: {...playerBody.velocity},
+      awake: playerBody.sleepState === CANNON.Body.AWAKE,
+      type: playerBody.type,
+      mass: playerBody.mass
+    } : null;
     
     // Debug logging every 60 frames (approximately 1 second)
     if (!this._debugCounter) this._debugCounter = 0;
     this._debugCounter++;
     if (this._debugCounter % 60 === 0) {
-      console.log('⚡ Physics step:', {
+      console.log('⚡ Physics step detailed:', {
         deltaTime: clampedDelta,
         bodies: this.world.bodies.length,
-        contacts: this.world.contacts.length
+        contacts: this.world.contacts.length,
+        playerFound: !!playerBody,
+        beforeStep,
+        afterStep,
+        positionChanged: beforeStep && afterStep ? 
+          (beforeStep.pos.x !== afterStep.pos.x || 
+           beforeStep.pos.y !== afterStep.pos.y || 
+           beforeStep.pos.z !== afterStep.pos.z) : false,
+        velocityChanged: beforeStep && afterStep ?
+          (beforeStep.vel.x !== afterStep.vel.x || 
+           beforeStep.vel.y !== afterStep.vel.y || 
+           beforeStep.vel.z !== afterStep.vel.z) : false,
+        gravityApplied: beforeStep && afterStep ? afterStep.vel.y < beforeStep.vel.y : false
       });
     }
   }
