@@ -40,7 +40,15 @@ export class Game {
   this.level = null;
 
   // Player
-  this.player = new Player(this.scene, this.physicsWorld, { speed: 25 , jumpStrength: 18, size: [1, 1.5, 1] });
+  this.player = new Player(this.scene, this.physicsWorld, { 
+    speed: 25, 
+    jumpStrength: 12, 
+    size: [1, 1.5, 1],
+    // Collider size scaling factors (optional)
+    colliderWidthScale: 0.4,   // 40% of model width (default: 0.4)
+    colliderHeightScale: 1,  // 90% of model height (default: 0.9)  
+    colliderDepthScale: 0.4    // 40% of model depth (default: 0.4)
+  });
   // Player position will be set by loadLevel() call
 
     // Cameras

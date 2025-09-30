@@ -13,12 +13,20 @@ export class Player {
     this.sprintMultiplier = options.sprintMultiplier ?? 1.6;
     this.health = options.health ?? 100;
     
+    // Collider sizing options
+    this.colliderScale = {
+      width: options.colliderWidthScale ?? 0.4,    // Scale factor for width (X/Z)
+      height: options.colliderHeightScale ?? 0.9,  // Scale factor for height (Y)
+      depth: options.colliderDepthScale ?? 0.4     // Scale factor for depth (Z)
+    };
+    
     // Visual mesh (Three.js)
     this.mesh = new THREE.Group();
     this.scene.add(this.mesh);
     
     // Physics body (Cannon.js) - will be created after model loads
     this.body = null;
+    this.originalModelSize = null; // Store original model dimensions for collider updates
     
     // Animation system
     this.mixer = null;
@@ -180,12 +188,20 @@ export class Player {
   createPhysicsBody(modelSize) {
     console.log('🔧 Creating physics body from model dimensions:', modelSize);
     
-    // Create a capsule-like shape using a box that's slightly smaller than the model
-    const width = Math.max(modelSize.x, modelSize.z) * 0.4; // 40% of wider dimension
-    const height = modelSize.y * 0.9; // 90% of model height
-    const depth = width; // Keep it square in the horizontal plane
+    // Store original model size for future collider updates
+    this.originalModelSize = {
+      x: modelSize.x,
+      y: modelSize.y,
+      z: modelSize.z
+    };
+    
+    // Create a capsule-like shape using configurable scaling
+    const width = Math.max(modelSize.x, modelSize.z) * this.colliderScale.width;
+    const height = modelSize.y * this.colliderScale.height;
+    const depth = Math.max(modelSize.x, modelSize.z) * this.colliderScale.depth;
     
     console.log(`🔧 Physics body dimensions: ${width.toFixed(2)} x ${height.toFixed(2)} x ${depth.toFixed(2)}`);
+    console.log(`🔧 Collider scale factors: width=${this.colliderScale.width}, height=${this.colliderScale.height}, depth=${this.colliderScale.depth}`);
     
     // Create physics body using our PhysicsWorld
     this.body = this.physicsWorld.createDynamicBody({
@@ -213,6 +229,12 @@ export class Player {
     
     // Update ground detection
     this.updateGroundDetection();
+    
+    // Apply additional downward force when airborne for faster falling
+    if (!this.isGrounded) {
+      const extraGravityForce = -25; // Additional downward force (negative Y)
+      this.body.applyForce(new CANNON.Vec3(0, extraGravityForce, 0), this.body.position);
+    }
     
     // Handle movement input
     if (playerActive) {
@@ -334,9 +356,9 @@ export class Player {
         this.body.velocity.x *= 0.7;
         this.body.velocity.z *= 0.7;
       } else {
-        // Apply lighter damping when airborne to prevent infinite movement
-        this.body.velocity.x *= 0.95;
-        this.body.velocity.z *= 0.95;
+        // Stop immediately when airborne and no input
+        this.body.velocity.x *= 0.1; // Much more aggressive stopping
+        this.body.velocity.z *= 0.1;
       }
     }
   }
@@ -383,7 +405,7 @@ export class Player {
     // Determine which animation to play
     const velocity = this.body.velocity;
     const horizontalSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-    const isMoving = horizontalSpeed > 0.2;
+    const isMoving = horizontalSpeed > 0.1; // Lowered threshold for more immediate stopping
     
     let targetAction = null;
     
@@ -418,6 +440,40 @@ export class Player {
     this.syncMeshWithBody();
     
     console.log('📍 Player position set to:', position);
+  }
+
+  // Method to update collider size at runtime
+  updateColliderSize(widthScale, heightScale, depthScale) {
+    if (!this.body) {
+      console.warn('⚠️ Cannot update collider - physics body not created yet');
+      return;
+    }
+    
+    if (!this.originalModelSize) {
+      console.warn('⚠️ Cannot update collider - original model size not stored');
+      return;
+    }
+    
+    // Update scale factors
+    if (widthScale !== undefined) this.colliderScale.width = widthScale;
+    if (heightScale !== undefined) this.colliderScale.height = heightScale;
+    if (depthScale !== undefined) this.colliderScale.depth = depthScale;
+    
+    // Store current position and velocity
+    const currentPos = this.body.position.clone();
+    const currentVel = this.body.velocity.clone();
+    
+    // Remove old body
+    this.physicsWorld.removeBody(this.body);
+    
+    // Create new body with updated dimensions using original model size
+    this.createPhysicsBody(this.originalModelSize);
+    
+    // Restore position and velocity
+    this.body.position.copy(currentPos);
+    this.body.velocity.copy(currentVel);
+    
+    console.log(`🔧 Collider size updated - scales: width=${this.colliderScale.width}, height=${this.colliderScale.height}, depth=${this.colliderScale.depth}`);
   }
 
   dispose() {
