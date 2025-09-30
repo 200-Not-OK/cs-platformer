@@ -13,11 +13,11 @@ export class PhysicsWorld {
     this.debugRenderer = null;
     this.debugEnabled = false;
     
-    // Improve performance
+    // Improve performance and reduce contact stiffness
     this.world.broadphase = new CANNON.NaiveBroadphase();
     this.world.solver.iterations = 10;
-    this.world.defaultContactMaterial.contactEquationStiffness = 1e9;
-    this.world.defaultContactMaterial.contactEquationRelaxation = 4;
+    this.world.defaultContactMaterial.contactEquationStiffness = 1e6; // Reduced from 1e9
+    this.world.defaultContactMaterial.contactEquationRelaxation = 10; // Increased from 4
     
     // Disable sleeping entirely for debugging
     this.world.allowSleep = false;
@@ -33,9 +33,9 @@ export class PhysicsWorld {
       this.groundMaterial,
       {
         friction: 0.8, // Increased friction for better control
-        restitution: 0.0,
-        contactEquationStiffness: 1e9,
-        contactEquationRelaxation: 4
+        restitution: 0.0, // No bounce
+        contactEquationStiffness: 1e6, // Reduced from 1e9 to prevent excessive contact forces
+        contactEquationRelaxation: 10 // Increased relaxation for softer contacts
       }
     );
     this.world.addContactMaterial(this.playerGroundContact);
@@ -116,13 +116,13 @@ export class PhysicsWorld {
     console.log('🧪 Test body created at position:', testBody.position);
     
     // Check if it falls after 2 seconds
-    setTimeout(() => {
-      console.log('🧪 Test body after 2 seconds:', {
-        position: testBody.position,
-        velocity: testBody.velocity,
-        fell: testBody.position.y < 14
-      });
-    }, 2000);
+    // setTimeout(() => {
+    //   console.log('🧪 Test body after 2 seconds:', {
+    //     position: testBody.position,
+    //     velocity: testBody.velocity,
+    //     fell: testBody.position.y < 14
+    //   });
+    // }, 2000);
   }
 
   addStaticMeshFromGeometry(geometry, position = new THREE.Vector3(), quaternion = new THREE.Quaternion(), scale = new THREE.Vector3(1, 1, 1)) {
@@ -383,27 +383,27 @@ export class PhysicsWorld {
     } : null;
     
     // Debug logging every 60 frames (approximately 1 second)
-    if (!this._debugCounter) this._debugCounter = 0;
-    this._debugCounter++;
-    if (this._debugCounter % 60 === 0) {
-      console.log('⚡ Physics step detailed:', {
-        deltaTime: clampedDelta,
-        bodies: this.world.bodies.length,
-        contacts: this.world.contacts.length,
-        playerFound: !!playerBody,
-        beforeStep,
-        afterStep,
-        positionChanged: beforeStep && afterStep ? 
-          (beforeStep.pos.x !== afterStep.pos.x || 
-           beforeStep.pos.y !== afterStep.pos.y || 
-           beforeStep.pos.z !== afterStep.pos.z) : false,
-        velocityChanged: beforeStep && afterStep ?
-          (beforeStep.vel.x !== afterStep.vel.x || 
-           beforeStep.vel.y !== afterStep.vel.y || 
-           beforeStep.vel.z !== afterStep.vel.z) : false,
-        gravityApplied: beforeStep && afterStep ? afterStep.vel.y < beforeStep.vel.y : false
-      });
-    }
+    // if (!this._debugCounter) this._debugCounter = 0;
+    // this._debugCounter++;
+    // if (this._debugCounter % 60 === 0) {
+    //   console.log('⚡ Physics step detailed:', {
+    //     deltaTime: clampedDelta,
+    //     bodies: this.world.bodies.length,
+    //     contacts: this.world.contacts.length,
+    //     playerFound: !!playerBody,
+    //     beforeStep,
+    //     afterStep,
+    //     positionChanged: beforeStep && afterStep ? 
+    //       (beforeStep.pos.x !== afterStep.pos.x || 
+    //        beforeStep.pos.y !== afterStep.pos.y || 
+    //        beforeStep.pos.z !== afterStep.pos.z) : false,
+    //     velocityChanged: beforeStep && afterStep ?
+    //       (beforeStep.vel.x !== afterStep.vel.x || 
+    //        beforeStep.vel.y !== afterStep.vel.y || 
+    //        beforeStep.vel.z !== afterStep.vel.z) : false,
+    //     gravityApplied: beforeStep && afterStep ? afterStep.vel.y < beforeStep.vel.y : false
+    //   });
+    // }
   }
 
   raycast(from, to, options = {}) {

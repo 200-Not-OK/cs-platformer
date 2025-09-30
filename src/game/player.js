@@ -17,11 +17,9 @@ export class Player {
     this.mesh = new THREE.Group();
     this.scene.add(this.mesh);
     
-    // No temporary mesh - wait for model to load
-    
-    // Physics body (Cannon.js)
+    // Physics body (Cannon.js) - will be created after model loads
     this.body = null;
-    this.createPhysicsBody();
+    this.bodyShape = null;
     
     // Animation system
     this.mixer = null;
@@ -33,14 +31,56 @@ export class Player {
     this.isSprinting = false;
     this.isJumping = false;
     
-    // Model and physics dimensions for position adjustment
-    this.modelHeight = 1.6; // Default height
-    this.physicsHeight = 1.44; // Default physics height (90% of model)
+    // Debug counters
+    this._debugCounter = 0;
+    this._movementDebugCounter = 0;
     
-    // Load 3D model
+    // Load 3D model first, then create physics body
     this.loadModel();
     
-    console.log('Player created with physics body:', this.body?.id);
+    console.log('Player created - loading model first, then physics body...');
+  }
+
+  createPhysicsBodyFromModel(modelSize) {
+    console.log('🔧 Creating physics body from model dimensions:', modelSize);
+    
+    // Calculate cylinder dimensions based on model size
+    const radius = Math.max(modelSize.x, modelSize.z) * 0.4; // 40% of the wider horizontal dimension
+    const height = modelSize.y; // Full model height for proper ground alignment
+    
+    console.log(`🔧 Physics body dimensions: radius=${radius.toFixed(2)}, height=${height.toFixed(2)}`);
+    
+    // Create box shape instead of cylinder for simpler, more stable collision
+    // Box has clean contact points and no complex curved surface interactions
+    const width = radius * 2; // Convert radius to box width
+    const depth = radius * 2; // Convert radius to box depth
+    this.bodyShape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, depth/2));
+    
+    // Create physics body
+    this.body = new CANNON.Body({
+      mass: 1,
+      material: this.physicsWorld.playerMaterial
+    });
+    
+    // Add shape to body
+    this.body.addShape(this.bodyShape);
+    
+    // Configure physics properties to prevent bouncing
+    this.body.linearDamping = 0.2; // Add linear damping to smooth movement
+    this.body.angularDamping = 0.9; // High angular damping to prevent spinning
+    this.body.allowSleep = false; // Keep body always active
+    this.body.fixedRotation = false; // Allow rotation for proper cylinder behavior
+    
+    // Set initial position (start high to test gravity)
+    this.body.position.set(0, 10, 0);
+    
+    // Add body to physics world
+    this.physicsWorld.world.addBody(this.body);
+    
+    // Update mass properties
+    this.body.updateMassProperties();
+    
+    console.log('✅ Physics body created and added to world:', this.body.id);
   }
 
   createPhysicsBody() {
@@ -88,12 +128,6 @@ export class Player {
     // Force update mass properties
     this.body.updateMassProperties();
     
-    // Manually test if gravity affects the body
-    setTimeout(() => {
-      console.log('🧪 Manual gravity test - applying downward force...');
-      this.body.applyImpulse(new CANNON.Vec3(0, -5, 0));
-      console.log('Applied impulse, new velocity:', this.body.velocity);
-    }, 2000);
     
     console.log('🔧 Physics body created:', {
       id: this.body.id,
@@ -109,35 +143,6 @@ export class Player {
       shapes: this.body.shapes.length
     });
     
-    // Verify body is still in world after a delay
-    setTimeout(() => {
-      const stillInWorld = this.physicsWorld.world.bodies.includes(this.body);
-      console.log('🔍 Body check after 1 second:', {
-        bodyId: this.body.id,
-        stillInWorld,
-        worldBodyCount: this.physicsWorld.world.bodies.length,
-        worldBodyIds: this.physicsWorld.world.bodies.map(b => b.id)
-      });
-      
-      if (!stillInWorld) {
-        console.log('🚨 Body was removed! Re-adding it...');
-        this.physicsWorld.world.addBody(this.body);
-        this.physicsWorld.bodies.add(this.body);
-      }
-    }, 1000);
-    
-    // Test physics response after a delay
-    setTimeout(() => {
-      console.log('🧪 Physics test after 3 seconds:');
-      console.log('Position:', this.body.position);
-      console.log('Velocity:', this.body.velocity);
-      console.log('Sleep state:', this.body.sleepState);
-      console.log('Inverse mass:', this.body.invMass);
-      
-      // Apply a strong downward impulse
-      this.body.applyImpulse(new CANNON.Vec3(0, -10, 0));
-      console.log('Applied strong impulse, new velocity:', this.body.velocity);
-    }, 3000);
   }
 
   loadModel() {
@@ -146,9 +151,9 @@ export class Player {
     
     // Try different path formats for the model
     const modelPaths = [
-      'src/assets/low_poly_male/scene.gltf',
-      './src/assets/low_poly_male/scene.gltf',
-      '/src/assets/low_poly_male/scene.gltf'
+      'src/assets/low_poly_female/scene.gltf',
+      './src/assets/low_poly_female/scene.gltf',
+      '/src/assets/low_poly_female/scene.gltf'
     ];
     
     let currentPathIndex = 0;
@@ -174,8 +179,8 @@ export class Player {
         bbox.getSize(sizeVec);
         console.log('📏 Model size:', sizeVec);
         
-        // Update physics body to match model size
-        this.updatePhysicsBodySize(sizeVec);
+        // Create physics body now that we know the model dimensions
+        this.createPhysicsBodyFromModel(sizeVec);
         
         // Center model horizontally and vertically (like old code)
         const centerX = (bbox.max.x + bbox.min.x) / 2;
@@ -274,6 +279,10 @@ export class Player {
   }
 
   updatePhysicsBodySize(modelSize) {
+    // DEPRECATED: This method is no longer used with the new model-first approach
+    console.warn('⚠️ updatePhysicsBodySize called but is deprecated. Physics body should be created from model.');
+    return;
+    
     if (!this.body || !this.bodyShape) return;
     
     // Store model dimensions for position adjustment
@@ -327,8 +336,62 @@ export class Player {
     // Update animations
     this.updateAnimations(delta);
     
-    // Debug logging
-    //this.debugLog();
+    // Enhanced debug logging to find root cause of bouncing
+    this.debugPhysicsRoot();
+  }
+
+  debugPhysicsRoot() {
+    this._debugCounter++;
+    
+    // Log physics state every 20 frames when there are issues
+    const hasVerticalVelocity = Math.abs(this.body.velocity.y) > 0.5;
+    const hasUnexpectedMovement = !this.isJumping && hasVerticalVelocity;
+    
+    if (hasUnexpectedMovement && this._debugCounter % 20 === 0) {
+      // Get all contacts involving the player
+      const playerContacts = this.physicsWorld.world.contacts.filter(contact => 
+        contact.bi === this.body || contact.bj === this.body
+      );
+      
+      // Check what the player is colliding with
+      const contactDetails = playerContacts.map(contact => {
+        const otherBody = contact.bi === this.body ? contact.bj : contact.bi;
+        return {
+          normal: `${contact.ni.x.toFixed(2)}, ${contact.ni.y.toFixed(2)}, ${contact.ni.z.toFixed(2)}`,
+          otherBodyType: otherBody.type,
+          otherBodyMass: otherBody.mass,
+          contactPoint: contact.ri ? `${contact.ri.x.toFixed(2)}, ${contact.ri.y.toFixed(2)}, ${contact.ri.z.toFixed(2)}` : 'none'
+        };
+      });
+      
+      console.log('🔬 BOUNCING ROOT CAUSE ANALYSIS:', {
+        unexpectedVerticalVel: this.body.velocity.y.toFixed(3),
+        position: `${this.body.position.x.toFixed(2)}, ${this.body.position.y.toFixed(2)}, ${this.body.position.z.toFixed(2)}`,
+        isGrounded: this.isGrounded,
+        isJumping: this.isJumping,
+        contactCount: playerContacts.length,
+        contactDetails: contactDetails,
+        bodyProperties: {
+          mass: this.body.mass,
+          linearDamping: this.body.linearDamping,
+          angularDamping: this.body.angularDamping,
+          material: this.body.material?.name || 'none',
+          sleepState: this.body.sleepState,
+          shapes: this.body.shapes.length
+        },
+        worldSettings: {
+          gravity: this.physicsWorld.world.gravity.y,
+          totalBodies: this.physicsWorld.world.bodies.length,
+          totalContacts: this.physicsWorld.world.contacts.length
+        },
+        suspectedCauses: {
+          multipleContacts: playerContacts.length > 4,
+          highContactStiffness: 'check contact material settings',
+          incorrectGroundDetection: this.isGrounded !== (playerContacts.length > 0),
+          possibleCollisionIssue: contactDetails.some(c => Math.abs(parseFloat(c.normal.split(',')[1])) < 0.5)
+        }
+      });
+    }
   }
 
   updateGroundCheck() {
@@ -378,19 +441,44 @@ export class Player {
       }
     }
     
-    // Debug logging (less frequent now that contact detection works)
-    if (this._debugCounter % 180 === 0) { // Every 3 seconds
-      console.log('🌍 Ground check:', {
+    // Enhanced debugging for bouncing analysis
+    if (this._debugCounter % 60 === 0) { // Every 1 second
+      const contactCount = this.physicsWorld.world.contacts.length;
+      const playerContacts = this.physicsWorld.world.contacts.filter(contact => 
+        contact.bi === this.body || contact.bj === this.body
+      );
+      
+      // Analyze contact quality
+      const groundContacts = playerContacts.filter(c => c.ni.y > 0.5);
+      const sideContacts = playerContacts.filter(c => Math.abs(c.ni.y) <= 0.5);
+      const weirdContacts = playerContacts.filter(c => c.ni.y < -0.1);
+      
+      console.log('🌍 DETAILED Ground Check Analysis:', {
         isGrounded: this.isGrounded,
-        method: groundContactFound ? 'contacts' : (this.isGrounded ? 'raycast' : 'none'),
+        detectionMethod: groundContactFound ? 'contacts' : (this.isGrounded ? 'raycast' : 'none'),
         bodyPosition: `${this.body.position.x.toFixed(2)}, ${this.body.position.y.toFixed(2)}, ${this.body.position.z.toFixed(2)}`,
-        contacts: this.physicsWorld.world.contacts.length
+        velocity: `${this.body.velocity.x.toFixed(2)}, ${this.body.velocity.y.toFixed(2)}, ${this.body.velocity.z.toFixed(2)}`,
+        contactAnalysis: {
+          total: playerContacts.length,
+          ground: groundContacts.length,
+          side: sideContacts.length,
+          inverted: weirdContacts.length
+        },
+        contactNormals: playerContacts.map(c => `${c.ni.x.toFixed(2)}, ${c.ni.y.toFixed(2)}, ${c.ni.z.toFixed(2)}`),
+        potentialIssues: {
+          tooManyContacts: playerContacts.length > 6,
+          invertedNormals: weirdContacts.length > 0,
+          noGroundContacts: groundContacts.length === 0 && this.isGrounded,
+          inconsistentDetection: groundContactFound !== this.isGrounded
+        }
       });
     }
   }
 
   handleMovementInput(input, camOrientation, delta) {
     if (!input || !input.isKey) return;
+    
+    this._movementDebugCounter++;
     
     let moveForward = 0;
     let moveRight = 0;
@@ -417,12 +505,37 @@ export class Player {
       moveDirection.y = 0; // Remove vertical component
       moveDirection.normalize();
       
-      // Calculate speed
-      const speed = this.speed * (this.isSprinting ? this.sprintMultiplier : 1);
+      // Calculate target speed
+      const targetSpeed = this.speed * (this.isSprinting ? this.sprintMultiplier : 1);
       
-      // Apply velocity directly for responsive movement
-      this.body.velocity.x = moveDirection.x * speed;
-      this.body.velocity.z = moveDirection.z * speed;
+      // Use a more controlled approach - blend between current velocity and target
+      const currentVelX = this.body.velocity.x;
+      const currentVelZ = this.body.velocity.z;
+      const currentVelY = this.body.velocity.y;
+      const targetVelX = moveDirection.x * targetSpeed;
+      const targetVelZ = moveDirection.z * targetSpeed;
+      
+      // Apply force towards target velocity (simpler approach with box collider)
+      const acceleration = 20; // Moderate force for box collider
+      const forceX = (targetVelX - currentVelX) * acceleration;
+      const forceZ = (targetVelZ - currentVelZ) * acceleration;
+      
+      // Debug logging every 30 frames (about every 0.5 seconds at 60fps)
+      if (this._movementDebugCounter % 30 === 0) {
+        console.log('🏃‍♂️ Movement Debug:', {
+          input: `F:${moveForward} R:${moveRight}`,
+          currentVel: `${currentVelX.toFixed(2)}, ${currentVelY.toFixed(2)}, ${currentVelZ.toFixed(2)}`,
+          targetVel: `${targetVelX.toFixed(2)}, 0, ${targetVelZ.toFixed(2)}`,
+          force: `${forceX.toFixed(2)}, 0, ${forceZ.toFixed(2)}`,
+          forceMagnitude: Math.sqrt(forceX*forceX + forceZ*forceZ).toFixed(2),
+          speed: targetSpeed.toFixed(2),
+          isGrounded: this.isGrounded,
+          colliderType: 'BOX',
+          bouncing: Math.abs(currentVelY) > 0.5 ? '🚨 BOUNCING!' : '✅ stable'
+        });
+      }
+      
+      this.body.applyForce(new CANNON.Vec3(forceX, 0, forceZ), this.body.position);
       
       // Rotate player to face movement direction
       if (moveDirection.lengthSq() > 0) {
@@ -430,9 +543,20 @@ export class Player {
         this.mesh.rotation.y = THREE.MathUtils.lerp(this.mesh.rotation.y, targetRotation, 0.1);
       }
     } else {
-      // Apply damping when not moving
-      this.body.velocity.x *= 0.8;
-      this.body.velocity.z *= 0.8;
+      // Apply extra damping when not moving for quicker stops
+      const beforeX = this.body.velocity.x;
+      const beforeZ = this.body.velocity.z;
+      this.body.velocity.x *= 0.7;
+      this.body.velocity.z *= 0.7;
+      
+      // Debug logging when stopping
+      if (this._movementDebugCounter % 60 === 0 && (Math.abs(beforeX) > 0.1 || Math.abs(beforeZ) > 0.1)) {
+        console.log('🛑 Stopping Debug:', {
+          beforeVel: `${beforeX.toFixed(2)}, ${this.body.velocity.y.toFixed(2)}, ${beforeZ.toFixed(2)}`,
+          afterVel: `${this.body.velocity.x.toFixed(2)}, ${this.body.velocity.y.toFixed(2)}, ${this.body.velocity.z.toFixed(2)}`,
+          verticalBounce: Math.abs(this.body.velocity.y) > 0.5 ? '🚨 Y-BOUNCE!' : '✅ stable'
+        });
+      }
     }
   }
 
@@ -463,19 +587,24 @@ export class Player {
     if (!this.body) return;
     
     // Copy position from physics body to visual mesh
-    // Adjust Y position to account for the difference between physics body height and model height
-    // Physics body center should align with model's center, not its base
-    const heightOffset = this.modelHeight ? (this.modelHeight - this.physicsHeight) * 0.5 : 0;
-    
+    // Since physics body height now matches model height, no offset needed
     this.mesh.position.set(
       this.body.position.x,
-      this.body.position.y + heightOffset,
+      this.body.position.y,
       this.body.position.z
     );
     
     // Keep the physics body upright by resetting its rotation
-    // This prevents the body from tipping over without using fixedRotation
+    // This prevents the body from tipping over
     this.body.quaternion.set(0, 0, 0, 1);
+  }
+
+  preventGroundBouncing() {
+    // Simple bounce prevention for box collider - should rarely be needed
+    if (this.isGrounded && !this.isJumping && this.body.velocity.y > 1.0) {
+      console.log(`🛑 Box collider bounce prevention: Y velocity clamped from ${this.body.velocity.y.toFixed(2)} to 0`);
+      this.body.velocity.y = 0;
+    }
   }
 
   updateAnimations(delta) {
@@ -537,13 +666,43 @@ export class Player {
     if (!this._debugCounter) this._debugCounter = 0;
     this._debugCounter++;
     
-    if (this._debugCounter % 60 === 0) {
-      console.log('🎮 Player state:', {
-        position: this.body.position,
-        velocity: this.body.velocity,
+    // Enhanced bounce detection and physics debugging
+    const vel = this.body.velocity;
+    const pos = this.body.position;
+    const verticalVel = Math.abs(vel.y);
+    const horizontalVel = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+    
+    // Detect potential bouncing issues
+    const isBouncing = this.isGrounded && verticalVel > 0.5;
+    const isUnexpectedVertical = !this.isJumping && verticalVel > 1.0;
+    const isExcessiveHorizontal = horizontalVel > this.speed * 2;
+    
+    // Log more frequently if bouncing detected
+    const logFrequency = (isBouncing || isUnexpectedVertical || isExcessiveHorizontal) ? 10 : 60;
+    
+    if (this._debugCounter % logFrequency === 0) {
+      const debugLevel = (isBouncing || isUnexpectedVertical || isExcessiveHorizontal) ? '🚨 PHYSICS ISSUE' : '🎮 Player state';
+      
+      console.log(debugLevel, {
+        position: `${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)}`,
+        velocity: `${vel.x.toFixed(2)}, ${vel.y.toFixed(2)}, ${vel.z.toFixed(2)}`,
+        verticalSpeed: verticalVel.toFixed(2),
+        horizontalSpeed: horizontalVel.toFixed(2),
         grounded: this.isGrounded,
+        jumping: this.isJumping,
         sprinting: this.isSprinting,
-        jumping: this.isJumping
+        damping: `linear: ${this.body.linearDamping}, angular: ${this.body.angularDamping}`,
+        issues: {
+          bouncing: isBouncing,
+          unexpectedVertical: isUnexpectedVertical,
+          excessiveHorizontal: isExcessiveHorizontal
+        },
+        physicsBody: {
+          mass: this.body.mass,
+          allowSleep: this.body.allowSleep,
+          sleepState: this.body.sleepState,
+          inWorld: this.physicsWorld.world.bodies.includes(this.body)
+        }
       });
     }
   }
