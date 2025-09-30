@@ -4,6 +4,9 @@ import CannonDebugger from 'cannon-es-debugger';
 
 export class PhysicsWorld {
   constructor(scene = null) {
+    console.log('🌍 Initializing new Cannon.js Physics World...');
+    
+    // Create Cannon.js world
     this.world = new CANNON.World({
       gravity: new CANNON.Vec3(0, -9.82, 0)
     });
@@ -13,424 +16,345 @@ export class PhysicsWorld {
     this.debugRenderer = null;
     this.debugEnabled = false;
     
-    // Improve performance and reduce contact stiffness
-    this.world.broadphase = new CANNON.NaiveBroadphase();
-    this.world.solver.iterations = 10;
-    this.world.defaultContactMaterial.contactEquationStiffness = 1e6; // Reduced from 1e9
-    this.world.defaultContactMaterial.contactEquationRelaxation = 10; // Increased from 4
+    // Configure solver for better stability
+    this.world.solver.iterations = 20;
+    this.world.solver.tolerance = 0.0001;
     
-    // Disable sleeping entirely for debugging
-    this.world.allowSleep = false;
+    // Use Sweep and Prune broadphase for better performance
+    this.world.broadphase = new CANNON.SAPBroadphase(this.world);
     
-    // Materials for different types of objects
-    this.groundMaterial = new CANNON.Material('ground');
-    this.playerMaterial = new CANNON.Material('player');
-    this.enemyMaterial = new CANNON.Material('enemy');
+    // Configure global contact settings
+    this.world.defaultContactMaterial.friction = 0.3;
+    this.world.defaultContactMaterial.restitution = 0.0;
+    this.world.defaultContactMaterial.contactEquationStiffness = 1e8;
+    this.world.defaultContactMaterial.contactEquationRelaxation = 3;
+    this.world.defaultContactMaterial.frictionEquationStiffness = 1e8;
+    this.world.defaultContactMaterial.frictionEquationRelaxation = 3;
     
-    // Contact materials for realistic physics interactions
-    this.playerGroundContact = new CANNON.ContactMaterial(
-      this.playerMaterial,
-      this.groundMaterial,
-      {
-        friction: 0.8, // Increased friction for better control
-        restitution: 0.0, // No bounce
-        contactEquationStiffness: 1e6, // Reduced from 1e9 to prevent excessive contact forces
-        contactEquationRelaxation: 10 // Increased relaxation for softer contacts
-      }
-    );
-    this.world.addContactMaterial(this.playerGroundContact);
+    // Allow sleeping for performance
+    this.world.allowSleep = true;
     
-    this.enemyGroundContact = new CANNON.ContactMaterial(
-      this.enemyMaterial,
-      this.groundMaterial,
-      {
-        friction: 0.3,
-        restitution: 0.1
-      }
-    );
-    this.world.addContactMaterial(this.enemyGroundContact);
+    // Create materials for different object types
+    this.materials = {
+      ground: new CANNON.Material('ground'),
+      player: new CANNON.Material('player'),
+      enemy: new CANNON.Material('enemy'),
+      wall: new CANNON.Material('wall'),
+      platform: new CANNON.Material('platform')
+    };
     
-    // Store bodies for cleanup
+    // Create contact materials for different material interactions
+    this.setupContactMaterials();
+    
+    // Track all bodies for cleanup
     this.bodies = new Set();
-    
-    // Debug logging
-    console.log('🔧 Physics world initialized with gravity:', this.world.gravity);
+    this.staticBodies = new Set();
     
     // Initialize debug renderer if scene is provided
     if (this.scene) {
       this.initDebugRenderer();
+    } else {
+      console.warn('🔧 No scene provided to PhysicsWorld constructor - debug renderer unavailable');
     }
     
-    // Create a simple test body to verify physics is working
-    this.createTestBody();
+    console.log('✅ Physics world initialized successfully');
   }
-
+  
+  setupContactMaterials() {
+    // Player-Ground contact: Lower friction for smooth movement, no bounce
+    const playerGroundContact = new CANNON.ContactMaterial(
+      this.materials.player,
+      this.materials.ground,
+      {
+        friction: 0.1,
+        restitution: 0.0,
+        contactEquationStiffness: 1e8,
+        contactEquationRelaxation: 3,
+        frictionEquationStiffness: 1e8,
+        frictionEquationRelaxation: 3
+      }
+    );
+    this.world.addContactMaterial(playerGroundContact);
+    
+    // Player-Platform contact: Same as ground
+    const playerPlatformContact = new CANNON.ContactMaterial(
+      this.materials.player,
+      this.materials.platform,
+      {
+        friction: 0.1,
+        restitution: 0.0,
+        contactEquationStiffness: 1e8,
+        contactEquationRelaxation: 3,
+        frictionEquationStiffness: 1e8,
+        frictionEquationRelaxation: 3
+      }
+    );
+    this.world.addContactMaterial(playerPlatformContact);
+    
+    // Player-Wall contact: High friction to prevent sliding
+    const playerWallContact = new CANNON.ContactMaterial(
+      this.materials.player,
+      this.materials.wall,
+      {
+        friction: 0.1,
+        restitution: 0.0,
+        contactEquationStiffness: 1e8,
+        contactEquationRelaxation: 3,
+        frictionEquationStiffness: 1e8,
+        frictionEquationRelaxation: 3
+      }
+    );
+    this.world.addContactMaterial(playerWallContact);
+    
+    // Enemy-Ground contact: Lower friction for sliding movement
+    const enemyGroundContact = new CANNON.ContactMaterial(
+      this.materials.enemy,
+      this.materials.ground,
+      {
+        friction: 0.3,
+        restitution: 0.1,
+        contactEquationStiffness: 1e8,
+        contactEquationRelaxation: 3
+      }
+    );
+    this.world.addContactMaterial(enemyGroundContact);
+    
+    console.log('✅ Contact materials configured');
+  }
+  
   initDebugRenderer() {
     try {
       this.debugRenderer = new CannonDebugger(this.scene, this.world, {
-        color: 0x00ff00, // Green wireframes
+        color: 0x00ff00,
         scale: 1.0,
         onInit: (body, mesh) => {
-          // Customize debug mesh appearance
           if (mesh.material) {
             mesh.material.wireframe = true;
             mesh.material.transparent = true;
-            mesh.material.opacity = 0.3;
+            mesh.material.opacity = 0.4;
+            mesh.material.color.setHex(0x00ff00);
           }
+          // Mark this as a debug mesh for visibility control
+          mesh.userData.cannonDebugRenderer = true;
         }
       });
-      console.log('🔧 Physics debug renderer initialized');
+      
+      // Initially hide debug meshes
+      this.setDebugVisibility(false);
+      
+      console.log('🔧 Physics debug renderer initialized successfully');
     } catch (error) {
-      console.warn('Failed to initialize physics debug renderer:', error);
+      console.error('🔧 Failed to initialize physics debug renderer:', error);
       this.debugRenderer = null;
     }
   }
-
-  enableDebug(enabled = true) {
+  
+  setDebugVisibility(visible) {
+    if (!this.debugRenderer) return;
+    
+    // Find all debug meshes in the scene and set their visibility
+    this.scene.traverse((child) => {
+      if (child.userData && child.userData.cannonDebugRenderer) {
+        child.visible = visible;
+      }
+    });
+  }
+  
+  enableDebugRenderer(enabled = true) {
     this.debugEnabled = enabled;
+    
     if (this.debugRenderer) {
-      // The debug renderer automatically shows/hides based on update calls
+      this.setDebugVisibility(enabled);
       console.log(`🔧 Physics debug visualization ${enabled ? 'enabled' : 'disabled'}`);
+    } else {
+      console.warn('🔧 Physics debug renderer not available');
     }
+    
     return this.debugRenderer !== null;
   }
-
+  
   isDebugEnabled() {
     return this.debugEnabled && this.debugRenderer !== null;
   }
-
-  createTestBody() {
-    console.log('🧪 Creating test physics body...');
-    const testShape = new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5));
-    const testBody = new CANNON.Body({
-      mass: 1,
-      type: CANNON.Body.DYNAMIC
-    });
-    testBody.addShape(testShape);
-    testBody.position.set(5, 15, 5); // Place it away from player
-    testBody.allowSleep = false;
-    
-    this.world.addBody(testBody);
-    this.bodies.add(testBody);
-    
-    console.log('🧪 Test body created at position:', testBody.position);
-    
-    // Check if it falls after 2 seconds
-    // setTimeout(() => {
-    //   console.log('🧪 Test body after 2 seconds:', {
-    //     position: testBody.position,
-    //     velocity: testBody.velocity,
-    //     fell: testBody.position.y < 14
-    //   });
-    // }, 2000);
-  }
-
-  addStaticMeshFromGeometry(geometry, position = new THREE.Vector3(), quaternion = new THREE.Quaternion(), scale = new THREE.Vector3(1, 1, 1)) {
-    // Create trimesh shape for exact collision with level geometry
-    const vertices = [];
-    const indices = [];
-    
-    const positionAttribute = geometry.attributes.position;
-    if (!positionAttribute) return null;
-    
-    // Extract vertices
-    for (let i = 0; i < positionAttribute.count; i++) {
-      vertices.push(
-        positionAttribute.getX(i) * scale.x,
-        positionAttribute.getY(i) * scale.y,
-        positionAttribute.getZ(i) * scale.z
-      );
-    }
-    
-    // Extract indices
-    if (geometry.index) {
-      const indexAttribute = geometry.index;
-      for (let i = 0; i < indexAttribute.count; i++) {
-        indices.push(indexAttribute.getX(i));
-      }
-    } else {
-      // Generate indices if none exist
-      for (let i = 0; i < positionAttribute.count; i++) {
-        indices.push(i);
-      }
-    }
-    
-    const trimeshShape = new CANNON.Trimesh(vertices, indices);
-    const body = new CANNON.Body({ 
-      mass: 0, // Static body
-      material: this.groundMaterial,
-      type: CANNON.Body.STATIC // Use STATIC for solid level geometry
-    });
-    
-    body.addShape(trimeshShape);
-    body.position.set(position.x, position.y, position.z);
-    body.quaternion.set(quaternion.x, quaternion.y, quaternion.z, quaternion.w);
-    
-    this.world.addBody(body);
-    this.bodies.add(body);
-    return body;
-  }
-
-  addStaticMesh(mesh) {
-    // Check if this is a simple box geometry for more efficient collision
-    if (mesh.geometry.type === 'BoxGeometry') {
-      return this.addStaticBox(mesh);
-    }
-    
-    // Create static body from Three.js mesh using trimesh
-    const body = this.addStaticMeshFromGeometry(
-      mesh.geometry,
-      mesh.position,
-      mesh.quaternion,
-      mesh.scale
-    );
-    
-    // Store reference for cleanup
-    if (body) {
-      mesh.userData.physicsBody = body;
-    }
-    
-    return body;
-  }
-
-  addStaticBox(mesh) {
-    // Create a more efficient box collision shape for box geometries
-    const geometry = mesh.geometry;
-    const scale = mesh.scale;
-    
-    // Get box dimensions from geometry parameters
-    const width = geometry.parameters.width * scale.x;
-    const height = geometry.parameters.height * scale.y;
-    const depth = geometry.parameters.depth * scale.z;
-    
-    console.log(`📦 Creating box collider: ${width}x${height}x${depth} at ${mesh.position.x}, ${mesh.position.y}, ${mesh.position.z}`);
-    
-    const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, depth/2));
-    const body = new CANNON.Body({ 
-      mass: 0, // Static body
-      material: this.groundMaterial,
-      type: CANNON.Body.STATIC
-    });
-    
-    body.addShape(shape);
-    body.position.set(mesh.position.x, mesh.position.y, mesh.position.z);
-    body.quaternion.set(mesh.quaternion.x, mesh.quaternion.y, mesh.quaternion.z, mesh.quaternion.w);
-    
-    this.world.addBody(body);
-    this.bodies.add(body);
-    
-    // Store reference for cleanup
-    mesh.userData.physicsBody = body;
-    
-    return body;
-  }
-
-  createPlayerBody(position = new THREE.Vector3()) {
-    // Use a simple box shape first to test if physics works
-    const width = 0.6;
-    const height = 1.8;
-    const depth = 0.6;
-    const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, depth/2));
-    
-    const body = new CANNON.Body({
-      mass: 1,
-      material: this.playerMaterial
-    });
-    
-    body.addShape(shape);
-    body.position.set(position.x, position.y, position.z);
-    
-    // Minimal damping for testing
-    body.angularDamping = 0.01;
-    body.linearDamping = 0.01;
-    
-    // Ensure the body is active and can be affected by physics
-    body.allowSleep = false;
-    body.sleepState = CANNON.Body.AWAKE;
-    body.type = CANNON.Body.DYNAMIC;
-    
-    // Don't lock rotation initially to test if physics works at all
-    // body.fixedRotation = true;
-    
-    // Manually update mass properties
-    body.updateMassProperties();
-    
-    this.world.addBody(body);
-    this.bodies.add(body);
-    
-    // Test: manually apply a downward force to see if it responds
-    setTimeout(() => {
-      console.log('🧪 Testing physics with manual force...');
-      body.applyImpulse(new CANNON.Vec3(0, -10, 0));
-      console.log('Applied downward impulse, velocity should change:', body.velocity);
-    }, 1000);
-    
-    console.log('🚀 Player body created (box shape):', {
-      mass: body.mass,
-      type: body.type,
-      position: body.position,
-      velocity: body.velocity,
-      material: body.material?.name,
-      canSleep: body.allowSleep,
-      inWorld: this.world.bodies.includes(body),
-      worldGravity: this.world.gravity,
-      bodyId: body.id
-    });
-    
-    return body;
-  }
-
-  createEnemyBody(position = new THREE.Vector3(), size = [1, 1, 1]) {
-    // Use box shape for enemies
-    const halfExtents = new CANNON.Vec3(size[0] * 0.3, size[1] * 0.5, size[2] * 0.3);
-    const shape = new CANNON.Box(halfExtents);
-    
-    const body = new CANNON.Body({
-      mass: 0.5,
-      material: this.enemyMaterial,
-      fixedRotation: true
-    });
-    
-    body.addShape(shape);
-    body.position.set(position.x, position.y, position.z);
-    body.angularDamping = 0.9;
-    body.linearDamping = 0.1;
-    
-    this.world.addBody(body);
-    this.bodies.add(body);
-    return body;
-  }
-
-  removeBody(body) {
-    if (body && this.bodies.has(body)) {
-      this.world.removeBody(body);
-      this.bodies.delete(body);
-    }
-  }
-
+  
   step(deltaTime) {
-    // Clamp deltaTime to prevent physics explosion
-    const clampedDelta = Math.min(deltaTime, 1/30);
+    // Clamp delta time to prevent physics explosions
+    const maxDelta = 1/30;
+    const clampedDelta = Math.min(deltaTime, maxDelta);
     
-    // Debug: List ALL bodies and their properties
-    // console.log('🔍 All bodies in world:', this.world.bodies.map(body => ({
-    //   id: body.id,
-    //   type: body.type,
-    //   typeName: body.type === CANNON.Body.DYNAMIC ? 'DYNAMIC' : 
-    //             body.type === CANNON.Body.STATIC ? 'STATIC' : 
-    //             body.type === CANNON.Body.KINEMATIC ? 'KINEMATIC' : 'UNKNOWN',
-    //   mass: body.mass,
-    //   pos: `${body.position.x.toFixed(2)}, ${body.position.y.toFixed(2)}, ${body.position.z.toFixed(2)}`,
-    //   vel: `${body.velocity.x.toFixed(2)}, ${body.velocity.y.toFixed(2)}, ${body.velocity.z.toFixed(2)}`,
-    //   awake: body.sleepState === CANNON.Body.AWAKE,
-    //   shapes: body.shapes.length
-    // })));
-
-    // Find player body - try multiple methods
-    let playerBody = this.world.bodies.find(body => body.id === 1); // Try by ID first
-    if (!playerBody) {
-      playerBody = this.world.bodies.find(body => 
-        body.mass === 1 && body.type === CANNON.Body.DYNAMIC
-      );
-    }
-    if (!playerBody) {
-      // Find any dynamic body with mass > 0
-      playerBody = this.world.bodies.find(body => 
-        body.type === CANNON.Body.DYNAMIC && body.mass > 0
-      );
-    }
-    
-    // Log body states before step
-    const beforeStep = playerBody ? {
-      id: playerBody.id,
-      pos: {...playerBody.position},
-      vel: {...playerBody.velocity},
-      awake: playerBody.sleepState === CANNON.Body.AWAKE,
-      type: playerBody.type,
-      mass: playerBody.mass
-    } : null;
-    
-    // Wake up all dynamic bodies to ensure they respond to gravity
-    this.world.bodies.forEach(body => {
-      if (body.type === CANNON.Body.DYNAMIC && body.sleepState !== CANNON.Body.AWAKE) {
-        console.log(`💤 Waking up sleeping body ${body.id}`);
-        body.wakeUp();
-      }
-      
-      // MANUAL GRAVITY TEST: Apply gravity force manually to see if forces work
-      if (body.type === CANNON.Body.DYNAMIC && body.mass > 0) {
-        // Apply gravity manually: F = mg
-        const gravityForce = new CANNON.Vec3(0, -9.82 * body.mass, 0);
-        body.force.vadd(gravityForce, body.force);
-      }
-    });
-    
+    // Step physics simulation
     this.world.step(clampedDelta);
     
     // Update debug renderer if enabled
     if (this.debugEnabled && this.debugRenderer) {
       this.debugRenderer.update();
     }
-    
-    // Log body states after step
-    const afterStep = playerBody ? {
-      id: playerBody.id,
-      pos: {...playerBody.position},
-      vel: {...playerBody.velocity},
-      awake: playerBody.sleepState === CANNON.Body.AWAKE,
-      type: playerBody.type,
-      mass: playerBody.mass
-    } : null;
-    
-    // Debug logging every 60 frames (approximately 1 second)
-    // if (!this._debugCounter) this._debugCounter = 0;
-    // this._debugCounter++;
-    // if (this._debugCounter % 60 === 0) {
-    //   console.log('⚡ Physics step detailed:', {
-    //     deltaTime: clampedDelta,
-    //     bodies: this.world.bodies.length,
-    //     contacts: this.world.contacts.length,
-    //     playerFound: !!playerBody,
-    //     beforeStep,
-    //     afterStep,
-    //     positionChanged: beforeStep && afterStep ? 
-    //       (beforeStep.pos.x !== afterStep.pos.x || 
-    //        beforeStep.pos.y !== afterStep.pos.y || 
-    //        beforeStep.pos.z !== afterStep.pos.z) : false,
-    //     velocityChanged: beforeStep && afterStep ?
-    //       (beforeStep.vel.x !== afterStep.vel.x || 
-    //        beforeStep.vel.y !== afterStep.vel.y || 
-    //        beforeStep.vel.z !== afterStep.vel.z) : false,
-    //     gravityApplied: beforeStep && afterStep ? afterStep.vel.y < beforeStep.vel.y : false
-    //   });
-    // }
   }
-
-  raycast(from, to, options = {}) {
-    const raycastResult = new CANNON.RaycastResult();
-    this.world.raycastClosest(from, to, options, raycastResult);
-    return raycastResult;
+  
+  addStaticMesh(mesh, materialType = 'ground') {
+    try {
+      const geometry = mesh.geometry;
+      if (!geometry) {
+        console.warn('Mesh has no geometry, skipping physics body creation');
+        return null;
+      }
+      
+      if (!geometry.boundingBox) {
+        geometry.computeBoundingBox();
+      }
+      
+      const size = new THREE.Vector3();
+      geometry.boundingBox.getSize(size);
+      
+      const shape = new CANNON.Box(new CANNON.Vec3(size.x / 2, size.y / 2, size.z / 2));
+      
+      const body = new CANNON.Body({
+        mass: 0,
+        type: CANNON.Body.KINEMATIC,
+        material: this.materials[materialType] || this.materials.ground
+      });
+      
+      body.addShape(shape);
+      body.position.copy(mesh.position);
+      body.quaternion.copy(mesh.quaternion);
+      
+      this.world.addBody(body);
+      this.staticBodies.add(body);
+      
+      body.userData = { mesh: mesh, type: 'static' };
+      
+      console.log(`📦 Created static physics body for mesh: ${mesh.name || 'unnamed'}`);
+      return body;
+      
+    } catch (error) {
+      console.error('Failed to create static physics body:', error);
+      return null;
+    }
   }
-
-  // Check if a body is grounded using raycast
-  isGrounded(body, rayLength = 0.1) {
-    const rayStart = body.position.clone();
-    const rayEnd = rayStart.clone();
-    rayEnd.y -= rayLength;
+  
+  createDynamicBody(options = {}) {
+    const {
+      mass = 1,
+      shape = 'box',
+      size = [1, 1, 1],
+      position = [0, 0, 0],
+      material = 'player'
+    } = options;
     
-    const result = this.raycast(rayStart, rayEnd, {
-      collisionFilterMask: 1, // Only check against static bodies
-      skipBackfaces: true
+    let cannonShape;
+    
+    switch (shape) {
+      case 'box':
+        cannonShape = new CANNON.Box(new CANNON.Vec3(size[0]/2, size[1]/2, size[2]/2));
+        break;
+      case 'sphere':
+        cannonShape = new CANNON.Sphere(size[0]);
+        break;
+      case 'cylinder':
+        cannonShape = new CANNON.Cylinder(size[0], size[1], size[2], 8);
+        break;
+      default:
+        cannonShape = new CANNON.Box(new CANNON.Vec3(size[0]/2, size[1]/2, size[2]/2));
+    }
+    
+    const body = new CANNON.Body({
+      mass: mass,
+      type: CANNON.Body.DYNAMIC,
+      material: this.materials[material] || this.materials.player
     });
     
-    return result.hasHit;
+    body.addShape(cannonShape);
+    body.position.set(position[0], position[1], position[2]);
+    
+    body.linearDamping = 0.05; // Reduced from 0.1 to 0.02 for faster falling/jumping
+    body.angularDamping = 0.9;
+    body.allowSleep = false;
+    
+    this.world.addBody(body);
+    this.bodies.add(body);
+    
+    body.userData = { type: 'dynamic' };
+    
+    console.log(`🎲 Created dynamic physics body (${shape}) at position [${position}]`);
+    return body;
   }
-
-  cleanup() {
-    // Remove all bodies
-    for (const body of this.bodies) {
-      this.world.removeBody(body);
+  
+  removeBody(body) {
+    if (!body) return;
+    
+    this.world.removeBody(body);
+    this.bodies.delete(body);
+    this.staticBodies.delete(body);
+    
+    console.log('🗑️ Removed physics body from world');
+  }
+  
+  getContactsForBody(body) {
+    const contacts = [];
+    
+    for (let i = 0; i < this.world.contacts.length; i++) {
+      const contact = this.world.contacts[i];
+      if (contact.bi === body || contact.bj === body) {
+        contacts.push(contact);
+      }
     }
+    
+    return contacts;
+  }
+  
+  isBodyGrounded(body, threshold = 0.5) {
+    const contacts = this.getContactsForBody(body);
+    
+    // console.log('🔍 Ground check:', {
+    //   bodyPosition: { x: body.position.x.toFixed(2), y: body.position.y.toFixed(2), z: body.position.z.toFixed(2) },
+    //   contactCount: contacts.length,
+    //   threshold
+    // });
+    
+    for (const contact of contacts) {
+      // The contact normal direction depends on which body is bi vs bj
+      // If our body is bi, normal points from us to other body (downward = negative Y)
+      // If our body is bj, normal points from other body to us (upward = positive Y)
+      let normalY;
+      if (contact.bi === body) {
+        // We are body i, so normal points from us to other body
+        // For ground contact, we want the opposite direction (upward)
+        normalY = -contact.ni.y;
+      } else {
+        // We are body j, so normal points from other body to us
+        // For ground contact, this should be upward (positive Y)
+        normalY = contact.ni.y;
+      }
+      
+      //console.log('📏 Contact normal Y (corrected):', normalY.toFixed(3), 'threshold:', threshold);
+      if (normalY > threshold) {
+        //console.log('✅ Ground contact found!');
+        return true;
+      }
+    }
+    
+    //console.log('❌ No ground contact found');
+    return false;
+  }
+  
+  dispose() {
+    console.log('🧹 Disposing physics world...');
+    
+    const allBodies = [...this.bodies, ...this.staticBodies];
+    allBodies.forEach(body => {
+      this.world.removeBody(body);
+    });
+    
     this.bodies.clear();
+    this.staticBodies.clear();
+    
+    this.world.contactMaterials = [];
+    
+    if (this.debugRenderer) {
+      this.debugEnabled = false;
+      this.debugRenderer = null;
+    }
+    
+    console.log('✅ Physics world disposed');
   }
 }

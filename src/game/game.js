@@ -13,7 +13,6 @@ import { SmallMenu } from './components/menu.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
-import { enableDebug, disableDebug } from './collisionSystem.js';
 import { PhysicsWorld } from './physics/PhysicsWorld.js';
 
 export class Game {
@@ -25,21 +24,12 @@ export class Game {
     // Initialize physics world with scene for debug rendering
     this.physicsWorld = new PhysicsWorld(this.scene);
 
-    // enable collision debug visuals/logging (remove for production)
-    //enableDebug(this.scene);
-
-    // simple toggle accessible from browser console via window.toggleCollisionDebug()
-    window.__collisionDebugOn = false;
-    window.toggleCollisionDebug = () => {
-      if (window.__collisionDebugOn) {
-        disableDebug();
-        window.__collisionDebugOn = false;
-        console.log('collision debug disabled');
-      } else {
-        enableDebug(this.scene);
-        window.__collisionDebugOn = true;
-        console.log('collision debug enabled');
-      }
+    // Physics debug toggle accessible from browser console
+    window.__physicsDebugOn = false;
+    window.togglePhysicsDebug = () => {
+      window.__physicsDebugOn = !window.__physicsDebugOn;
+      this.physicsWorld.enableDebugRenderer(window.__physicsDebugOn);
+      console.log(`Physics debug ${window.__physicsDebugOn ? 'enabled' : 'disabled'}`);
     };
 
     // Input
@@ -50,7 +40,7 @@ export class Game {
   this.level = null;
 
   // Player
-  this.player = new Player(this.scene, this.physicsWorld, { speed: 11, jumpStrength: 12, size: [1, 1.5, 1] });
+  this.player = new Player(this.scene, this.physicsWorld, { speed: 25 , jumpStrength: 18, size: [1, 1.5, 1] });
   // Player position will be set by loadLevel() call
 
     // Cameras
@@ -162,7 +152,7 @@ export class Game {
   _setupGlobalDebugFunctions() {
     // Make physics debug toggle available globally
     window.togglePhysicsDebug = () => {
-      const enabled = this.physicsWorld.enableDebug(!this.physicsWorld.isDebugEnabled());
+      const enabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
       console.log(`🔧 Physics debug visualization ${enabled ? 'ON' : 'OFF'}`);
       return enabled;
     };
@@ -175,7 +165,7 @@ export class Game {
     console.log('🔧 Debug functions available:');
     console.log('  togglePhysicsDebug() - Toggle physics collision visualization');
     console.log('  physicsDebugStatus() - Check if physics debug is enabled');
-    console.log('  Press G to toggle physics debug visualization');
+    console.log('  Press L to toggle physics debug visualization');
   }
 
   _bindKeys() {
@@ -224,9 +214,9 @@ export class Game {
           this.level.toggleColliders(this.showColliders);
         }
         this.player.toggleHelperVisible(this.showColliders);
-      } else if (code === 'KeyG') {
+      } else if (code === 'KeyL') {
         // toggle physics debug visualization
-        const debugEnabled = this.physicsWorld.enableDebug(!this.physicsWorld.isDebugEnabled());
+        const debugEnabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
         console.log(`🔧 Physics debug visualization ${debugEnabled ? 'ON' : 'OFF'}`);
       }
     });
@@ -294,8 +284,15 @@ export class Game {
   async loadLevel(index) {
     if (this.level) this.level.dispose();
     
-    // Clear existing physics bodies
-    this.physicsWorld.cleanup();
+    // Clear existing physics bodies and recreate physics world
+    this.physicsWorld.dispose();
+    this.physicsWorld = new PhysicsWorld(this.scene);
+    
+    // Update player's physics world reference
+    this.player.physicsWorld = this.physicsWorld;
+    
+    // Update level manager's physics world reference
+    this.levelManager.physicsWorld = this.physicsWorld;
     
     console.log('Loading level...', index);
     this.level = await this.levelManager.loadIndex(index);
