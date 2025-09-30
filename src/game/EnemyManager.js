@@ -5,8 +5,9 @@ import { JumperEnemy } from './enemies/JumperEnemy.js';
 import { FlyerEnemy } from './enemies/FlyerEnemy.js';
 
 export class EnemyManager {
-  constructor(scene) {
+  constructor(scene, physicsWorld) {
     this.scene = scene;
+    this.physicsWorld = physicsWorld;
     this.enemies = [];
     this.typeRegistry = {
       walker: WalkerEnemy,
@@ -20,7 +21,7 @@ export class EnemyManager {
   spawn(type, options = {}) {
     const Cls = this.typeRegistry[type];
     if (!Cls) throw new Error('Unknown enemy type: ' + type);
-    const e = new Cls(this.scene, options);
+    const e = new Cls(this.scene, this.physicsWorld, options);
     if (options.position) e.setPosition(new THREE.Vector3(...options.position));
     this.enemies.push(e);
     return e;

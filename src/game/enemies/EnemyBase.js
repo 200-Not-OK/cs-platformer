@@ -1,11 +1,12 @@
 import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { ColliderHelper } from '../colliderHelper.js';
-import { resolveMovement, meshesToColliders, enableDebug } from '../collisionSystem.js';
 
 export class EnemyBase {
-  constructor(scene, options = {}) {
+  constructor(scene, physicsWorld, options = {}) {
     this.scene = scene;
+    this.physicsWorld = physicsWorld;
     this.options = options;
     this.mesh = new THREE.Group();
     this.scene.add(this.mesh);
@@ -16,19 +17,20 @@ export class EnemyBase {
 
     // defaults — similar to Player
     this.speed = options.speed ?? 2;
-    this.gravity = options.gravity ?? -30;
     this.size = options.size ?? [1, 1, 1];
     this.colliderSize = options.colliderSize ?? [this.size[0] * 0.5, this.size[1], this.size[2] * 0.5];
 
     this.health = options.health ?? 10;
     this.alive = true;
 
-    this.velocity = new THREE.Vector3();
+    // Physics body
+    this.body = null;
+    this._createPhysicsBody();
+
+    // Movement state
     this.onGround = false;
-    this._airTime = 0;
-    this._airThreshold = 0.08;
-    this._groundGrace = 0.12;
-    this._groundGraceRemaining = 0;
+    this._lastGroundCheck = 0;
+    this._groundCheckInterval = 0.1;
 
     // animation
     this.mixer = null;
@@ -38,6 +40,14 @@ export class EnemyBase {
     this._desiredMovement = new THREE.Vector3();
 
     if (options.modelUrl) this._loadModel(options.modelUrl);
+  }
+
+  _createPhysicsBody() {
+    if (this.body) {
+      this.physicsWorld.removeBody(this.body);
+    }
+    
+    this.body = this.physicsWorld.createEnemyBody(this.mesh.position, this.size);
   }
 
   _loadModel(url) {
@@ -108,8 +118,11 @@ export class EnemyBase {
 
   setPosition(vec3) {
     if (!vec3 || !vec3.isVector3) return;
-    // treat vec3 as center (same as Player.setPosition)
     this.mesh.position.copy(vec3);
+    if (this.body) {
+      this.body.position.set(vec3.x, vec3.y, vec3.z);
+      this.body.velocity.set(0, 0, 0);
+    }
     this._updateCollider();
     if (this.helper) this.helper.updateWithRotation(this.mesh.rotation);
   }
@@ -135,35 +148,58 @@ export class EnemyBase {
   }
 
   update(delta, player, platforms = []) {
-    // update animations
-    try { if (this.mixer) this.mixer.update(delta); } catch (e) {}
-
-    // apply gravity
-    if (!this.onGround) this.velocity.y += this.gravity * delta;
-    else this.velocity.y = Math.min(0, this.velocity.y);
-
-    const movementThisFrame = new THREE.Vector3(this._desiredMovement.x * delta, this.velocity.y * delta, this._desiredMovement.z * delta);
-    const colliders = meshesToColliders(platforms || []);
-    const prevBottomY = this.mesh.position.y - (this.colliderSize[1] * 0.5);
-    const res = resolveMovement(this.collider.clone(), movementThisFrame, colliders, { prevBottomY, landThreshold: 0.06, penetrationAllowance: 0.01, minVerticalOverlap: 0.02, debug: false });
-
-    this.mesh.position.add(res.offset);
-    this._updateCollider();
-
-    if (res.onGround) {
-      this.onGround = true; this.velocity.y = 0; this._airTime = 0; this._groundGraceRemaining = this._groundGrace;
-    } else {
-      if (res.collided && this.velocity.y > 0) this.velocity.y = 0;
-      this._airTime += delta; if (this._airTime >= this._airThreshold) this.onGround = false;
+    if (!this.body) return;
+    
+    // Check if grounded
+    this._lastGroundCheck += delta;
+    if (this._lastGroundCheck >= this._groundCheckInterval) {
+      this.onGround = this.physicsWorld.isGrounded(this.body, 0.2);
+      this._lastGroundCheck = 0;
     }
 
-    // reset desired movement
+    // Apply desired movement as forces
+    if (this._desiredMovement.lengthSq() > 0) {
+      const moveForce = this._desiredMovement.clone().multiplyScalar(this.speed * 5); // Multiply by 5 for force strength
+      this.body.applyImpulse(new CANNON.Vec3(moveForce.x, 0, moveForce.z));
+      
+      // Limit horizontal velocity
+      const horizontalVel = new THREE.Vector3(this.body.velocity.x, 0, this.body.velocity.z);
+      if (horizontalVel.length() > this.speed) {
+        horizontalVel.setLength(this.speed);
+        this.body.velocity.x = horizontalVel.x;
+        this.body.velocity.z = horizontalVel.z;
+      }
+    } else {
+      // Apply damping when no movement
+      this.body.velocity.x *= 0.9;
+      this.body.velocity.z *= 0.9;
+    }
+
+    // Sync Three.js mesh with physics body
+    this.mesh.position.copy(this.body.position);
+    this.mesh.quaternion.copy(this.body.quaternion);
+    
+    // Update collider for debug visualization
+    this._updateCollider();
+
+    // Update animations
+    try { 
+      if (this.mixer) this.mixer.update(delta); 
+    } catch (e) {}
+
+    // Reset desired movement
     this._desiredMovement.set(0, 0, 0);
   }
 
-  toggleHelperVisible(v) { if (this.helper) this.helper.setVisible(v); }
+  toggleHelperVisible(v) { 
+    if (this.helper) this.helper.setVisible(v); 
+  }
 
   dispose() {
+    if (this.body) {
+      this.physicsWorld.removeBody(this.body);
+      this.body = null;
+    }
     if (this.helper) this.scene.remove(this.helper.mesh);
     if (this.mesh) this.scene.remove(this.mesh);
   }

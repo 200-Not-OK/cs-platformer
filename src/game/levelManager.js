@@ -2,8 +2,9 @@ import { Level } from './level.js';
 import { levels } from './levelData.js';
 
 export class LevelManager {
-  constructor(scene) {
+  constructor(scene, physicsWorld) {
     this.scene = scene;
+    this.physicsWorld = physicsWorld;
     this.levels = levels;
     this.current = null;
     this.currentIndex = 0;
@@ -12,7 +13,7 @@ export class LevelManager {
   async loadIndex(index) {
     if (this.current) this.current.dispose();
     this.currentIndex = ((index % this.levels.length) + this.levels.length) % this.levels.length;
-    this.current = await Level.create(this.scene, this.levels[this.currentIndex]);
+    this.current = await Level.create(this.scene, this.physicsWorld, this.levels[this.currentIndex]);
     return this.current;
   }
 
