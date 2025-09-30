@@ -308,12 +308,32 @@ export class Game {
     // Add all level meshes as static colliders
     for (const mesh of this.level.objects) {
       if (mesh.isMesh && mesh.geometry) {
+        console.log('📦 Adding mesh to physics:', mesh.name || 'unnamed', {
+          position: mesh.position,
+          vertices: mesh.geometry.attributes.position?.count || 0
+        });
         this.physicsWorld.addStaticMesh(mesh);
         meshCount++;
       }
     }
     
+    // Also add a simple test ground plane if no meshes were added
+    if (meshCount === 0) {
+      console.log('⚠️ No level meshes found, creating test ground plane');
+      const groundGeometry = new THREE.PlaneGeometry(20, 20);
+      const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x808080 });
+      const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
+      groundMesh.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+      groundMesh.position.y = 0;
+      this.scene.add(groundMesh);
+      
+      // Add to physics
+      this.physicsWorld.addStaticMesh(groundMesh);
+      meshCount = 1;
+    }
+    
     console.log(`✅ Added ${meshCount} meshes to physics world`);
+    console.log('🌍 Physics world now has', this.physicsWorld.world.bodies.length, 'bodies');
   }
 
   applyLevelLights(levelData) {
