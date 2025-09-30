@@ -10,10 +10,11 @@ import { HUD } from './components/hud.js';
 import { Minimap } from './components/minimap.js';
 import { Objectives } from './components/objectives.js';
 import { SmallMenu } from './components/menu.js';
+import { FPS } from './components/fps.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
-import { enableDebug, disableDebug } from './collisionSystem.js';
+import { PhysicsWorld } from './physics/PhysicsWorld.js';
 
 export class Game {
   constructor() {
@@ -21,32 +22,34 @@ export class Game {
     this.scene = scene;
     this.renderer = renderer;
 
-    // enable collision debug visuals/logging (remove for production)
-    //enableDebug(this.scene);
+    // Initialize physics world with scene for debug rendering
+    this.physicsWorld = new PhysicsWorld(this.scene);
 
-    // simple toggle accessible from browser console via window.toggleCollisionDebug()
-    window.__collisionDebugOn = false;
-    window.toggleCollisionDebug = () => {
-      if (window.__collisionDebugOn) {
-        disableDebug();
-        window.__collisionDebugOn = false;
-        console.log('collision debug disabled');
-      } else {
-        enableDebug(this.scene);
-        window.__collisionDebugOn = true;
-        console.log('collision debug enabled');
-      }
+    // Physics debug toggle accessible from browser console
+    window.__physicsDebugOn = false;
+    window.togglePhysicsDebug = () => {
+      window.__physicsDebugOn = !window.__physicsDebugOn;
+      this.physicsWorld.enableDebugRenderer(window.__physicsDebugOn);
+      console.log(`Physics debug ${window.__physicsDebugOn ? 'enabled' : 'disabled'}`);
     };
 
     // Input
     this.input = new InputManager(window);
 
   // Level system
-  this.levelManager = new LevelManager(this.scene);
+  this.levelManager = new LevelManager(this.scene, this.physicsWorld);
   this.level = null;
 
   // Player
-  this.player = new Player(this.scene, { speed: 11, jumpStrength: 12, size: [1, 1.5, 1] });
+  this.player = new Player(this.scene, this.physicsWorld, { 
+    speed: 25, 
+    jumpStrength: 12, 
+    size: [1, 1.5, 1],
+    // Collider size scaling factors (optional)
+    colliderWidthScale: 0.4,   // 40% of model width (default: 0.4)
+    colliderHeightScale: 1,  // 90% of model height (default: 0.9)  
+    colliderDepthScale: 0.4    // 40% of model depth (default: 0.4)
+  });
   // Player position will be set by loadLevel() call
 
     // Cameras
@@ -103,6 +106,8 @@ export class Game {
   this.ui = new UIManager(document.getElementById('app'));
   // register a default HUD — actual per-level UI will be loaded by loadLevel
   this.ui.add('hud', HUD, { health: 100 });
+  // Add FPS counter
+  this.ui.add('fps', FPS, { showFrameTime: true });
 
   // Lighting manager (modular per-level lights)
   this.lights = new LightManager(this.scene);
@@ -150,6 +155,28 @@ export class Game {
     await this.loadLevel(0);
     // Apply lights for current level   
     this.applyLevelLights(this.level?.data);
+    
+    // Expose debug functions globally for console access
+    this._setupGlobalDebugFunctions();
+  }
+
+  _setupGlobalDebugFunctions() {
+    // Make physics debug toggle available globally
+    window.togglePhysicsDebug = () => {
+      const enabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
+      console.log(`🔧 Physics debug visualization ${enabled ? 'ON' : 'OFF'}`);
+      return enabled;
+    };
+    
+    // Show current debug status
+    window.physicsDebugStatus = () => {
+      return this.physicsWorld.isDebugEnabled();
+    };
+    
+    console.log('🔧 Debug functions available:');
+    console.log('  togglePhysicsDebug() - Toggle physics collision visualization');
+    console.log('  physicsDebugStatus() - Check if physics debug is enabled');
+    console.log('  Press L to toggle physics debug visualization');
   }
 
   _bindKeys() {
@@ -198,6 +225,10 @@ export class Game {
           this.level.toggleColliders(this.showColliders);
         }
         this.player.toggleHelperVisible(this.showColliders);
+      } else if (code === 'KeyL') {
+        // toggle physics debug visualization
+        const debugEnabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
+        console.log(`🔧 Physics debug visualization ${debugEnabled ? 'ON' : 'OFF'}`);
       }
     });
   }
@@ -215,6 +246,9 @@ export class Game {
       this.renderer.render(this.scene, this.activeCamera);
       return;
     }
+
+    // Step physics simulation
+    this.physicsWorld.step(delta);
 
     // update level (updates colliders/helpers and enemies) - only if level is loaded
     if (this.level && this.level.update) {
@@ -261,13 +295,25 @@ export class Game {
   async loadLevel(index) {
     if (this.level) this.level.dispose();
     
+    // Clear existing physics bodies and recreate physics world
+    this.physicsWorld.dispose();
+    this.physicsWorld = new PhysicsWorld(this.scene);
+    
+    // Update player's physics world reference
+    this.player.physicsWorld = this.physicsWorld;
+    
+    // Update level manager's physics world reference
+    this.levelManager.physicsWorld = this.physicsWorld;
+    
     console.log('Loading level...', index);
     this.level = await this.levelManager.loadIndex(index);
+    
+    // Add level meshes to physics world as static colliders
+    this._addLevelToPhysics();
     
     // Position player at start position
     const start = this.level.data.startPosition;
     this.player.setPosition(new THREE.Vector3(...start));
-    this.player.velocity.set(0, 0, 0);
     
     // Apply debug settings
     if (this.level.toggleColliders) {
@@ -285,6 +331,43 @@ export class Game {
     // swap lighting according to level.data.lights (array of descriptors)
     this.applyLevelLights(this.level.data);
     return this.level;
+  }
+
+  _addLevelToPhysics() {
+    if (!this.level || !this.physicsWorld) return;
+    
+    console.log('🔧 Adding level geometry to physics world...');
+    let meshCount = 0;
+    
+    // Add all level meshes as static colliders
+    for (const mesh of this.level.objects) {
+      if (mesh.isMesh && mesh.geometry) {
+        console.log('📦 Adding mesh to physics:', mesh.name || 'unnamed', {
+          position: mesh.position,
+          vertices: mesh.geometry.attributes.position?.count || 0
+        });
+        this.physicsWorld.addStaticMesh(mesh);
+        meshCount++;
+      }
+    }
+    
+    // Also add a simple test ground plane if no meshes were added
+    if (meshCount === 0) {
+      console.log('⚠️ No level meshes found, creating test ground plane');
+      const groundGeometry = new THREE.PlaneGeometry(20, 20);
+      const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x808080 });
+      const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
+      groundMesh.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+      groundMesh.position.y = 0;
+      this.scene.add(groundMesh);
+      
+      // Add to physics
+      this.physicsWorld.addStaticMesh(groundMesh);
+      meshCount = 1;
+    }
+    
+    console.log(`✅ Added ${meshCount} meshes to physics world`);
+    console.log('🌍 Physics world now has', this.physicsWorld.world.bodies.length, 'bodies');
   }
 
   applyLevelLights(levelData) {
@@ -310,17 +393,51 @@ export class Game {
   applyLevelUI(levelData) {
     // Clear existing UI and re-add defaults according to level metadata
     if (!this.ui) return;
+    
+    console.log('🎯 applyLevelUI called, current components:', Array.from(this.ui.components.keys()));
+    
+    // Store global components that should persist across levels
+    const globalComponents = new Map();
+    if (this.ui.get('fps')) {
+      globalComponents.set('fps', this.ui.get('fps'));
+      console.log('🎯 Stored FPS component for preservation');
+    }
+    
     this.ui.clear();
+    console.log('🎯 UI cleared, components after clear:', Array.from(this.ui.components.keys()));
+    
+    // Re-add global components first
+    for (const [key, component] of globalComponents) {
+      this.ui.components.set(key, component);
+      // Re-mount the component since it was unmounted during clear
+      if (component.mount) {
+        component.mount();
+        console.log('🎯 Re-mounted global component:', key);
+      }
+      console.log('🎯 Restored global component:', key);
+    }
+    
+    console.log('🎯 Components after restoring globals:', Array.from(this.ui.components.keys()));
+    
     const uiList = (levelData && levelData.ui) ? levelData.ui : ['hud'];
+    console.log('🎯 Level UI list:', uiList);
+    
     for (const key of uiList) {
       if (key === 'hud') this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
       else if (key === 'minimap') this.ui.add('minimap', Minimap, {});
       else if (key === 'objectives') this.ui.add('objectives', Objectives, { items: levelData.objectives ?? ['Reach the goal'] });
       else if (key === 'menu') this.ui.add('menu', SmallMenu, { onResume: () => this.setPaused(false) });
+      else if (key === 'fps') {
+        // FPS is already added as a global component, skip warning
+        console.log('🎯 FPS found in level UI list, skipping (already global)');
+        continue;
+      }
       else {
         console.warn('Unknown UI key in level data:', key);
       }
     }
+    
+    console.log('🎯 Final components after applyLevelUI:', Array.from(this.ui.components.keys()));
   }
 
   setPaused(v) {
