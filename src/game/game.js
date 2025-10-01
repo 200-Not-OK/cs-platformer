@@ -144,6 +144,7 @@ export class Game {
     // doesn't accidentally trigger a second request or race with the resume flow.
     window.addEventListener('click', (e) => {
       if (this.pauseMenu && this.pauseMenu.contains && this.pauseMenu.contains(e.target)) return;
+      if (this.modalActive) return; // Don't request pointer lock when modal is active
       // request pointer lock when clicking while in first or third person
       if ((this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) && document.pointerLockElement !== document.body) {
         try {
@@ -200,6 +201,7 @@ export class Game {
     // Pause state
     this.paused = false;
     this.pauseMenu = document.getElementById('pauseMenu');
+    this.modalActive = false; // For door passcode UI
     const resumeBtn = document.getElementById('resumeBtn');
     if (resumeBtn) resumeBtn.addEventListener('click', (e) => {
       // prevent the click from bubbling to the global click handler which would
@@ -265,8 +267,8 @@ export class Game {
         this.setPaused(!this.paused);
         return;
       }
-      // When paused ignore other keys
-      if (this.paused) return;
+      // When paused or modal active, ignore other keys
+      if (this.paused || this.modalActive) return;
 
       if (code === 'KeyC') {
         // cycle cameras: free -> third -> first -> free
@@ -307,6 +309,17 @@ export class Game {
         // toggle physics debug visualization
         const debugEnabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
         console.log(`🔧 Physics debug visualization ${debugEnabled ? 'ON' : 'OFF'}`);
+      } else if (code === 'KeyE') {
+        // interact with doors
+        console.log('E key pressed!');
+        if (this.level && this.level.doorManager && this.player) {
+          const playerPosition = this.player.mesh.position;
+          console.log('Player position:', playerPosition.x, playerPosition.y, playerPosition.z);
+          console.log('Calling interactWithClosestDoor');
+          this.level.doorManager.interactWithClosestDoor(playerPosition);
+        } else {
+          console.log('Missing level, doorManager, or player');
+        }
       }
     });
   }
@@ -319,8 +332,8 @@ export class Game {
     // clamp delta
     delta = Math.min(delta, 1 / 20);
 
-    // If paused: skip updates but still render the current frame.
-    if (this.paused) {
+    // If paused or modal active: skip updates but still render the current frame.
+    if (this.paused || this.modalActive) {
       this.renderer.render(this.scene, this.activeCamera);
       return;
     }
@@ -399,6 +412,10 @@ export class Game {
     
     // Physics bodies are already created during level loading in level.js
     console.log('✅ Level loaded with', this.level.physicsBodies.length, 'physics bodies');
+
+    // Set game instance for door manager
+    console.log('Setting game instance for door manager');
+    this.level.setGameInstance(this);
 
     // Position player at start position
     const start = this.level.data.startPosition;

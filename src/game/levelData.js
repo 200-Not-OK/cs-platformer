@@ -6,7 +6,7 @@ export const levels = [
     gltfUrl: "src/assets/levels/introLevel.gltf",
     startPosition: [
       0,
-      15,
+      5,
       8
     ],
     ui: [
@@ -223,7 +223,54 @@ export const levels = [
           }
         ]
       }
-    }
+    },
+    doors: [
+      {
+        type: "basic",
+        position: [0, 0, 8],
+        width: 3,
+        height: 6,
+        preset: "wooden",
+        color: 0x8B4513,
+        swingDirection: "right",
+        interactionDistance: 20
+      },
+      {
+        type: "model",
+        position: [4, 0, 8],
+        width: 3,
+        height: 6,
+        modelUrl: "src/assets/models/door.glb",
+        preset: "wooden",
+        passcode: "123",
+        swingDirection: "left",
+        interactionDistance: 20
+      },
+      {
+        type: "model",
+        position: [8, 0, 8],
+        width: 3,
+        height: 6,
+        modelUrl: "src/assets/models/3d_door_model.glb",
+        preset: "metal",
+        color: 0xC0C0C0,
+        passcode: "123",
+        swingDirection: "forward left",
+        interactionDistance: 20
+      },
+      {
+        type: "model",
+        position: [16, 0, 12],
+        width: 30,
+        height: 60,
+        modelUrl: "src/assets/models/building_door_01.glb",
+        preset: "futuristic",
+        color: 0x00FFFF,
+        passcode: "123",
+        swingDirection: "forward left",
+        interactionDistance: 20
+      }
+    ]
   },
   {
     id: 'level2',

@@ -3,6 +3,7 @@ import { EnemyManager } from './EnemyManager.js';
 
 import { loadGLTFModel } from './gltfLoader.js';
 import { CinematicsManager } from './cinematicsManager.js';
+import { DoorManager } from '../assets/doors/DoorManager.js';
 
 // A Level that can load geometry from GLTF files or fallback to procedural objects
 export class Level {
@@ -17,6 +18,7 @@ export class Level {
     this.gltfLoaded = false;
     this.gltfScene = null; // Track the GLTF scene for proper cleanup
     this.cinematicsManager = new CinematicsManager(scene);
+    this.doorManager = new DoorManager(scene, physicsWorld, null); // gameInstance will be set later
   }
 
   // Static factory method for async construction
@@ -57,6 +59,10 @@ export class Level {
     // Load enemies (always done regardless of geometry type)
     console.log('👾 Loading enemies...');
     this._loadEnemies();
+    
+    // Load doors
+    console.log('🚪 Loading doors...');
+    this._loadDoors();
     
     // Initialize cinematics
     if (this.data.cinematics) {
@@ -286,15 +292,42 @@ export class Level {
     }
   }
 
+  _loadDoors() {
+    // Spawn doors if defined in level data
+    console.log('Level._loadDoors called, doors in levelData:', this.data.doors);
+    if (this.data.doors && Array.isArray(this.data.doors)) {
+      console.log('Loading', this.data.doors.length, 'doors');
+      for (const doorDef of this.data.doors) {
+        try {
+          console.log('Spawning door:', doorDef);
+          this.doorManager.spawn(doorDef.type, doorDef);
+        } catch (e) {
+          console.warn('Failed to spawn door', doorDef, e);
+        }
+      }
+      console.log(`Loaded ${this.data.doors.length} doors`);
+    } else {
+      console.log('No doors defined in level data');
+    }
+  }
+
+  setGameInstance(gameInstance) {
+    this.doorManager.setGameInstance(gameInstance);
+  }
+
   update(delta = 1/60, player = null, platforms = []) {
     // Update enemies with physics-based collision detection
     if (this.enemyManager) this.enemyManager.update(delta, player, platforms.length ? platforms : this.getPlatforms());
+    
+    // Update doors
+    if (this.doorManager) this.doorManager.update(delta);
   }
 
   toggleColliders(v) {
     this.showColliders = v;
     // Physics bodies don't have visual helpers in the new system
     // Collision visualization is handled by the physics engine debug rendering
+    if (this.doorManager) this.doorManager.toggleColliders(v);
   }
 
   dispose() {
@@ -322,6 +355,7 @@ export class Level {
     // Dispose managers
     if (this.enemyManager) { this.enemyManager.dispose(); this.enemyManager = null; }
     if (this.cinematicsManager) { this.cinematicsManager.dispose(); this.cinematicsManager = null; }
+    if (this.doorManager) { this.doorManager.dispose(); this.doorManager = null; }
   }
 
   getPlatforms() {
