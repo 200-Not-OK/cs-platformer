@@ -16,7 +16,7 @@ export class Player {
     // Collider sizing options
     this.colliderScale = {
       width: options.colliderWidthScale ?? 0.4,    // Scale factor for width (X/Z)
-      height: options.colliderHeightScale ?? 0.9,  // Scale factor for height (Y)
+      height: options.colliderHeightScale ?? 1,  // Scale factor for height (Y)
       depth: options.colliderDepthScale ?? 0.4     // Scale factor for depth (Z)
     };
     
@@ -42,45 +42,45 @@ export class Player {
     this.groundCheckDistance = 0.1;
     this.groundNormalThreshold = 0.5;
     
+    // Wall sliding system
+    this.enableWallSliding = true;
+    this.wallSlideSmoothing = 0.85; // How smoothly to slide along walls (0-1)
+    this.wallSlideSpeed = 3.0; // Speed when sliding down walls
+    this.collisionContacts = []; // Store current collision contacts
+    this.wallNormals = []; // Store wall normal vectors for sliding
+    
     // Load 3D model first, then create physics body
     this.loadModel();
-    
-    console.log('🎮 Player created - loading model first, then physics body...');
   }
 
   async loadModel() {
-    console.log('🎭 Starting to load player model...');
     const loader = new GLTFLoader();
     
     // Try different path formats for the model
     const modelPaths = [
-      'src/assets/low_poly_female/scene.gltf',
-      './src/assets/low_poly_female/scene.gltf',
-      '/src/assets/low_poly_female/scene.gltf'
+      'src/assets/Knight/Knight.gltf',
+      './src/assets/Knight/Knight.gltf',
+      '/src/assets/Knight/Knight.gltf'
     ];
     
     let currentPathIndex = 0;
     
     const tryLoadModel = () => {
       const currentPath = modelPaths[currentPathIndex];
-      console.log(`🔄 Trying to load model from: ${currentPath}`);
       
       loader.load(
         currentPath,
         (gltf) => {
-          console.log('🎭 GLTF loaded successfully:', gltf);
           
           // Clear any existing mesh children
           while (this.mesh.children.length > 0) {
             this.mesh.remove(this.mesh.children[0]);
           }
-          console.log('🧹 Cleared any existing mesh children');
         
           // Compute bounding box for the whole scene
           const bbox = new THREE.Box3().setFromObject(gltf.scene);
           const sizeVec = new THREE.Vector3();
           bbox.getSize(sizeVec);
-          console.log('📏 Model size:', sizeVec);
           
           // Create physics body now that we know the model dimensions
           this.createPhysicsBody(sizeVec);
@@ -95,11 +95,9 @@ export class Player {
           
           // Add the loaded model to our mesh group
           this.mesh.add(gltf.scene);
-          console.log('📦 Model added to mesh group');
           
           // Setup animations if available
           if (gltf.animations && gltf.animations.length > 0) {
-            console.log('🎬 Setting up animations:', gltf.animations.map(a => a.name));
             this.mixer = new THREE.AnimationMixer(gltf.scene);
             
             // Find animation clips
@@ -121,32 +119,25 @@ export class Player {
             if (idleClip) {
               this.actions.idle = this.mixer.clipAction(idleClip);
               this.actions.idle.setLoop(THREE.LoopRepeat);
-              console.log('✅ Idle animation set up');
             }
             
             if (walkClip) {
               this.actions.walk = this.mixer.clipAction(walkClip);
               this.actions.walk.setLoop(THREE.LoopRepeat);
-              console.log('✅ Walk animation set up');
             }
             
             if (jumpClip) {
               this.actions.jump = this.mixer.clipAction(jumpClip);
               this.actions.jump.setLoop(THREE.LoopOnce);
-              console.log('✅ Jump animation set up');
             }
             
             // Start with idle animation
             if (this.actions.idle) {
               this.actions.idle.play();
               this.currentAction = this.actions.idle;
-              console.log('▶️ Started idle animation');
             }
           } else {
-            console.log('⚠️ No animations found in model');
           }
-          
-          console.log('🎭 Player model loaded and set up successfully');
         },
         (progress) => {
           console.log('⏳ Loading progress:', (progress.loaded / progress.total * 100) + '%');
@@ -174,8 +165,6 @@ export class Player {
             
             // Create physics body for fallback geometry
             this.createPhysicsBody(new THREE.Vector3(1, 2, 1));
-            
-            console.log('📦 Fallback geometry created');
           }
         }
       );
@@ -186,8 +175,6 @@ export class Player {
   }
 
   createPhysicsBody(modelSize) {
-    console.log('🔧 Creating physics body from model dimensions:', modelSize);
-    
     // Store original model size for future collider updates
     this.originalModelSize = {
       x: modelSize.x,
@@ -199,9 +186,6 @@ export class Player {
     const width = Math.max(modelSize.x, modelSize.z) * this.colliderScale.width;
     const height = modelSize.y * this.colliderScale.height;
     const depth = Math.max(modelSize.x, modelSize.z) * this.colliderScale.depth;
-    
-    console.log(`🔧 Physics body dimensions: ${width.toFixed(2)} x ${height.toFixed(2)} x ${depth.toFixed(2)}`);
-    console.log(`🔧 Collider scale factors: width=${this.colliderScale.width}, height=${this.colliderScale.height}, depth=${this.colliderScale.depth}`);
     
     // Create physics body using our PhysicsWorld
     this.body = this.physicsWorld.createDynamicBody({
@@ -216,14 +200,117 @@ export class Player {
     this.body.fixedRotation = true; // Prevent tipping over
     this.body.updateMassProperties();
     
-    console.log('✅ Physics body created and configured for player movement');
+    // Set up collision event listeners for wall sliding
+    this.setupCollisionListeners();
+  }
+
+  setupCollisionListeners() {
+    if (!this.body) return;
+    
+    // Listen for collision begin events
+    this.body.addEventListener('collide', (event) => {
+      this.handleCollision(event);
+    });
+  }
+
+  handleCollision(event) {
+    const contact = event.contact;
+    const otherBody = event.target === this.body ? event.body : event.target;
+    
+    // Get the contact normal
+    let normal = contact.ni.clone();
+    
+    // Determine which body is the player and flip normal if needed
+    if (event.target === this.body) {
+      normal.negate(); // Flip normal to point away from wall toward player
+    }
+    
+    // Skip pure ground/ceiling collisions (handled separately by ground detection)
+    // Only reject if normal is very close to vertical
+    if (Math.abs(normal.y) > 0.8) {
+      return;
+    }
+    
+    // Check if this is a wall or enemy collision
+    const isWallOrEnemy = this.isWallOrEnemyBody(otherBody);
+    
+    if (isWallOrEnemy) {
+      // Store wall normal for sliding calculation
+      this.addWallNormal(normal);
+      
+      // Special handling for enemy collisions - add impulse to prevent sticking
+      if (otherBody.userData && (otherBody.userData.type === 'enemy' || otherBody.userData.isEnemy)) {
+        this.handleEnemyCollision(normal, otherBody);
+      }
+    }
+  }
+
+  handleEnemyCollision(normal, enemyBody) {
+    // Apply a small impulse to push player away from enemy
+    const pushStrength = 2.0;
+    
+    // Ensure we have a proper THREE.Vector3 object
+    const pushDirection = new THREE.Vector3(normal.x, normal.y, normal.z);
+    
+    // Only apply horizontal push (don't affect jumping)
+    pushDirection.y = 0;
+    pushDirection.normalize();
+    
+    if (pushDirection.length() > 0.1) {
+      const pushForce = pushDirection.multiplyScalar(pushStrength);
+      this.body.velocity.x += pushForce.x;
+      this.body.velocity.z += pushForce.z;
+    }
+  }
+
+  isWallOrEnemyBody(body) {
+    if (!body || !body.userData) return false;
+    
+    // Check if it's a static body (walls/level geometry)
+    if (body.userData.type === 'static') return true;
+    
+    // Check if it's an enemy body (multiple ways enemies might be identified)
+    if (body.userData.type === 'enemy') return true;
+    if (body.userData.isEnemy) return true;
+    if (body.userData.enemyType) return true;
+    
+    // Check material type (both material object and material name)
+    if (body.material) {
+      if (body.material === this.physicsWorld.materials.wall) return true;
+      if (body.material === this.physicsWorld.materials.enemy) return true;
+      if (body.material.name === 'wall') return true;
+      if (body.material.name === 'enemy') return true;
+    }
+    
+    // Check if body belongs to enemy based on mass (enemies typically have specific mass ranges)
+    // Be more specific about mass range to avoid false positives
+    if (body.mass > 0.5 && body.mass < 10 && body !== this.body) {
+      return true; // Likely an enemy
+    }
+    
+    return false;
+  }
+
+  addWallNormal(normal) {
+    // Store wall normals for sliding (including slightly angled walls)
+    // Reject only pure horizontal normals (floors/ceilings)
+    if (Math.abs(normal.y) < 0.8) {
+      // Convert CANNON.Vec3 to THREE.Vector3 for consistency
+      const threeVector = new THREE.Vector3(normal.x, normal.y, normal.z);
+      this.wallNormals.push(threeVector);
+      
+      // Limit stored normals to prevent memory buildup
+      if (this.wallNormals.length > 8) {
+        this.wallNormals.shift();
+      }
+    }
   }
 
   update(delta, input, camOrientation = null, platforms = [], playerActive = true) {
-    // l
+    // Clear wall normals from previous frame
+    this.wallNormals = [];
     
     if (!this.body) {
-      console.log('⚠️ Player update skipped - no physics body yet');
       return;
     }
     
@@ -242,6 +329,9 @@ export class Player {
       this.handleJumpInput(input);
     }
     
+    // Apply wall sliding physics (works even without input)
+    this.applyWallSlidingPhysics(delta);
+    
     // Sync visual mesh with physics body
     this.syncMeshWithBody();
     
@@ -254,30 +344,18 @@ export class Player {
     const wasGrounded = this.isGrounded;
     this.isGrounded = this.physicsWorld.isBodyGrounded(this.body, this.groundNormalThreshold);
     
-    if (wasGrounded !== this.isGrounded) {
-      console.log('👀 Ground state changed:', { 
-        wasGrounded, 
-        isGrounded: this.isGrounded,
-        bodyY: this.body.position.y.toFixed(2),
-        velocityY: this.body.velocity.y.toFixed(2)
-      });
-    }
-    
     // Reset jumping flag when player lands
     if (this.isGrounded && this.isJumping && this.body.velocity.y <= 0.1) {
       this.isJumping = false;
-      console.log('🛬 Landing detected - jump flag reset');
     }
   }
 
   handleMovementInput(input, camOrientation, delta) {
     if (!input || !input.isKey) {
-      console.log('⚠️ No input or isKey method available');
       return;
     }
     
     if (!this.body) {
-      console.log('⚠️ Player physics body not ready yet');
       return;
     }
     
@@ -289,11 +367,6 @@ export class Player {
     if (input.isKey('KeyS')) moveForward = -1;
     if (input.isKey('KeyA')) moveRight = -1;
     if (input.isKey('KeyD')) moveRight = 1;
-    
-    // Debug input detection
-    if (moveForward !== 0 || moveRight !== 0) {
-      console.log('🎮 Movement input detected:', { moveForward, moveRight });
-    }
     
     // Check for sprint
     this.isSprinting = input.isKey('ShiftLeft') || input.isKey('ShiftRight');
@@ -315,23 +388,24 @@ export class Player {
       const targetSpeed = this.speed * (this.isSprinting ? this.sprintMultiplier : 1);
       
       // Calculate target velocity
-      const targetVelX = moveDirection.x * targetSpeed;
-      const targetVelZ = moveDirection.z * targetSpeed;
+      let targetVelX = moveDirection.x * targetSpeed;
+      let targetVelZ = moveDirection.z * targetSpeed;
       
-      console.log('🏃 Movement calculation:', {
-        isGrounded: this.isGrounded,
-        targetSpeed,
-        moveDirection: { x: moveDirection.x, z: moveDirection.z },
-        targetVel: { x: targetVelX, z: targetVelZ },
-        currentVel: { x: this.body.velocity.x, y: this.body.velocity.y, z: this.body.velocity.z }
-      });
+      // Apply wall sliding if enabled and there are wall collisions
+      if (this.enableWallSliding && this.wallNormals.length > 0) {
+        const slidingVelocity = this.calculateSlidingVelocity(
+          new THREE.Vector3(targetVelX, 0, targetVelZ),
+          this.wallNormals
+        );
+        targetVelX = slidingVelocity.x;
+        targetVelZ = slidingVelocity.z;
+      }
       
       // Apply movement based on grounded state
       if (this.isGrounded) {
         // When grounded, use direct velocity for stable movement
         this.body.velocity.x = targetVelX;
         this.body.velocity.z = targetVelZ;
-        console.log('🌍 Applied grounded movement - direct velocity');
       } else {
         // When airborne, use blended velocity for responsive but realistic movement
         const airControl = 0.3; // Reduce air control compared to ground movement
@@ -341,8 +415,6 @@ export class Player {
         // Blend current velocity with target velocity for air control
         this.body.velocity.x = THREE.MathUtils.lerp(currentVelX, targetVelX * airControl, 0.2);
         this.body.velocity.z = THREE.MathUtils.lerp(currentVelZ, targetVelZ * airControl, 0.2);
-        
-        console.log('🌬️ Applied airborne movement - blended velocity');
       }
       
       // Rotate player to face movement direction
@@ -356,9 +428,76 @@ export class Player {
         this.body.velocity.x *= 0.7;
         this.body.velocity.z *= 0.7;
       } else {
-        // Stop immediately when airborne and no input
-        this.body.velocity.x *= 0.1; // Much more aggressive stopping
-        this.body.velocity.z *= 0.1;
+        // Reduced damping when airborne - let wall sliding handle this
+        if (this.wallNormals.length > 0) {
+          // Light damping when against walls to allow sliding
+          this.body.velocity.x *= 0.95;
+          this.body.velocity.z *= 0.95;
+        } else {
+          // Normal air resistance when not touching walls
+          this.body.velocity.x *= 0.8;
+          this.body.velocity.z *= 0.8;
+        }
+      }
+    }
+  }
+
+  applyWallSlidingPhysics(delta) {
+    // Only apply wall sliding physics when touching walls
+    if (!this.enableWallSliding || this.wallNormals.length === 0) {
+      return;
+    }
+
+    // Get current velocity
+    const currentVel = this.body.velocity.clone();
+    
+    // Calculate wall sliding for current velocity
+    const slidingVelocity = this.calculateSlidingVelocity(
+      new THREE.Vector3(currentVel.x, 0, currentVel.z), // Only horizontal components
+      this.wallNormals
+    );
+    
+    // Apply sliding to horizontal velocity with stronger effect for enemies
+    const slidingStrength = 1.2; // Stronger sliding effect
+    this.body.velocity.x = THREE.MathUtils.lerp(this.body.velocity.x, slidingVelocity.x, slidingStrength * delta * 60);
+    this.body.velocity.z = THREE.MathUtils.lerp(this.body.velocity.z, slidingVelocity.z, slidingStrength * delta * 60);
+    
+    // Add small downward slide when airborne and against walls
+    if (!this.isGrounded && this.wallNormals.length > 0) {
+      // Calculate average wall normal
+      let avgNormal = new THREE.Vector3();
+      for (const normal of this.wallNormals) {
+        avgNormal.add(normal);
+      }
+      avgNormal.divideScalar(this.wallNormals.length).normalize();
+      
+      // Add slight downward sliding along the wall
+      const wallSlideSpeed = this.wallSlideSpeed; // Use configurable speed
+      const tangentVector = new THREE.Vector3();
+      
+      // Calculate tangent vector (perpendicular to wall normal, pointing down)
+      const up = new THREE.Vector3(0, 1, 0);
+      tangentVector.crossVectors(avgNormal, up).normalize();
+      
+      // If the cross product is near zero, use a different approach
+      if (tangentVector.length() < 0.1) {
+        // Wall is nearly horizontal, slide in the direction of current horizontal velocity
+        const horizontalVel = new THREE.Vector3(currentVel.x, 0, currentVel.z);
+        if (horizontalVel.length() > 0.1) {
+          tangentVector.copy(horizontalVel.normalize());
+        }
+      }
+      
+      // Apply wall sliding force with stronger effect for enemy collisions
+      if (tangentVector.length() > 0.1) {
+        const slideForce = tangentVector.multiplyScalar(wallSlideSpeed);
+        this.body.velocity.x += slideForce.x * delta * 2; // Doubled for enemies
+        this.body.velocity.z += slideForce.z * delta * 2;
+      }
+      
+      // Reduce vertical velocity when sliding against walls (friction effect)
+      if (this.body.velocity.y < 0) {
+        this.body.velocity.y *= 0.98; // Less friction for smoother sliding
       }
     }
   }
@@ -367,21 +506,10 @@ export class Player {
     if (!input || !input.isKey) return;
     
     if (input.isKey('Space')) {
-      console.log('🚀 Space key pressed, checking jump conditions:', {
-        isGrounded: this.isGrounded,
-        isJumping: this.isJumping,
-        velocity: this.body.velocity.y.toFixed(2)
-      });
-      
       if (this.isGrounded && !this.isJumping) {
         // Apply upward impulse for jumping
         this.body.velocity.y = this.jumpStrength;
         this.isJumping = true;
-        console.log(`🚀 JUMP! Applied velocity: ${this.jumpStrength}`);
-      } else {
-        console.log('🚫 Jump blocked:', {
-          reason: !this.isGrounded ? 'not grounded' : 'already jumping'
-        });
       }
     }
   }
@@ -438,8 +566,6 @@ export class Player {
     this.body.position.set(position.x, position.y, position.z);
     this.body.velocity.set(0, 0, 0);
     this.syncMeshWithBody();
-    
-    console.log('📍 Player position set to:', position);
   }
 
   // Method to update collider size at runtime
@@ -472,16 +598,62 @@ export class Player {
     // Restore position and velocity
     this.body.position.copy(currentPos);
     this.body.velocity.copy(currentVel);
+  }
+
+  calculateSlidingVelocity(desiredVelocity, wallNormals) {
+    if (!wallNormals || wallNormals.length === 0) {
+      return desiredVelocity;
+    }
+
+    let slidingVelocity = desiredVelocity.clone();
+
+    // Apply sliding for each wall normal
+    for (const normal of wallNormals) {
+      // Project the desired velocity onto the wall surface
+      // Formula: v_slide = v_desired - (v_desired · n) * n
+      // Where n is the wall normal
+      
+      const dotProduct = slidingVelocity.dot(normal);
+      
+      // Only slide if moving into the wall (positive dot product)
+      if (dotProduct > 0.01) { // Small threshold to prevent jitter
+        const projectionOntoNormal = normal.clone().multiplyScalar(dotProduct);
+        slidingVelocity.sub(projectionOntoNormal);
+      }
+    }
+
+    // Apply smoothing and speed retention to make sliding feel more natural
+    const originalLength = desiredVelocity.length();
+    const slidingLength = slidingVelocity.length();
     
-    console.log(`🔧 Collider size updated - scales: width=${this.colliderScale.width}, height=${this.colliderScale.height}, depth=${this.colliderScale.depth}`);
+    if (slidingLength > 0.01 && originalLength > 0.01) {
+      // Maintain more of the original speed when sliding
+      // Reduce speed loss based on number of walls and angle
+      const speedRetention = THREE.MathUtils.lerp(
+        0.7, // Minimum speed retention
+        this.wallSlideSmoothing, 
+        Math.min(wallNormals.length / 3, 1) // More walls = more speed loss
+      );
+      
+      const targetLength = originalLength * speedRetention;
+      slidingVelocity.normalize().multiplyScalar(targetLength);
+    }
+
+    return slidingVelocity;
+  }
+
+  // Debug method to visualize wall normals
+  debugWallNormals() {
+    console.log('Current wall normals:');
+    this.wallNormals.forEach((normal, index) => {
+      console.log(`  ${index}: (${normal.x.toFixed(2)}, ${normal.y.toFixed(2)}, ${normal.z.toFixed(2)})`);
+    });
   }
 
   dispose() {
-    console.log('🚨 Player dispose() called!');
     
     // Remove physics body
     if (this.body) {
-      console.log('🗑️ Removing player physics body from world');
       this.physicsWorld.removeBody(this.body);
     }
     
