@@ -38,20 +38,14 @@ export class FPS extends UIComponent {
     
     this._createElements();
     this.setProps(props);
-    
-    console.log('🎯 FPS component constructor completed');
   }
   
   // Override mount to add debugging
   mount() {
-    console.log('🎯 FPS mount called');
     super.mount();
-    console.log('🎯 FPS mounted to:', this.container);
-    console.log('🎯 FPS root element:', this.root);
   }
   
   _createElements() {
-    console.log('🎯 FPS _createElements called');
     this.fpsDisplay = document.createElement('div');
     this.fpsDisplay.textContent = 'FPS: --';
     this.root.appendChild(this.fpsDisplay);
@@ -63,19 +57,12 @@ export class FPS extends UIComponent {
     this.frameTimeDisplay.style.marginTop = '2px';
     this.frameTimeDisplay.textContent = 'ms: --';
     this.root.appendChild(this.frameTimeDisplay);
-    
-    console.log('🎯 FPS elements created and appended');
   }
   
   // Call this every frame to update FPS
   update(deltaTime) {
     const currentTime = performance.now();
     this.frameCount++;
-    
-    // Debug: Log update calls occasionally
-    if (this.frameCount % 60 === 0) {
-      console.log('🎯 FPS update called, frameCount:', this.frameCount);
-    }
     
     // Update FPS calculation periodically
     if (currentTime - this.lastFpsUpdate >= this.fpsUpdateInterval) {

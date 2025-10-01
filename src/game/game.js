@@ -373,15 +373,23 @@ export class Game {
   async loadLevel(index) {
     if (this.level) this.level.dispose();
     
+    // Preserve debug state before disposing old physics world
+    const wasDebugEnabled = this.physicsWorld.isDebugEnabled();
+    
     // Clear existing physics bodies and recreate physics world with improved collision detection
     this.physicsWorld.dispose();
     this.physicsWorld = new PhysicsWorld(this.scene, {
       useAccurateCollision: false, // Disable Trimesh by default for more reliable collision
-      debugMode: false
+      debugMode: wasDebugEnabled   // Preserve debug state across level transitions
     });
     
     // Update player's physics world reference
     this.player.physicsWorld = this.physicsWorld;
+    
+    // Recreate player's physics body in the new physics world
+    if (this.player.originalModelSize) {
+      this.player.createPhysicsBody(this.player.originalModelSize);
+    }
     
     // Update level manager's physics world reference
     this.levelManager.physicsWorld = this.physicsWorld;
