@@ -44,7 +44,8 @@ export class Player {
     
     // Wall sliding system
     this.enableWallSliding = true;
-    this.wallSlideSmoothing = 0.8; // How smoothly to slide along walls (0-1)
+    this.wallSlideSmoothing = 0.85; // How smoothly to slide along walls (0-1)
+    this.wallSlideSpeed = 3.0; // Speed when sliding down walls
     this.collisionContacts = []; // Store current collision contacts
     this.wallNormals = []; // Store wall normal vectors for sliding
     
@@ -216,8 +217,17 @@ export class Player {
     const contact = event.contact;
     const otherBody = event.target === this.body ? event.body : event.target;
     
-    // Skip ground collisions (handled separately)
-    if (contact.ni.y > this.groundNormalThreshold || contact.ni.y < -this.groundNormalThreshold) {
+    // Get the contact normal
+    let normal = contact.ni.clone();
+    
+    // Determine which body is the player and flip normal if needed
+    if (event.target === this.body) {
+      normal.negate(); // Flip normal to point away from wall toward player
+    }
+    
+    // Skip pure ground/ceiling collisions (handled separately by ground detection)
+    // Only reject if normal is very close to vertical
+    if (Math.abs(normal.y) > 0.8) {
       return;
     }
     
@@ -225,16 +235,31 @@ export class Player {
     const isWallOrEnemy = this.isWallOrEnemyBody(otherBody);
     
     if (isWallOrEnemy) {
-      // Store the collision normal for wall sliding
-      const normal = contact.ni.clone();
-      
-      // Determine which body is the player and flip normal if needed
-      if (event.target === this.body) {
-        normal.negate(); // Flip normal to point away from wall toward player
-      }
-      
       // Store wall normal for sliding calculation
       this.addWallNormal(normal);
+      
+      // Special handling for enemy collisions - add impulse to prevent sticking
+      if (otherBody.userData && (otherBody.userData.type === 'enemy' || otherBody.userData.isEnemy)) {
+        this.handleEnemyCollision(normal, otherBody);
+      }
+    }
+  }
+
+  handleEnemyCollision(normal, enemyBody) {
+    // Apply a small impulse to push player away from enemy
+    const pushStrength = 2.0;
+    
+    // Ensure we have a proper THREE.Vector3 object
+    const pushDirection = new THREE.Vector3(normal.x, normal.y, normal.z);
+    
+    // Only apply horizontal push (don't affect jumping)
+    pushDirection.y = 0;
+    pushDirection.normalize();
+    
+    if (pushDirection.length() > 0.1) {
+      const pushForce = pushDirection.multiplyScalar(pushStrength);
+      this.body.velocity.x += pushForce.x;
+      this.body.velocity.z += pushForce.z;
     }
   }
 
@@ -244,23 +269,38 @@ export class Player {
     // Check if it's a static body (walls/level geometry)
     if (body.userData.type === 'static') return true;
     
-    // Check if it's an enemy body
+    // Check if it's an enemy body (multiple ways enemies might be identified)
     if (body.userData.type === 'enemy') return true;
+    if (body.userData.isEnemy) return true;
+    if (body.userData.enemyType) return true;
     
-    // Check material type
-    if (body.material === this.physicsWorld.materials.wall) return true;
-    if (body.material === this.physicsWorld.materials.enemy) return true;
+    // Check material type (both material object and material name)
+    if (body.material) {
+      if (body.material === this.physicsWorld.materials.wall) return true;
+      if (body.material === this.physicsWorld.materials.enemy) return true;
+      if (body.material.name === 'wall') return true;
+      if (body.material.name === 'enemy') return true;
+    }
+    
+    // Check if body belongs to enemy based on mass (enemies typically have specific mass ranges)
+    // Be more specific about mass range to avoid false positives
+    if (body.mass > 0.5 && body.mass < 10 && body !== this.body) {
+      return true; // Likely an enemy
+    }
     
     return false;
   }
 
   addWallNormal(normal) {
-    // Only store horizontal wall normals (ignore floors/ceilings)
-    if (Math.abs(normal.y) < 0.5) {
-      this.wallNormals.push(normal);
+    // Store wall normals for sliding (including slightly angled walls)
+    // Reject only pure horizontal normals (floors/ceilings)
+    if (Math.abs(normal.y) < 0.8) {
+      // Convert CANNON.Vec3 to THREE.Vector3 for consistency
+      const threeVector = new THREE.Vector3(normal.x, normal.y, normal.z);
+      this.wallNormals.push(threeVector);
       
       // Limit stored normals to prevent memory buildup
-      if (this.wallNormals.length > 5) {
+      if (this.wallNormals.length > 8) {
         this.wallNormals.shift();
       }
     }
@@ -288,6 +328,9 @@ export class Player {
       this.handleMovementInput(input, camOrientation, delta);
       this.handleJumpInput(input);
     }
+    
+    // Apply wall sliding physics (works even without input)
+    this.applyWallSlidingPhysics(delta);
     
     // Sync visual mesh with physics body
     this.syncMeshWithBody();
@@ -385,9 +428,76 @@ export class Player {
         this.body.velocity.x *= 0.7;
         this.body.velocity.z *= 0.7;
       } else {
-        // Stop immediately when airborne and no input
-        this.body.velocity.x *= 0.1; // Much more aggressive stopping
-        this.body.velocity.z *= 0.1;
+        // Reduced damping when airborne - let wall sliding handle this
+        if (this.wallNormals.length > 0) {
+          // Light damping when against walls to allow sliding
+          this.body.velocity.x *= 0.95;
+          this.body.velocity.z *= 0.95;
+        } else {
+          // Normal air resistance when not touching walls
+          this.body.velocity.x *= 0.8;
+          this.body.velocity.z *= 0.8;
+        }
+      }
+    }
+  }
+
+  applyWallSlidingPhysics(delta) {
+    // Only apply wall sliding physics when touching walls
+    if (!this.enableWallSliding || this.wallNormals.length === 0) {
+      return;
+    }
+
+    // Get current velocity
+    const currentVel = this.body.velocity.clone();
+    
+    // Calculate wall sliding for current velocity
+    const slidingVelocity = this.calculateSlidingVelocity(
+      new THREE.Vector3(currentVel.x, 0, currentVel.z), // Only horizontal components
+      this.wallNormals
+    );
+    
+    // Apply sliding to horizontal velocity with stronger effect for enemies
+    const slidingStrength = 1.2; // Stronger sliding effect
+    this.body.velocity.x = THREE.MathUtils.lerp(this.body.velocity.x, slidingVelocity.x, slidingStrength * delta * 60);
+    this.body.velocity.z = THREE.MathUtils.lerp(this.body.velocity.z, slidingVelocity.z, slidingStrength * delta * 60);
+    
+    // Add small downward slide when airborne and against walls
+    if (!this.isGrounded && this.wallNormals.length > 0) {
+      // Calculate average wall normal
+      let avgNormal = new THREE.Vector3();
+      for (const normal of this.wallNormals) {
+        avgNormal.add(normal);
+      }
+      avgNormal.divideScalar(this.wallNormals.length).normalize();
+      
+      // Add slight downward sliding along the wall
+      const wallSlideSpeed = this.wallSlideSpeed; // Use configurable speed
+      const tangentVector = new THREE.Vector3();
+      
+      // Calculate tangent vector (perpendicular to wall normal, pointing down)
+      const up = new THREE.Vector3(0, 1, 0);
+      tangentVector.crossVectors(avgNormal, up).normalize();
+      
+      // If the cross product is near zero, use a different approach
+      if (tangentVector.length() < 0.1) {
+        // Wall is nearly horizontal, slide in the direction of current horizontal velocity
+        const horizontalVel = new THREE.Vector3(currentVel.x, 0, currentVel.z);
+        if (horizontalVel.length() > 0.1) {
+          tangentVector.copy(horizontalVel.normalize());
+        }
+      }
+      
+      // Apply wall sliding force with stronger effect for enemy collisions
+      if (tangentVector.length() > 0.1) {
+        const slideForce = tangentVector.multiplyScalar(wallSlideSpeed);
+        this.body.velocity.x += slideForce.x * delta * 2; // Doubled for enemies
+        this.body.velocity.z += slideForce.z * delta * 2;
+      }
+      
+      // Reduce vertical velocity when sliding against walls (friction effect)
+      if (this.body.velocity.y < 0) {
+        this.body.velocity.y *= 0.98; // Less friction for smoother sliding
       }
     }
   }
@@ -505,23 +615,28 @@ export class Player {
       
       const dotProduct = slidingVelocity.dot(normal);
       
-      // Only slide if moving into the wall (negative dot product means moving away)
-      if (dotProduct > 0) {
+      // Only slide if moving into the wall (positive dot product)
+      if (dotProduct > 0.01) { // Small threshold to prevent jitter
         const projectionOntoNormal = normal.clone().multiplyScalar(dotProduct);
         slidingVelocity.sub(projectionOntoNormal);
       }
     }
 
-    // Apply smoothing to make sliding feel more natural
+    // Apply smoothing and speed retention to make sliding feel more natural
     const originalLength = desiredVelocity.length();
     const slidingLength = slidingVelocity.length();
     
-    if (slidingLength > 0) {
-      // Maintain some of the original speed when sliding
-      const speedRetention = THREE.MathUtils.lerp(1.0, this.wallSlideSmoothing, 
-        Math.min(wallNormals.length / 2, 1)); // More walls = more speed loss
+    if (slidingLength > 0.01 && originalLength > 0.01) {
+      // Maintain more of the original speed when sliding
+      // Reduce speed loss based on number of walls and angle
+      const speedRetention = THREE.MathUtils.lerp(
+        0.7, // Minimum speed retention
+        this.wallSlideSmoothing, 
+        Math.min(wallNormals.length / 3, 1) // More walls = more speed loss
+      );
       
-      slidingVelocity.normalize().multiplyScalar(originalLength * speedRetention);
+      const targetLength = originalLength * speedRetention;
+      slidingVelocity.normalize().multiplyScalar(targetLength);
     }
 
     return slidingVelocity;

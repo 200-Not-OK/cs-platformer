@@ -64,6 +64,13 @@ export class EnemyBase {
     this.body.material.friction = 0.1;  // Lower friction like player
     this.body.material.restitution = 0.0; // No bouncing
     
+    // Set proper userData for wall sliding detection
+    this.body.userData = { 
+      type: 'enemy',
+      isEnemy: true,
+      enemyType: this.type || 'unknown'
+    };
+    
     console.log(`🤖 Created enemy physics body at [${this.mesh.position.x}, ${this.mesh.position.y}, ${this.mesh.position.z}]`);
   }
 
