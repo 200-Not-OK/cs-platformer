@@ -472,6 +472,50 @@ export class PhysicsWorld {
     return false;
   }
   
+  // Manual collider creation methods for editor
+  addStaticBox(position, size, materialType = 'ground') {
+    const shape = new CANNON.Box(new CANNON.Vec3(size.x / 2, size.y / 2, size.z / 2));
+    const body = new CANNON.Body({ mass: 0, material: this.materials[materialType] });
+    body.addShape(shape);
+    body.position.set(position.x, position.y, position.z);
+    body.type = CANNON.Body.KINEMATIC;
+    
+    this.world.addBody(body);
+    this.staticBodies.add(body);
+    
+    console.log(`📦 Created static box collider at [${position.x}, ${position.y}, ${position.z}] size [${size.x}, ${size.y}, ${size.z}]`);
+    return body;
+  }
+  
+  addStaticSphere(position, radius, materialType = 'ground') {
+    const shape = new CANNON.Sphere(radius);
+    const body = new CANNON.Body({ mass: 0, material: this.materials[materialType] });
+    body.addShape(shape);
+    body.position.set(position.x, position.y, position.z);
+    body.type = CANNON.Body.KINEMATIC;
+    
+    this.world.addBody(body);
+    this.staticBodies.add(body);
+    
+    console.log(`🔵 Created static sphere collider at [${position.x}, ${position.y}, ${position.z}] radius ${radius}`);
+    return body;
+  }
+  
+  addStaticCapsule(position, radius, height, materialType = 'ground') {
+    // Cannon.js doesn't have a capsule shape, so we'll create a cylinder
+    const shape = new CANNON.Cylinder(radius, radius, height, 8);
+    const body = new CANNON.Body({ mass: 0, material: this.materials[materialType] });
+    body.addShape(shape);
+    body.position.set(position.x, position.y, position.z);
+    body.type = CANNON.Body.KINEMATIC;
+    
+    this.world.addBody(body);
+    this.staticBodies.add(body);
+    
+    console.log(`🥤 Created static capsule collider at [${position.x}, ${position.y}, ${position.z}] radius ${radius} height ${height}`);
+    return body;
+  }
+  
   dispose() {
     console.log('🧹 Disposing physics world...');
     
