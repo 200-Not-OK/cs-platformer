@@ -3,8 +3,12 @@ import * as THREE from 'three';
 import CannonDebugger from 'cannon-es-debugger';
 
 export class PhysicsWorld {
-  constructor(scene = null) {
+  constructor(scene = null, options = {}) {
     console.log('🌍 Initializing new Cannon.js Physics World...');
+    
+    // Global physics settings
+    this.defaultUseAccurateCollision = options.useAccurateCollision || false;
+    this.debugMode = options.debugMode || false;
     
     // Create Cannon.js world
     this.world = new CANNON.World({
@@ -176,6 +180,23 @@ export class PhysicsWorld {
   isDebugEnabled() {
     return this.debugEnabled && this.debugRenderer !== null;
   }
+
+  // Debug method to show collision information for all bodies
+  logCollisionInfo() {
+    console.log('🔍 Physics World Collision Info:');
+    console.log(`  Static Bodies: ${this.staticBodies.size}`);
+    console.log(`  Dynamic Bodies: ${this.bodies.size}`);
+    
+    this.staticBodies.forEach((body, index) => {
+      const mesh = body.userData?.mesh;
+      const collisionType = body.userData?.collisionType || 'unknown';
+      console.log(`  Static ${index}: ${mesh?.name || 'unnamed'} (${collisionType})`);
+    });
+    
+    this.bodies.forEach((body, index) => {
+      console.log(`  Dynamic ${index}: mass=${body.mass}`);
+    });
+  }
   
   step(deltaTime) {
     // Clamp delta time to prevent physics explosions
@@ -191,45 +212,159 @@ export class PhysicsWorld {
     }
   }
   
-  addStaticMesh(mesh, materialType = 'ground') {
+  addStaticMesh(mesh, materialType = 'ground', options = {}) {
     try {
       const geometry = mesh.geometry;
       if (!geometry) {
         console.warn('Mesh has no geometry, skipping physics body creation');
         return null;
       }
-      
-      if (!geometry.boundingBox) {
-        geometry.computeBoundingBox();
+
+      const {
+        useAccurateCollision = this.defaultUseAccurateCollision,
+        forceBoxCollider = false
+      } = options;
+
+      let shape;
+      const meshName = mesh.name.toLowerCase();
+
+      // Determine collision type based on mesh name or options
+      // Be conservative: only use Trimesh for explicitly marked meshes
+      const shouldUseAccurate = useAccurateCollision && 
+                               (meshName.includes('trimesh') || 
+                                meshName.includes('accurate') ||
+                                meshName.includes('complex')) &&
+                               !forceBoxCollider &&
+                               !meshName.includes('box') && 
+                               !meshName.includes('simple') &&
+                               !meshName.includes('collider'); // collider_ prefix suggests simple collision
+
+      if (shouldUseAccurate && !forceBoxCollider) {
+        // Use Trimesh for accurate collision detection
+        shape = this._createTrimeshShape(geometry, mesh);
+        console.log(`🔺 Created Trimesh collision for: ${mesh.name || 'unnamed'}`);
+      } else {
+        // Use bounding box collision (faster but less accurate)
+        // Calculate the actual scaled bounding box
+        const scaledSize = this._getScaledBoundingBoxSize(geometry, mesh);
+        
+        shape = new CANNON.Box(new CANNON.Vec3(scaledSize.x / 2, scaledSize.y / 2, scaledSize.z / 2));
+        
+        console.log(`📦 Created Box collision for: ${mesh.name || 'unnamed'}`);
+        console.log(`   📏 Size: (${scaledSize.x.toFixed(2)} × ${scaledSize.y.toFixed(2)} × ${scaledSize.z.toFixed(2)})`);
+        console.log(`   📍 Position: (${mesh.position.x.toFixed(2)}, ${mesh.position.y.toFixed(2)}, ${mesh.position.z.toFixed(2)})`);
+        console.log(`   📐 Scale: (${mesh.scale.x.toFixed(2)}, ${mesh.scale.y.toFixed(2)}, ${mesh.scale.z.toFixed(2)})`);
       }
-      
-      const size = new THREE.Vector3();
-      geometry.boundingBox.getSize(size);
-      
-      const shape = new CANNON.Box(new CANNON.Vec3(size.x / 2, size.y / 2, size.z / 2));
-      
+
       const body = new CANNON.Body({
         mass: 0,
         type: CANNON.Body.KINEMATIC,
         material: this.materials[materialType] || this.materials.ground
       });
-      
+
       body.addShape(shape);
+      
+      // Use the mesh's local transform (GLTF meshes usually have correct local transforms)
       body.position.copy(mesh.position);
       body.quaternion.copy(mesh.quaternion);
       
       this.world.addBody(body);
       this.staticBodies.add(body);
       
-      body.userData = { mesh: mesh, type: 'static' };
+      body.userData = { 
+        mesh: mesh, 
+        type: 'static',
+        collisionType: shouldUseAccurate ? 'trimesh' : 'box'
+      };
       
-      console.log(`📦 Created static physics body for mesh: ${mesh.name || 'unnamed'}`);
       return body;
       
     } catch (error) {
       console.error('Failed to create static physics body:', error);
+      console.error('Mesh details:', {
+        name: mesh.name,
+        position: mesh.position,
+        scale: mesh.scale,
+        hasGeometry: !!mesh.geometry
+      });
       return null;
     }
+  }
+
+  _getScaledBoundingBoxSize(geometry, mesh) {
+    if (!geometry.boundingBox) {
+      geometry.computeBoundingBox();
+    }
+
+    // Get the unscaled size
+    const size = new THREE.Vector3();
+    geometry.boundingBox.getSize(size);
+    
+    // Apply the mesh's local scale (not world scale)
+    size.multiply(mesh.scale);
+    
+    return size;
+  }
+
+  _createTrimeshShape(geometry, mesh) {
+    // Get position attribute from geometry
+    const position = geometry.attributes.position;
+    if (!position) {
+      console.warn('Geometry has no position attribute, falling back to box collision');
+      return this._createBoxShape(geometry, mesh);
+    }
+
+    // Create vertices array for Cannon.js
+    const vertices = [];
+    const indices = [];
+
+    // Extract vertices
+    for (let i = 0; i < position.count; i++) {
+      vertices.push(
+        position.getX(i) * mesh.scale.x,
+        position.getY(i) * mesh.scale.y,
+        position.getZ(i) * mesh.scale.z
+      );
+    }
+
+    // Extract indices (faces)
+    if (geometry.index) {
+      // Indexed geometry
+      const indexArray = geometry.index.array;
+      for (let i = 0; i < indexArray.length; i++) {
+        indices.push(indexArray[i]);
+      }
+    } else {
+      // Non-indexed geometry - create indices
+      for (let i = 0; i < position.count; i++) {
+        indices.push(i);
+      }
+    }
+
+    try {
+      // Validate Trimesh data
+      if (vertices.length === 0 || indices.length === 0) {
+        console.warn('Invalid Trimesh data: empty vertices or indices, falling back to box collision');
+        return this._createBoxShape(geometry, mesh);
+      }
+      
+      if (vertices.length % 3 !== 0) {
+        console.warn('Invalid Trimesh data: vertices length not divisible by 3, falling back to box collision');
+        return this._createBoxShape(geometry, mesh);
+      }
+      
+      const trimesh = new CANNON.Trimesh(vertices, indices);
+      console.log(`🔺 Created Trimesh with ${vertices.length/3} vertices, ${indices.length/3} faces`);
+      return trimesh;
+    } catch (error) {
+      console.warn('Failed to create Trimesh, falling back to box collision:', error);
+      return this._createBoxShape(geometry, mesh);
+    }
+  }
+
+  _createBoxShape(geometry, mesh) {
+    const scaledSize = this._getScaledBoundingBoxSize(geometry, mesh);
+    return new CANNON.Box(new CANNON.Vec3(scaledSize.x / 2, scaledSize.y / 2, scaledSize.z / 2));
   }
   
   createDynamicBody(options = {}) {

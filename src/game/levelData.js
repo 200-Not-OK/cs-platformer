@@ -3,7 +3,7 @@ export const levels = [
   {
     id: 'intro',
     name: 'Intro Level',
-    //gltfUrl: 'src/assets/levels/introLevel.gltf',
+    gltfUrl: 'src/assets/levels/introLevel.gltf',
     startPosition: [0, 15, 8],
     ui: ['hud', 'fps'],
     lights: [ 'BasicLights' ],
@@ -50,7 +50,7 @@ export const levels = [
   {
     id: 'level2',
     name: 'Level 2',
-    gltfUrl: 'src/assets/levels/level2/level2.gltf',
+    gltfUrl: 'src/assets/levels/Level2/Level2.gltf',
     startPosition: [44, 6, -13],
     ui: ['hud', 'minimap'],
     lights: [ 'BasicLights' ],

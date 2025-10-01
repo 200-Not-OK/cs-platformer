@@ -42,6 +42,12 @@ export class Player {
     this.groundCheckDistance = 0.1;
     this.groundNormalThreshold = 0.5;
     
+    // Wall sliding system
+    this.enableWallSliding = true;
+    this.wallSlideSmoothing = 0.8; // How smoothly to slide along walls (0-1)
+    this.collisionContacts = []; // Store current collision contacts
+    this.wallNormals = []; // Store wall normal vectors for sliding
+    
     // Load 3D model first, then create physics body
     this.loadModel();
   }
@@ -192,10 +198,77 @@ export class Player {
     // Configure body for character movement
     this.body.fixedRotation = true; // Prevent tipping over
     this.body.updateMassProperties();
+    
+    // Set up collision event listeners for wall sliding
+    this.setupCollisionListeners();
+  }
+
+  setupCollisionListeners() {
+    if (!this.body) return;
+    
+    // Listen for collision begin events
+    this.body.addEventListener('collide', (event) => {
+      this.handleCollision(event);
+    });
+  }
+
+  handleCollision(event) {
+    const contact = event.contact;
+    const otherBody = event.target === this.body ? event.body : event.target;
+    
+    // Skip ground collisions (handled separately)
+    if (contact.ni.y > this.groundNormalThreshold || contact.ni.y < -this.groundNormalThreshold) {
+      return;
+    }
+    
+    // Check if this is a wall or enemy collision
+    const isWallOrEnemy = this.isWallOrEnemyBody(otherBody);
+    
+    if (isWallOrEnemy) {
+      // Store the collision normal for wall sliding
+      const normal = contact.ni.clone();
+      
+      // Determine which body is the player and flip normal if needed
+      if (event.target === this.body) {
+        normal.negate(); // Flip normal to point away from wall toward player
+      }
+      
+      // Store wall normal for sliding calculation
+      this.addWallNormal(normal);
+    }
+  }
+
+  isWallOrEnemyBody(body) {
+    if (!body || !body.userData) return false;
+    
+    // Check if it's a static body (walls/level geometry)
+    if (body.userData.type === 'static') return true;
+    
+    // Check if it's an enemy body
+    if (body.userData.type === 'enemy') return true;
+    
+    // Check material type
+    if (body.material === this.physicsWorld.materials.wall) return true;
+    if (body.material === this.physicsWorld.materials.enemy) return true;
+    
+    return false;
+  }
+
+  addWallNormal(normal) {
+    // Only store horizontal wall normals (ignore floors/ceilings)
+    if (Math.abs(normal.y) < 0.5) {
+      this.wallNormals.push(normal);
+      
+      // Limit stored normals to prevent memory buildup
+      if (this.wallNormals.length > 5) {
+        this.wallNormals.shift();
+      }
+    }
   }
 
   update(delta, input, camOrientation = null, platforms = [], playerActive = true) {
-    // l
+    // Clear wall normals from previous frame
+    this.wallNormals = [];
     
     if (!this.body) {
       return;
@@ -272,8 +345,18 @@ export class Player {
       const targetSpeed = this.speed * (this.isSprinting ? this.sprintMultiplier : 1);
       
       // Calculate target velocity
-      const targetVelX = moveDirection.x * targetSpeed;
-      const targetVelZ = moveDirection.z * targetSpeed;
+      let targetVelX = moveDirection.x * targetSpeed;
+      let targetVelZ = moveDirection.z * targetSpeed;
+      
+      // Apply wall sliding if enabled and there are wall collisions
+      if (this.enableWallSliding && this.wallNormals.length > 0) {
+        const slidingVelocity = this.calculateSlidingVelocity(
+          new THREE.Vector3(targetVelX, 0, targetVelZ),
+          this.wallNormals
+        );
+        targetVelX = slidingVelocity.x;
+        targetVelZ = slidingVelocity.z;
+      }
       
       // Apply movement based on grounded state
       if (this.isGrounded) {
@@ -405,6 +488,51 @@ export class Player {
     // Restore position and velocity
     this.body.position.copy(currentPos);
     this.body.velocity.copy(currentVel);
+  }
+
+  calculateSlidingVelocity(desiredVelocity, wallNormals) {
+    if (!wallNormals || wallNormals.length === 0) {
+      return desiredVelocity;
+    }
+
+    let slidingVelocity = desiredVelocity.clone();
+
+    // Apply sliding for each wall normal
+    for (const normal of wallNormals) {
+      // Project the desired velocity onto the wall surface
+      // Formula: v_slide = v_desired - (v_desired · n) * n
+      // Where n is the wall normal
+      
+      const dotProduct = slidingVelocity.dot(normal);
+      
+      // Only slide if moving into the wall (negative dot product means moving away)
+      if (dotProduct > 0) {
+        const projectionOntoNormal = normal.clone().multiplyScalar(dotProduct);
+        slidingVelocity.sub(projectionOntoNormal);
+      }
+    }
+
+    // Apply smoothing to make sliding feel more natural
+    const originalLength = desiredVelocity.length();
+    const slidingLength = slidingVelocity.length();
+    
+    if (slidingLength > 0) {
+      // Maintain some of the original speed when sliding
+      const speedRetention = THREE.MathUtils.lerp(1.0, this.wallSlideSmoothing, 
+        Math.min(wallNormals.length / 2, 1)); // More walls = more speed loss
+      
+      slidingVelocity.normalize().multiplyScalar(originalLength * speedRetention);
+    }
+
+    return slidingVelocity;
+  }
+
+  // Debug method to visualize wall normals
+  debugWallNormals() {
+    console.log('Current wall normals:');
+    this.wallNormals.forEach((normal, index) => {
+      console.log(`  ${index}: (${normal.x.toFixed(2)}, ${normal.y.toFixed(2)}, ${normal.z.toFixed(2)})`);
+    });
   }
 
   dispose() {
