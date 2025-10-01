@@ -26,7 +26,7 @@ export const levels = [
         ],
         modelUrl: "src/assets/low_poly_female/scene.gltf",
         patrolPoints: [[7,2,-8,0.5],[13,2,-8,0.5]],
-        speed: 20,
+        speed: 15,
         chaseRange: 5
       },
       {
@@ -51,7 +51,7 @@ export const levels = [
             0.4
           ]
         ],
-        speed: 30,
+        speed: 17,
         chaseRange: 7
       },
       {
