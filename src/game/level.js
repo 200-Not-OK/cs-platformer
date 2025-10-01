@@ -104,8 +104,28 @@ export class Level {
       
       this.objects.push(child);
       
-      // Add mesh to physics world as static collision body
-      const physicsBody = this.physicsWorld.addStaticMesh(child);
+      // Determine collision detection options based on mesh name
+      const meshName = child.name.toLowerCase();
+      const collisionOptions = {
+        useAccurateCollision: meshName.includes('complex') || 
+                             meshName.includes('detailed') || 
+                             meshName.includes('trimesh') ||
+                             meshName.includes('accurate'),
+        forceBoxCollider: meshName.includes('box') || 
+                         meshName.includes('simple') ||
+                         meshName.includes('basic')
+      };
+      
+      // Determine material type based on mesh name
+      let materialType = 'ground'; // Default
+      if (meshName.includes('wall') || meshName.includes('barrier') || meshName.includes('fence')) {
+        materialType = 'wall';
+      } else if (meshName.includes('platform') || meshName.includes('ledge')) {
+        materialType = 'platform';
+      }
+      
+      // Add mesh to physics world as static collision body with improved collision detection
+      const physicsBody = this.physicsWorld.addStaticMesh(child, materialType, collisionOptions);
       if (physicsBody) {
         this.physicsBodies.push(physicsBody);
         child.userData.physicsBody = physicsBody;
@@ -118,6 +138,7 @@ export class Level {
     }
     
     console.log(`✅ GLTF processing complete: ${meshCount} meshes, ${this.physicsBodies.length} physics bodies`);
+    console.log(`💡 Tip: Name meshes with 'complex' for accurate collision or 'simple' for box collision`);
   }
 
   _buildFallbackGeometry() {

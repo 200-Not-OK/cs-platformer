@@ -22,8 +22,11 @@ export class Game {
     this.scene = scene;
     this.renderer = renderer;
 
-    // Initialize physics world with scene for debug rendering
-    this.physicsWorld = new PhysicsWorld(this.scene);
+    // Initialize physics world with scene for debug rendering and improved collision detection
+    this.physicsWorld = new PhysicsWorld(this.scene, {
+      useAccurateCollision: false, // Disable Trimesh by default for more reliable collision
+      debugMode: false
+    });
 
     // Physics debug toggle accessible from browser console
     window.__physicsDebugOn = false;
@@ -31,6 +34,78 @@ export class Game {
       window.__physicsDebugOn = !window.__physicsDebugOn;
       this.physicsWorld.enableDebugRenderer(window.__physicsDebugOn);
       console.log(`Physics debug ${window.__physicsDebugOn ? 'enabled' : 'disabled'}`);
+    };
+
+    // Collision info debug command
+    window.showCollisionInfo = () => {
+      this.physicsWorld.logCollisionInfo();
+    };
+
+    // Toggle between box and trimesh collision for testing
+    window.toggleAccurateCollision = () => {
+      const newSetting = !this.physicsWorld.defaultUseAccurateCollision;
+      this.physicsWorld.defaultUseAccurateCollision = newSetting;
+      console.log(`Accurate collision detection ${newSetting ? 'enabled' : 'disabled'}`);
+      console.log('💡 Reload the level to see changes: window.game.loadLevel(0) or window.game.loadLevel(1)');
+    };
+
+    // Debug specific mesh collision properties
+    window.inspectMesh = (meshName) => {
+      if (!this.level) {
+        console.log('❌ No level loaded');
+        return;
+      }
+      
+      const mesh = this.level.objects.find(obj => obj.name.includes(meshName));
+      if (!mesh) {
+        console.log(`❌ Mesh containing "${meshName}" not found`);
+        console.log('Available meshes:', this.level.objects.map(obj => obj.name));
+        return;
+      }
+      
+      console.log(`🔍 Inspecting mesh: ${mesh.name}`);
+      console.log(`   📍 Position: (${mesh.position.x.toFixed(2)}, ${mesh.position.y.toFixed(2)}, ${mesh.position.z.toFixed(2)})`);
+      console.log(`   📏 Scale: (${mesh.scale.x.toFixed(2)}, ${mesh.scale.y.toFixed(2)}, ${mesh.scale.z.toFixed(2)})`);
+      console.log(`   🔄 Rotation: (${mesh.rotation.x.toFixed(2)}, ${mesh.rotation.y.toFixed(2)}, ${mesh.rotation.z.toFixed(2)})`);
+      
+      if (mesh.geometry && mesh.geometry.boundingBox) {
+        const size = new THREE.Vector3();
+        mesh.geometry.boundingBox.getSize(size);
+        const scaledSize = size.clone().multiply(mesh.scale);
+        console.log(`   📦 Bounding box (unscaled): (${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)})`);
+        console.log(`   📦 Bounding box (scaled): (${scaledSize.x.toFixed(2)} × ${scaledSize.y.toFixed(2)} × ${scaledSize.z.toFixed(2)})`);
+      }
+      
+      if (mesh.userData.physicsBody) {
+        const body = mesh.userData.physicsBody;
+        console.log(`   ⚛️  Physics body position: (${body.position.x.toFixed(2)}, ${body.position.y.toFixed(2)}, ${body.position.z.toFixed(2)})`);
+        console.log(`   ⚛️  Physics body type: ${body.userData?.collisionType || 'unknown'}`);
+      }
+    };
+
+    // Wall sliding debug commands
+    window.toggleWallSliding = () => {
+      if (this.player) {
+        this.player.enableWallSliding = !this.player.enableWallSliding;
+        console.log(`Wall sliding ${this.player.enableWallSliding ? 'enabled' : 'disabled'}`);
+      }
+    };
+
+    window.debugWallNormals = () => {
+      if (this.player) {
+        this.player.debugWallNormals();
+      } else {
+        console.log('❌ Player not available');
+      }
+    };
+
+    window.setWallSlideSmoothing = (value) => {
+      if (this.player && typeof value === 'number' && value >= 0 && value <= 1) {
+        this.player.wallSlideSmoothing = value;
+        console.log(`Wall slide smoothing set to ${value}`);
+      } else {
+        console.log('❌ Please provide a value between 0 and 1');
+      }
     };
 
     // Input
@@ -176,6 +251,9 @@ export class Game {
     console.log('🔧 Debug functions available:');
     console.log('  togglePhysicsDebug() - Toggle physics collision visualization');
     console.log('  physicsDebugStatus() - Check if physics debug is enabled');
+    console.log('  toggleWallSliding() - Enable/disable wall sliding');
+    console.log('  debugWallNormals() - Show current wall collision normals');
+    console.log('  setWallSlideSmoothing(0.8) - Adjust wall sliding smoothness (0-1)');
     console.log('  Press L to toggle physics debug visualization');
   }
 
@@ -295,9 +373,12 @@ export class Game {
   async loadLevel(index) {
     if (this.level) this.level.dispose();
     
-    // Clear existing physics bodies and recreate physics world
+    // Clear existing physics bodies and recreate physics world with improved collision detection
     this.physicsWorld.dispose();
-    this.physicsWorld = new PhysicsWorld(this.scene);
+    this.physicsWorld = new PhysicsWorld(this.scene, {
+      useAccurateCollision: false, // Disable Trimesh by default for more reliable collision
+      debugMode: false
+    });
     
     // Update player's physics world reference
     this.player.physicsWorld = this.physicsWorld;
@@ -308,9 +389,9 @@ export class Game {
     console.log('Loading level...', index);
     this.level = await this.levelManager.loadIndex(index);
     
-    // Add level meshes to physics world as static colliders
-    this._addLevelToPhysics();
-    
+    // Physics bodies are already created during level loading in level.js
+    console.log('✅ Level loaded with', this.level.physicsBodies.length, 'physics bodies');
+
     // Position player at start position
     const start = this.level.data.startPosition;
     this.player.setPosition(new THREE.Vector3(...start));
@@ -331,43 +412,6 @@ export class Game {
     // swap lighting according to level.data.lights (array of descriptors)
     this.applyLevelLights(this.level.data);
     return this.level;
-  }
-
-  _addLevelToPhysics() {
-    if (!this.level || !this.physicsWorld) return;
-    
-    console.log('🔧 Adding level geometry to physics world...');
-    let meshCount = 0;
-    
-    // Add all level meshes as static colliders
-    for (const mesh of this.level.objects) {
-      if (mesh.isMesh && mesh.geometry) {
-        console.log('📦 Adding mesh to physics:', mesh.name || 'unnamed', {
-          position: mesh.position,
-          vertices: mesh.geometry.attributes.position?.count || 0
-        });
-        this.physicsWorld.addStaticMesh(mesh);
-        meshCount++;
-      }
-    }
-    
-    // Also add a simple test ground plane if no meshes were added
-    if (meshCount === 0) {
-      console.log('⚠️ No level meshes found, creating test ground plane');
-      const groundGeometry = new THREE.PlaneGeometry(20, 20);
-      const groundMaterial = new THREE.MeshBasicMaterial({ color: 0x808080 });
-      const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
-      groundMesh.rotation.x = -Math.PI / 2; // Rotate to be horizontal
-      groundMesh.position.y = 0;
-      this.scene.add(groundMesh);
-      
-      // Add to physics
-      this.physicsWorld.addStaticMesh(groundMesh);
-      meshCount = 1;
-    }
-    
-    console.log(`✅ Added ${meshCount} meshes to physics world`);
-    console.log('🌍 Physics world now has', this.physicsWorld.world.bodies.length, 'bodies');
   }
 
   applyLevelLights(levelData) {
