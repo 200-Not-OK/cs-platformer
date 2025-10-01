@@ -530,10 +530,39 @@ export class PhysicsWorld {
     this.world.contactMaterials = [];
     
     if (this.debugRenderer) {
+      // Clean up debug renderer meshes from scene before disposing
+      this._clearDebugMeshes();
       this.debugEnabled = false;
       this.debugRenderer = null;
     }
     
     console.log('✅ Physics world disposed');
+  }
+
+  _clearDebugMeshes() {
+    // Find and remove all debug renderer meshes from the scene
+    const meshesToRemove = [];
+    this.scene.traverse((child) => {
+      if (child.userData && child.userData.cannonDebugRenderer) {
+        meshesToRemove.push(child);
+      }
+    });
+    
+    meshesToRemove.forEach(mesh => {
+      if (mesh.parent) {
+        mesh.parent.remove(mesh);
+      }
+      // Clean up geometry and material to prevent memory leaks
+      if (mesh.geometry) mesh.geometry.dispose();
+      if (mesh.material) {
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(material => material.dispose());
+        } else {
+          mesh.material.dispose();
+        }
+      }
+    });
+    
+    console.log(`🧹 Removed ${meshesToRemove.length} debug renderer meshes`);
   }
 }
