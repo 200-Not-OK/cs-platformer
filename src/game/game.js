@@ -123,7 +123,7 @@ export class Game {
     // Collider size scaling factors (optional)
     colliderWidthScale: 0.5,   // 40% of model width (default: 0.4)
     colliderHeightScale: 1,  // 90% of model height (default: 0.9)  
-    colliderDepthScale: 0.7    // 40% of model depth (default: 0.4)
+    colliderDepthScale: 0.5    // 40% of model depth (default: 0.4)
   });
   // Player position will be set by loadLevel() call
 

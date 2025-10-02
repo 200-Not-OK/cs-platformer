@@ -20,6 +20,13 @@ export class Player {
       depth: options.colliderDepthScale ?? 0.4     // Scale factor for depth (Z)
     };
     
+    // Collider offset options (local space relative to player mesh)
+    this.colliderOffset = {
+      x: options.colliderOffsetX ?? 0,     // Sideways offset
+      y: options.colliderOffsetY ?? 0,     // Vertical offset  
+      z: options.colliderOffsetZ ?? -0.4   // Forward/backward offset (negative = backward)
+    };
+    
     // Visual mesh (Three.js)
     this.mesh = new THREE.Group();
     this.scene.add(this.mesh);
@@ -517,11 +524,25 @@ export class Player {
   syncMeshWithBody() {
     if (!this.body) return;
     
-    // Copy position from physics body to visual mesh
-    this.mesh.position.copy(this.body.position);
+    // Sync Y-axis rotation from mesh to physics body while keeping it upright
+    // This ensures the collider rotates with the player's facing direction
+    const meshRotationY = this.mesh.rotation.y;
+    this.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), meshRotationY);
     
-    // Keep the physics body upright by resetting its rotation
-    this.body.quaternion.set(0, 0, 0, 1);
+    // Calculate offset position in world space
+    const offset = new THREE.Vector3(
+      this.colliderOffset.x,
+      this.colliderOffset.y, 
+      this.colliderOffset.z
+    );
+    
+    // Rotate offset by mesh rotation to get world space offset
+    offset.applyEuler(new THREE.Euler(0, meshRotationY, 0));
+    
+    // Position mesh relative to physics body with offset
+    // Mesh position = Physics body position - offset (so physics body is offset from mesh)
+    this.mesh.position.copy(this.body.position);
+    this.mesh.position.sub(offset);
   }
 
   updateAnimations(delta) {
@@ -598,6 +619,15 @@ export class Player {
     // Restore position and velocity
     this.body.position.copy(currentPos);
     this.body.velocity.copy(currentVel);
+  }
+
+  // Method to update collider offset at runtime
+  updateColliderOffset(offsetX, offsetY, offsetZ) {
+    if (offsetX !== undefined) this.colliderOffset.x = offsetX;
+    if (offsetY !== undefined) this.colliderOffset.y = offsetY;
+    if (offsetZ !== undefined) this.colliderOffset.z = offsetZ;
+    
+    console.log(`🔧 Updated collider offset: (${this.colliderOffset.x.toFixed(2)}, ${this.colliderOffset.y.toFixed(2)}, ${this.colliderOffset.z.toFixed(2)})`);
   }
 
   calculateSlidingVelocity(desiredVelocity, wallNormals) {
