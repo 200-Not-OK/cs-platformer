@@ -4,17 +4,12 @@ export class Crosshair extends UIComponent {
   constructor(container, props = {}) {
     super(container, props);
     this.root.className = 'crosshair';
-    console.log('🎯 Creating crosshair component'); // Debug log
     this._createCrosshair();
     this.setProps(props);
-    console.log('🎯 Crosshair created and positioned'); // Debug log
   }
 
   mount() {
     super.mount();
-    console.log('🎯 Crosshair mounted to DOM'); // Debug log
-    console.log('🎯 Crosshair container:', this.container); // Debug log
-    console.log('🎯 Crosshair root in DOM:', document.contains(this.root)); // Debug log
   }
 
   _createCrosshair() {
@@ -28,9 +23,6 @@ export class Crosshair extends UIComponent {
     this.root.style.width = '30px'; // Back to original size
     this.root.style.height = '30px'; // Back to original size
     // Removed debug styling
-
-    console.log('🎯 Crosshair root element:', this.root); // Debug log
-    console.log('🎯 Crosshair parent:', this.root.parentElement); // Debug log
 
     // Create the crosshair visual
     const vertical = document.createElement('div');
@@ -74,12 +66,10 @@ export class Crosshair extends UIComponent {
 
   setProps(props) {
     super.setProps(props);
-    console.log('🎯 Crosshair setProps called with:', props); // Debug log
     // Can add props for different crosshair styles, colors, etc.
     if (props && props.visible !== undefined) {
       const displayValue = props.visible ? 'block' : 'none';
       this.root.style.display = displayValue;
-      console.log(`🎯 Crosshair display set to: ${displayValue}`); // Debug log
     }
   }
 

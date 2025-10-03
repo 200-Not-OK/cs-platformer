@@ -108,11 +108,6 @@ export class Game {
   // Add crosshair for combat
   this.ui.add('crosshair', Crosshair, { visible: true });
 
-  // Debug: List all UI components
-  setTimeout(() => {
-    this.ui.listComponents();
-  }, 1000);
-
   // Combat system
   this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
 
@@ -258,11 +253,7 @@ export class Game {
     // Update crosshair visibility based on camera mode
     const crosshair = this.ui.get('crosshair');
     if (crosshair) {
-      console.log(`🎯 Crosshair found, playerActive: ${playerActive}, camera: ${this.activeCamera === this.thirdCameraObject ? 'third' : this.activeCamera === this.firstCameraObject ? 'first' : 'free'}`);
       crosshair.setProps({ visible: true }); // Always visible for debugging
-      console.log(`🎯 Crosshair visibility set, display style: ${crosshair.root.style.display}`);
-    } else {
-      console.log('🎯 Crosshair not found in UI components');
     }
 
     // update player (movement read from input manager)
@@ -368,14 +359,11 @@ export class Game {
       globalComponents.set('crosshair', this.ui.get('crosshair'));
     }
     
-    console.log('🔄 Level loading - preserving global components:', Array.from(globalComponents.keys()));
-    
     this.ui.clear();
     
     // Re-add global components first
     for (const [key, component] of globalComponents) {
       this.ui.components.set(key, component);
-      console.log(`🔄 Re-adding global component: ${key}`);
       // Re-mount the component since it was unmounted during clear
       if (component.mount) {
         component.mount();
