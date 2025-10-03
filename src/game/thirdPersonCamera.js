@@ -11,6 +11,7 @@ export class ThirdPersonCamera {
     this.distance = 8;           // radius from player
     this.pitch = 20 * (Math.PI / 180); // radians
     this.yaw = 0;                // around Y-axis
+    this.heightOffset = 1.6;     // How much higher to position the camera target (was 1.2)
     this.minPitch = -0.3;
     this.maxPitch = Math.PI / 2 - 0.1;
     this.sensitivity = 0.0025;
@@ -40,11 +41,15 @@ export class ThirdPersonCamera {
       Math.cos(this.yaw) * Math.cos(this.pitch)
     ).multiplyScalar(this.distance);
 
-    const desired = new THREE.Vector3().copy(this.player.mesh.position).add(offset);
+    // Create target position (where camera looks at) with height offset
+    const targetPosition = new THREE.Vector3().copy(this.player.mesh.position);
+    targetPosition.y += this.heightOffset; // Raise the look-at point
+
+    const desired = new THREE.Vector3().copy(targetPosition).add(offset);
 
     // smooth lerp
     this.camera.position.lerp(desired, this.lerp);
-    this.camera.lookAt(this.player.mesh.position);
+    this.camera.lookAt(targetPosition); // Look at the raised target position
   }
 
   getCamera() { return this.camera; }
