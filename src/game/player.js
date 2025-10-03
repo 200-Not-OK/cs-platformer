@@ -55,6 +55,10 @@ export class Player {
     this.attackDuration = 600; // Attack animation duration in ms
     this.lastAttackTime = 0;
     
+    // Interaction system
+    this.isInteracting = false;
+    this.lastInteractionTime = 0;
+    
     // Movement state
     this.isGrounded = false;
     this.isSprinting = false;
@@ -470,20 +474,60 @@ export class Player {
   }
 
   performInteract() {
+    if (this.isInteracting) {
+      console.log('🤝 Interact blocked - already interacting');
+      return false; // Already interacting
+    }
+
     if (this.actions.interact) {
-      console.log('🤝 Player interacting');
+      this.isInteracting = true;
+      console.log('🤝 Player starting interact animation');
+      
       this.playAction(this.actions.interact, 0.2, false);
       
-      // Return to idle after interaction
-      setTimeout(() => {
-        if (this.isGrounded) {
-          this.playAction(this.actions.idle);
+      // Use mixer event listener to detect when animation finishes
+      const onFinished = (event) => {
+        if (event.action === this.actions.interact) {
+          this.isInteracting = false;
+          this.mixer.removeEventListener('finished', onFinished);
+          
+          console.log('🤝 Interact animation finished');
+          
+          // Return to appropriate animation
+          if (this.isGrounded) {
+            if (this.body && (Math.abs(this.body.velocity.x) > 0.1 || Math.abs(this.body.velocity.z) > 0.1)) {
+              this.playAction(this.actions.walk);
+            } else {
+              this.playAction(this.actions.idle);
+            }
+          }
         }
-      }, 1000); // 1 second interaction duration
+      };
+      
+      this.mixer.addEventListener('finished', onFinished);
+      
+      // Fallback timeout in case event doesn't fire (3 seconds max)
+      setTimeout(() => {
+        if (this.isInteracting) {
+          this.isInteracting = false;
+          console.log('🤝 Interact finished (timeout fallback)');
+          
+          // Return to appropriate animation
+          if (this.isGrounded) {
+            if (this.body && (Math.abs(this.body.velocity.x) > 0.1 || Math.abs(this.body.velocity.z) > 0.1)) {
+              this.playAction(this.actions.walk);
+            } else {
+              this.playAction(this.actions.idle);
+            }
+          }
+        }
+      }, 3000); // 3 second fallback timeout
       
       return true;
+    } else {
+      console.log('🤝 No interact animation found');
+      return false;
     }
-    return false;
   }
 
   playAction(action, fadeDuration = 0.3, loop = true) {
@@ -756,8 +800,8 @@ export class Player {
     // Update animation mixer
     this.mixer.update(delta);
     
-    // Skip animation changes during attack
-    if (this.isAttacking) return;
+    // Skip animation changes during attack or interaction
+    if (this.isAttacking || this.isInteracting) return;
     
     // Determine which animation to play
     const velocity = this.body.velocity;
