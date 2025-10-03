@@ -4,8 +4,12 @@ export class HUD extends UIComponent {
   constructor(container, props = {}) {
     super(container, props);
     this.root.className = 'game-hud';
+<<<<<<< HEAD
     
     // Modern HUD styling with cartoonish elements
+=======
+
+>>>>>>> 5c4b097 (Refactor ReverseStation and Level classes; implement PasscodePanel and LinkProgress components; add ReverseMinigame and Door functionality)
     this.root.style.position = 'absolute';
     this.root.style.left = '20px';
     this.root.style.top = '20px';
@@ -23,6 +27,7 @@ export class HUD extends UIComponent {
   }
 
   _createElements() {
+<<<<<<< HEAD
     // Create health container with cartoonish styling
     this.healthContainer = document.createElement('div');
     this.healthContainer.style.cssText = `
@@ -168,6 +173,23 @@ export class HUD extends UIComponent {
     this.healthContainer.appendChild(this.healthText);
     
     this.root.appendChild(this.healthContainer);
+=======
+    this.healthEl = document.createElement('div');
+    this.healthEl.textContent = 'Health: 100';
+    this.root.appendChild(this.healthEl);
+
+    this.infoEl = document.createElement('div');
+    this.infoEl.style.marginTop = '8px';
+    this.infoEl.textContent = '';
+    this.root.appendChild(this.infoEl);
+
+    this.codeEl = document.createElement('div');
+    this.codeEl.style.marginTop = '6px';
+    this.codeEl.style.letterSpacing = '3px';
+    this.codeEl.style.fontWeight = '800';
+    this.codeEl.style.color = '#ffd658';
+    this.root.appendChild(this.codeEl);
+>>>>>>> 5c4b097 (Refactor ReverseStation and Level classes; implement PasscodePanel and LinkProgress components; add ReverseMinigame and Door functionality)
   }
 
   setProps(props) {
@@ -177,6 +199,7 @@ export class HUD extends UIComponent {
     }
   }
 
+<<<<<<< HEAD
   updateHealthDisplay(health, maxHealth) {
     this.currentHealth = health;
     this.maxHealth = maxHealth;
@@ -312,8 +335,18 @@ export class HUD extends UIComponent {
     return false; // No potions available
   }
 
+=======
+  setInfo({ linked, total, passcode }) {
+    if (typeof linked === 'number' && typeof total === 'number') {
+      this.infoEl.textContent = `Nodes: ${linked} / ${total}`;
+    }
+    if (passcode) {
+      this.codeEl.textContent = `PASSCODE: ${passcode}`;
+    }
+  }
+
+>>>>>>> 5c4b097 (Refactor ReverseStation and Level classes; implement PasscodePanel and LinkProgress components; add ReverseMinigame and Door functionality)
   update(delta, ctx) {
-    // ctx can contain game state like player health/score
     if (ctx && ctx.player) {
       const hp = Math.round(ctx.player.health ?? 100);
       const maxHp = Math.round(ctx.player.maxHealth ?? 100);

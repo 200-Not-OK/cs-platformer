@@ -11,20 +11,23 @@ export class InputManager {
     this.leftClickTriggered = false;  // For single-frame left click detection
     this.alwaysTrackMouse = false; // set true for third-person camera
 
+    // Helper: ignore input while reverse UI is open (halts movement, not timer)
+    const ignore = () => (!this.enabled || !!window.__reverseOpen);
+
     // Keyboard
     domElement.addEventListener('keydown', (e) => {
-      if (!this.enabled) return;
+      if (ignore()) return;
       this.keys[e.code] = true;
     });
     domElement.addEventListener('keyup', (e) => {
-      if (!this.enabled) return;
+      if (ignore()) return;
       this.keys[e.code] = false;
     });
 
     // Mouse
     this._last = null;
     domElement.addEventListener('mousedown', (e) => {
-      if (!this.enabled) return;
+      if (ignore()) return;
       this.mouseDown = true;
       
       if (e.button === 0) { // Left click
@@ -60,7 +63,7 @@ export class InputManager {
       e.preventDefault();
     });
     domElement.addEventListener('mousemove', (e) => {
-      if (!this.enabled) return;
+      if (ignore()) return;
       // If pointer is locked, use movementX/movementY for smooth camera
       if (document.pointerLockElement === domElement || document.pointerLockElement === document.body) {
         this.mouseDelta.x += e.movementX;
