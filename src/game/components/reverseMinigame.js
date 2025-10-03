@@ -73,7 +73,6 @@ export class ReverseMinigame {
         -webkit-user-drag: element;
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         animation: bounceIn 0.5s ease-out;
-        z-index: 2;
       }
       
       .rev-card::before {
@@ -85,8 +84,6 @@ export class ReverseMinigame {
         height: 100%;
         background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
         transition: left 0.5s;
-        pointer-events: none;
-        z-index: 1;
       }
       
       .rev-card:hover::before {
@@ -146,8 +143,6 @@ export class ReverseMinigame {
         right: 0;
         height: 1px;
         background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-        pointer-events: none;
-        z-index: 1;
       }
       
       .rev-head{
@@ -254,8 +249,6 @@ export class ReverseMinigame {
         height: 100%;
         background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
         transition: left 0.5s;
-        pointer-events: none;
-        z-index: 1;
       }
       
       .rev-btn:hover::before {
@@ -465,13 +458,10 @@ export class ReverseMinigame {
           e.dataTransfer.clearData();
           e.dataTransfer.setData('text/plain', s); // Firefox needs a payload
           e.dataTransfer.effectAllowed = 'move';
-        } catch (err) {
-          console.warn('Drag start error:', err);
-        }
+        } catch {}
         el.classList.add('dragging');
         this._dragEl = el;
         this._playSound('drag');
-        console.log('Drag started for:', s);
       });
       el.addEventListener('dragend', () => {
         this._dragEl?.classList.remove('dragging');
@@ -496,52 +486,24 @@ export class ReverseMinigame {
       if (!this._dragEl) return;
       e.preventDefault(); e.stopPropagation();
       e.currentTarget.classList.add('drag-over');
-      console.log('Drag entered:', e.currentTarget.id);
     };
     const onDragOver = (e) => {
       if (!this._dragEl) return;
       e.preventDefault(); e.stopPropagation();
       try { e.dataTransfer.dropEffect = 'move'; } catch {}
     };
-    const onDragLeave = (e) => { 
-      e.currentTarget.classList.remove('drag-over'); 
-      console.log('Drag left:', e.currentTarget.id);
-    };
+    const onDragLeave = (e) => { e.currentTarget.classList.remove('drag-over'); };
     const onDrop = (e) => {
-      if (!this._dragEl) {
-        console.log('No drag element found');
-        return;
-      }
+      if (!this._dragEl) return;
       e.preventDefault(); e.stopPropagation();
       const row = e.currentTarget;
       row.classList.remove('drag-over');
-      
-      console.log('Drop event on:', row.id, 'dragging:', this._dragEl.textContent);
-      
-      // Find the correct insertion point
-      const rect = row.getBoundingClientRect();
-      const dropY = e.clientY - rect.top;
-      const cards = Array.from(row.querySelectorAll('.rev-card'));
-      
-      let insertBefore = null;
-      for (const card of cards) {
-        const cardRect = card.getBoundingClientRect();
-        const cardCenter = cardRect.top + cardRect.height / 2 - rect.top;
-        if (dropY < cardCenter) {
-          insertBefore = card;
-          break;
-        }
-      }
-      
-      if (insertBefore) {
-        row.insertBefore(this._dragEl, insertBefore);
-        console.log('Inserted before:', insertBefore.textContent);
+      const targetCard = e.target?.closest?.('.rev-card');
+      if (targetCard && targetCard !== this._dragEl && row.contains(targetCard)) {
+        row.insertBefore(this._dragEl, targetCard);
       } else {
         row.appendChild(this._dragEl);
-        console.log('Appended to end');
       }
-      
-      this._playSound('click');
     };
     for (const row of [bank, slots]) {
       row.addEventListener('dragenter', onDragEnter);
