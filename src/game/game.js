@@ -12,6 +12,7 @@ import { Objectives } from './components/objectives.js';
 import { SmallMenu } from './components/menu.js';
 import { FPS } from './components/fps.js';
 import { Crosshair } from './components/crosshair.js';
+import { Collectibles } from './components/collectibles.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
@@ -372,17 +373,41 @@ export class Game {
     
     const uiList = (levelData && levelData.ui) ? levelData.ui : ['hud'];
     
-    for (const key of uiList) {
-      if (key === 'hud') this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
-      else if (key === 'minimap') this.ui.add('minimap', Minimap, {});
-      else if (key === 'objectives') this.ui.add('objectives', Objectives, { items: levelData.objectives ?? ['Reach the goal'] });
-      else if (key === 'menu') this.ui.add('menu', SmallMenu, { onResume: () => this.setPaused(false) });
-      else if (key === 'fps') {
-        // FPS is already added as a global component, skip
+    for (const uiItem of uiList) {
+      // Handle both string format ("hud") and object format ({ type: "collectibles", config: {...} })
+      let key, config;
+      if (typeof uiItem === 'string') {
+        key = uiItem;
+        config = {};
+      } else if (typeof uiItem === 'object' && uiItem.type) {
+        key = uiItem.type;
+        config = uiItem.config || {};
+      } else {
+        console.warn('Invalid UI item format in level data:', uiItem);
         continue;
       }
-      else {
-        console.warn('Unknown UI key in level data:', key);
+      
+      if (key === 'hud') {
+        this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
+      } else if (key === 'minimap') {
+        this.ui.add('minimap', Minimap, config);
+      } else if (key === 'objectives') {
+        this.ui.add('objectives', Objectives, { 
+          items: levelData.objectives ?? ['Reach the goal'],
+          ...config 
+        });
+      } else if (key === 'menu') {
+        this.ui.add('menu', SmallMenu, { 
+          onResume: () => this.setPaused(false),
+          ...config 
+        });
+      } else if (key === 'collectibles') {
+        this.ui.add('collectibles', Collectibles, config);
+      } else if (key === 'fps') {
+        // FPS is already added as a global component, skip
+        continue;
+      } else {
+        console.warn('Unknown UI component type in level data:', key);
       }
     }
   }
