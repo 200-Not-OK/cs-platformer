@@ -843,6 +843,11 @@ export class Player {
     this.syncMeshWithBody();
   }
 
+  getPosition() {
+    if (!this.body) return new THREE.Vector3(0, 0, 0);
+    return new THREE.Vector3(this.body.position.x, this.body.position.y, this.body.position.z);
+  }
+
   // Method to update collider size at runtime
   updateColliderSize(widthScale, heightScale, depthScale) {
     if (!this.body) {

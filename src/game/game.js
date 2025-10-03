@@ -18,6 +18,7 @@ import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
 import { PhysicsWorld } from './physics/PhysicsWorld.js';
 import { CombatSystem } from './combatSystem.js';
+import { DoorManager } from '../assets/doors/DoorManager.js';
 
 export class Game {
   constructor() {
@@ -34,32 +35,32 @@ export class Game {
     // Input
     this.input = new InputManager(window);
 
-  // Level system
-  this.levelManager = new LevelManager(this.scene, this.physicsWorld);
-  this.level = null;
+    // Level system
+    this.levelManager = new LevelManager(this.scene, this.physicsWorld);
+    this.level = null;
 
-  // Player
-  this.player = new Player(this.scene, this.physicsWorld, { 
-    speed: 17, 
-    jumpStrength: 12, 
-    size: [1, 1.5, 1],
-    // Collider size scaling factors (optional)
-    colliderWidthScale: 0.5,   // 40% of model width (default: 0.4)
-    colliderHeightScale: 1,  // 90% of model height (default: 0.9)  
-    colliderDepthScale: 0.5    // 40% of model depth (default: 0.4)
-  });
-  // Player position will be set by loadLevel() call
+    // Player
+    this.player = new Player(this.scene, this.physicsWorld, {
+      speed: 17,
+      jumpStrength: 12,
+      size: [1, 1.5, 1],
+      // Collider size scaling factors (optional)
+      colliderWidthScale: 0.5,   // 40% of model width (default: 0.4)
+      colliderHeightScale: 1,  // 90% of model height (default: 0.9)
+      colliderDepthScale: 0.5    // 40% of model depth (default: 0.4)
+    });
+    // Player position will be set by loadLevel() call
 
     // Cameras
-  this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
-  this.firstCam = new FirstPersonCamera(this.player, this.input, window);
-  this.freeCam = new FreeCamera(this.input, window);
-  // Cache the underlying three.js camera objects so identity checks are reliable
-  this.thirdCameraObject = this.thirdCam.getCamera();
-  this.firstCameraObject = this.firstCam.getCamera();
-  this.freeCameraObject = this.freeCam.getCamera();
-  this.activeCamera = this.thirdCameraObject;
-  //this.activeCamera = this.freeCameraObject;
+    this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
+    this.firstCam = new FirstPersonCamera(this.player, this.input, window);
+    this.freeCam = new FreeCamera(this.input, window);
+    // Cache the underlying three.js camera objects so identity checks are reliable
+    this.thirdCameraObject = this.thirdCam.getCamera();
+    this.firstCameraObject = this.firstCam.getCamera();
+    this.freeCameraObject = this.freeCam.getCamera();
+    this.activeCamera = this.thirdCameraObject;
+    //this.activeCamera = this.freeCameraObject;
     // Enable alwaysTrackMouse for third-person camera
     this.input.alwaysTrackMouse = true;
     // Request pointer lock for third-person/first-person camera when the user clicks
@@ -100,27 +101,32 @@ export class Game {
     // When switching to free camera, move it near player
     this._bindKeys();
 
-  // UI manager (modular UI per-level)
-  this.ui = new UIManager(document.getElementById('app'));
-  // register a default HUD — actual per-level UI will be loaded by loadLevel
-  this.ui.add('hud', HUD, { health: 100 });
-  // Add FPS counter
-  this.ui.add('fps', FPS, { showFrameTime: true });
-  // Add crosshair for combat
-  this.ui.add('crosshair', Crosshair, { visible: true });
+    // UI manager (modular UI per-level)
+    this.ui = new UIManager(document.getElementById('app'));
+    // register a default HUD — actual per-level UI will be loaded by loadLevel
+    this.ui.add('hud', HUD, { health: 100 });
+    // Add FPS counter
+    this.ui.add('fps', FPS, { showFrameTime: true });
+    // Add crosshair for combat
+    this.ui.add('crosshair', Crosshair, { visible: true });
 
-  // Combat system
-  this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
+    // Combat system
+    this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
 
-  // Lighting manager (modular per-level lights)
-  this.lights = new LightManager(this.scene);
+    // Door system
+    this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
+    this.doorHelpersVisible = false; // Track door collision helper visibility (invisible by default)
+
+    // Lighting manager (modular per-level lights)
+    this.lights = new LightManager(this.scene);
 
     // Load the initial level early so subsequent code can reference `this.level`
     this._initializeLevel();
 
     // small world grid
     const grid = new THREE.GridHelper(200, 200, 0x444444, 0x222222);
-    this.scene.add(grid);    // Pause state
+    this.scene.add(grid);
+    // Pause state
     this.paused = false;
     this.pauseMenu = document.getElementById('pauseMenu');
     const resumeBtn = document.getElementById('resumeBtn');
@@ -142,10 +148,10 @@ export class Game {
       }
     });
 
-  // loop
-  this.last = performance.now();
-  this._loop = this._loop.bind(this);
-  requestAnimationFrame(this._loop);
+    // loop
+    this.last = performance.now();
+    this._loop = this._loop.bind(this);
+    requestAnimationFrame(this._loop);
   }
 
   // Initialize the first level asynchronously
@@ -194,13 +200,25 @@ export class Game {
         // next level — use loadLevel so per-level UI is applied
         const nextIndex = this.levelManager.currentIndex + 1;
         this.loadLevel(nextIndex).catch(err => console.error('Failed to load level:', err));
-      } else if (code === 'KeyL') {
+      } else if (code === 'KeyM') {
         // toggle physics debug visualization
         const debugEnabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
+      } else if (code === 'KeyH') {
+        // toggle door collision helpers (green boxes around doors)
+        if (this.doorManager) {
+          this.doorHelpersVisible = !this.doorHelpersVisible;
+          this.doorManager.toggleColliders(this.doorHelpersVisible);
+        }
       } else if (code === 'KeyB') {
         // toggle combat debug visuals
         if (this.combatSystem) {
           this.combatSystem.toggleDebug();
+        }
+      } else if (code === 'KeyE') {
+        // interact with doors
+        if (this.doorManager) {
+          const playerPos = this.player.getPosition();
+          this.doorManager.interactWithClosestDoor(playerPos);
         }
       }
     });
@@ -281,6 +299,9 @@ export class Game {
     // Update combat system
     this.combatSystem.update(delta);
 
+    // Update door system
+    this.doorManager.update(delta, this.player.getPosition());
+
   // update lights (allow dynamic lights to animate)
   if (this.lights) this.lights.update(delta);
 
@@ -308,6 +329,13 @@ export class Game {
     // Update combat system's physics world reference
     this.combatSystem.physicsWorld = this.physicsWorld;
     
+    // Update door manager's physics world reference
+    this.doorManager.physicsWorld = this.physicsWorld;
+    
+    // Clear existing doors when loading a new level
+    this.doorManager.dispose();
+    this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
+    
     // Recreate player's physics body in the new physics world
     if (this.player.originalModelSize) {
       this.player.createPhysicsBody(this.player.originalModelSize);
@@ -319,11 +347,58 @@ export class Game {
     this.level = await this.levelManager.loadIndex(index);
 
     // Position player at start position
-    const start = this.level.data.startPosition;
-    this.player.setPosition(new THREE.Vector3(...start));
+    // const start = this.level.data.startPosition;
+    // this.player.setPosition(new THREE.Vector3(...start));
+    
+    // TEMPORARY: Position player at second door location for testing on level 2
+    if (index === 1) { // level2
+      this.player.setPosition(new THREE.Vector3(50, 5, -10.5));
+      console.log('TEMP: Spawned player at second door position [55, 5, -4.5] on level 2');
+    } else {
+      const start = this.level.data.startPosition;
+      this.player.setPosition(new THREE.Vector3(...start));
+    }
     
     // Trigger level start cinematic
     this.level.triggerLevelStartCinematic(this.activeCamera, this.player);
+
+    // spawn doors at specific positions only on level 2
+    if (index === 1) { // level2
+      // Boss door
+      this.doorManager.spawn('model', { 
+        position: [25.9, 0, -4.5],
+        preset: 'wooden',
+        width: 6,
+        height: 6.5,
+        depth: 0.5,
+        type: 'model',
+        modelUrl: 'src/assets/doors/level2_boss_door.glb',
+        swingDirection: 'forward left',
+        interactionDistance: 10,
+        autoOpenOnApproach: true
+      //  passcode: '123'
+      });
+      console.log('Spawned boss door model at position [25.9, 0, -4.5] on level 2');
+      
+      // Second door
+      this.doorManager.spawn('basic', { 
+        position: [56.5, 0, -9.4],
+        preset: 'wooden',
+        width: 4.7,
+        height: 6.5,
+        depth: 0.5,
+        type: 'model',
+        modelUrl: 'src/assets/doors/level2_boss_door.glb',
+        swingDirection: 'forward left',
+        initialRotation: 90,
+        interactionDistance: 10,
+        autoOpenOnApproach: true
+      });
+      console.log('Spawned basic door at position [55, 0, -4.5] on level 2');
+      
+      // Apply current door helper visibility state
+      this.doorManager.toggleColliders(this.doorHelpersVisible);
+    }
 
     // swap UI components according to level.data.ui (array of strings)
     this.applyLevelUI(this.level.data);

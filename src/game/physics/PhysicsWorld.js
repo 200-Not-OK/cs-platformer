@@ -437,18 +437,37 @@ export class PhysicsWorld {
     return body;
   }
   
-  addStaticCapsule(position, radius, height, materialType = 'ground') {
-    // Cannon.js doesn't have a capsule shape, so we'll create a cylinder
-    const shape = new CANNON.Cylinder(radius, radius, height, 8);
-    const body = new CANNON.Body({ mass: 0, material: this.materials[materialType] });
-    body.addShape(shape);
-    body.position.set(position.x, position.y, position.z);
-    body.type = CANNON.Body.KINEMATIC;
-    
-    this.world.addBody(body);
-    this.staticBodies.add(body);
-    
-    return body;
+  createDoorBody(position, size) {
+    try {
+      const shape = new CANNON.Box(new CANNON.Vec3(size[0]/2, size[1]/2, size[2]/2));
+      const body = new CANNON.Body({
+        mass: 0,
+        type: CANNON.Body.KINEMATIC,
+        material: this.materials.wall || this.materials.ground
+      });
+      
+      body.addShape(shape);
+      body.position.set(position.x, position.y, position.z);
+      
+      this.world.addBody(body);
+      this.staticBodies.add(body);
+      
+      body.userData = { 
+        type: 'door',
+        collisionType: 'box'
+      };
+      
+      console.log('Created door physics body:', {
+        position: body.position,
+        size: size,
+        shape: shape
+      });
+      
+      return body;
+    } catch (error) {
+      console.error('Failed to create door physics body:', error);
+      return null;
+    }
   }
   
   dispose() {
