@@ -331,47 +331,54 @@ export class Player {
   // Combat methods
   performAttack() {
     if (this.isAttacking) {
+      console.log('🗡️ Attack blocked - already attacking');
       return false; // Already attacking
     }
 
     this.isAttacking = true;
     this.lastAttackTime = Date.now();
+    
+    console.log('🗡️ Player starting attack animation');
 
     // Play attack animation if available
     if (this.actions.attack) {
       this.playAction(this.actions.attack, 0.1, false);
       
-      // Set up animation finished callback
-      const onFinished = () => {
-        this.isAttacking = false;
-        this.actions.attack.removeEventListener('finished', onFinished);
-        
-        // Return to appropriate animation
-        if (this.isGrounded) {
-          if (this.body && (Math.abs(this.body.velocity.x) > 0.1 || Math.abs(this.body.velocity.z) > 0.1)) {
-            this.playAction(this.actions.walk);
-          } else {
-            this.playAction(this.actions.idle);
+      // Use mixer event listener instead of action event listener
+      const onFinished = (event) => {
+        if (event.action === this.actions.attack) {
+          this.isAttacking = false;
+          this.mixer.removeEventListener('finished', onFinished);
+          
+          // Return to appropriate animation
+          if (this.isGrounded) {
+            if (this.body && (Math.abs(this.body.velocity.x) > 0.1 || Math.abs(this.body.velocity.z) > 0.1)) {
+              this.playAction(this.actions.walk);
+            } else {
+              this.playAction(this.actions.idle);
+            }
           }
         }
       };
       
-      this.actions.attack.addEventListener('finished', onFinished);
+      this.mixer.addEventListener('finished', onFinished);
       
       // Fallback timeout in case event doesn't fire
       setTimeout(() => {
         if (this.isAttacking) {
           this.isAttacking = false;
+          console.log('🗡️ Attack finished (timeout fallback)');
         }
       }, this.attackDuration);
     } else {
+      console.log('🗡️ No attack animation found - using timer only');
       // No attack animation, just set a timer
       setTimeout(() => {
         this.isAttacking = false;
+        console.log('🗡️ Attack finished (no animation)');
       }, this.attackDuration);
     }
 
-    console.log('🗡️ Player attacking!');
     return true;
   }
 
