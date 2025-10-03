@@ -362,6 +362,14 @@ export class PhysicsWorld {
     
     return body;
   }
+
+  /**
+   * Add a physics body to the world
+   */
+  addBody(body) {
+    if (!body) return;
+    this.world.addBody(body);
+  }
   
   removeBody(body) {
     if (!body) return;
