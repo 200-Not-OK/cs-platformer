@@ -197,6 +197,11 @@ export class Game {
       } else if (code === 'KeyL') {
         // toggle physics debug visualization
         const debugEnabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
+      } else if (code === 'KeyB') {
+        // toggle combat debug visuals
+        if (this.combatSystem) {
+          this.combatSystem.toggleDebug();
+        }
       }
     });
   }
@@ -268,8 +273,8 @@ export class Game {
         if (this.level && this.level.getEnemies) {
           this.combatSystem.setEnemies(this.level.getEnemies());
         }
-        // Perform the attack
-        this.combatSystem.performAttack(this.activeCamera, this.player);
+        // Perform the sword swing attack (better for horizontal sword animation)
+        this.combatSystem.performSwordSwing(this.player, this.activeCamera);
       }
     }
 
