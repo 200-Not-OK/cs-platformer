@@ -74,6 +74,9 @@ export class StandaloneLevelEditor {
     this._createUI();
     this._bindEvents();
     this._addBasicLighting();
+
+    // Track if events are bound to prevent duplicates
+    this.eventsBound = true;
     
     // Load levels and initialize
     this._loadLevels();
@@ -186,50 +189,147 @@ export class StandaloneLevelEditor {
   }
   
   _clearLevel() {
-    // Clear geometry
+    // Unbind events to prevent conflicts during cleanup
+    this._unbindEvents();
+
+    // Clear geometry and dispose of materials/geometries
     while (this.levelGeometry.children.length > 0) {
-      this.levelGeometry.remove(this.levelGeometry.children[0]);
+      const child = this.levelGeometry.children[0];
+
+      // Dispose of all meshes in the GLTF scene
+      child.traverse((obj) => {
+        if (obj.isMesh) {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(material => material.dispose());
+            } else {
+              obj.material.dispose();
+            }
+          }
+        }
+      });
+
+      this.levelGeometry.remove(child);
     }
-    
+
     // Clear visual representations
     this._clearVisualRepresentations();
-    
+
     // Clear data arrays
     this.enemies = [];
     this.lights = [];
     this.patrolPoints = [];
     this.colliders = [];
     this.levelMeshes = [];
-    
+
     this.selected = null;
     this.selectedType = null;
     this.selectedMesh = null;
   }
   
   _clearVisualRepresentations() {
-    // Remove enemy meshes
-    this.enemyMeshes.forEach(mesh => this.scene.remove(mesh));
+    // Remove and dispose enemy meshes
+    this.enemyMeshes.forEach(mesh => {
+      this.scene.remove(mesh);
+      if (mesh.geometry) mesh.geometry.dispose();
+      if (mesh.material) {
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(material => material.dispose());
+        } else {
+          mesh.material.dispose();
+        }
+      }
+    });
     this.enemyMeshes = [];
-    
-    // Remove light meshes
-    this.lightMeshes.forEach(mesh => this.scene.remove(mesh));
+
+    // Remove and dispose light meshes
+    this.lightMeshes.forEach(mesh => {
+      this.scene.remove(mesh);
+      if (mesh.geometry) mesh.geometry.dispose();
+      if (mesh.material) {
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(material => material.dispose());
+        } else {
+          mesh.material.dispose();
+        }
+      }
+    });
     this.lightMeshes = [];
-    
-    // Remove patrol point meshes
-    this.patrolPointMeshes.forEach(mesh => this.scene.remove(mesh));
+
+    // Remove and dispose patrol point meshes
+    this.patrolPointMeshes.forEach(mesh => {
+      this.scene.remove(mesh);
+      if (mesh.geometry) mesh.geometry.dispose();
+      if (mesh.material) {
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(material => material.dispose());
+        } else {
+          mesh.material.dispose();
+        }
+      }
+    });
     this.patrolPointMeshes = [];
-    
-    // Remove patrol connections
-    this.patrolConnections.forEach(line => this.scene.remove(line));
+
+    // Remove and dispose patrol connections
+    this.patrolConnections.forEach(line => {
+      this.scene.remove(line);
+      if (line.geometry) line.geometry.dispose();
+      if (line.material) line.material.dispose();
+    });
     this.patrolConnections = [];
-    
-    // Remove collider meshes
-    this.colliderMeshes.forEach(mesh => this.scene.remove(mesh));
+
+    // Remove and dispose collider meshes
+    this.colliderMeshes.forEach(mesh => {
+      this.scene.remove(mesh);
+      if (mesh.geometry) mesh.geometry.dispose();
+      if (mesh.material) {
+        if (Array.isArray(mesh.material)) {
+          mesh.material.forEach(material => material.dispose());
+        } else {
+          mesh.material.dispose();
+        }
+      }
+    });
     this.colliderMeshes = [];
-    
-    // Clear mesh outlines
-    this.meshOutlines.forEach(outline => this.scene.remove(outline));
+
+    // Remove and dispose mesh outlines
+    this.meshOutlines.forEach(outline => {
+      this.scene.remove(outline);
+      if (outline.geometry) outline.geometry.dispose();
+      if (outline.material) outline.material.dispose();
+    });
     this.meshOutlines = [];
+  }
+
+  _createVisualRepresentations() {
+    // Create visuals based on current mode
+    switch (this.mode) {
+      case 'enemy':
+        this._createEnemyVisuals();
+        break;
+      case 'light':
+        this._createLightVisuals();
+        break;
+      case 'patrol':
+        this._createPatrolPointVisuals();
+        this._createPatrolConnections();
+        break;
+      case 'collider':
+        this._createColliderVisuals();
+        break;
+      case 'mesh':
+        // Mesh selection doesn't need visuals, just highlighting
+        break;
+      case 'select':
+        // Show all visuals in select mode
+        this._createEnemyVisuals();
+        this._createLightVisuals();
+        this._createPatrolPointVisuals();
+        this._createPatrolConnections();
+        this._createColliderVisuals();
+        break;
+    }
   }
   
   async _loadLevelGeometry(gltfUrl) {
@@ -402,9 +502,10 @@ export class StandaloneLevelEditor {
   }
   
   _createEnemyVisuals() {
-    // Clear existing enemy visuals first
-    this.enemyMeshes.forEach(mesh => this.scene.remove(mesh));
-    this.enemyMeshes = [];
+    try {
+      // Clear existing enemy visuals first
+      this.enemyMeshes.forEach(mesh => this.scene.remove(mesh));
+      this.enemyMeshes = [];
     
     this.enemies.forEach((enemy, index) => {
       const geometry = new THREE.BoxGeometry(1, 1.5, 1);
@@ -416,10 +517,13 @@ export class StandaloneLevelEditor {
       mesh.position.set(enemy.position[0], enemy.position[1], enemy.position[2]);
       mesh.userData = { type: 'enemy', index: index, enemyData: enemy };
       mesh.name = `enemy_${index}`;
-      
+
       this.scene.add(mesh);
       this.enemyMeshes.push(mesh);
     });
+    } catch (error) {
+      console.error('Error creating enemy visuals:', error);
+    }
   }
   
   _createLightVisuals() {
@@ -1076,6 +1180,8 @@ export class StandaloneLevelEditor {
     document.querySelectorAll('.mode-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         this.mode = e.target.id.replace('mode-', '');
+        this._clearVisualRepresentations(); // Clear old visuals
+        this._createVisualRepresentations(); // Create new visuals for current mode
         this._updateUI();
       });
     });
@@ -1139,47 +1245,74 @@ export class StandaloneLevelEditor {
   }
   
   _bindEvents() {
+    // Prevent duplicate event binding
+    if (this.eventsBound) {
+      this._unbindEvents();
+    }
+
     // Mouse events
     this.renderer.domElement.addEventListener('mousedown', this._onMouseDown.bind(this));
     this.renderer.domElement.addEventListener('mousemove', this._onMouseMove.bind(this));
     this.renderer.domElement.addEventListener('mouseup', this._onMouseUp.bind(this));
     this.renderer.domElement.addEventListener('wheel', this._onMouseWheel.bind(this));
-    
+
     // Prevent right-click context menu
     this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-    
+
     // Keyboard events
     window.addEventListener('keydown', this._onKeyDown.bind(this));
     window.addEventListener('keyup', this._onKeyUp.bind(this));
-    
+
     // Window resize
     window.addEventListener('resize', this._onWindowResize.bind(this));
-    
+
     // Expose editor to window for button callbacks
     window.editor = this;
-    
+
+    this.eventsBound = true;
+
     // Start render loop
     this._animate();
+  }
+
+  _unbindEvents() {
+    if (!this.eventsBound) return;
+
+    // Mouse events
+    this.renderer.domElement.removeEventListener('mousedown', this._onMouseDown.bind(this));
+    this.renderer.domElement.removeEventListener('mousemove', this._onMouseMove.bind(this));
+    this.renderer.domElement.removeEventListener('mouseup', this._onMouseUp.bind(this));
+    this.renderer.domElement.removeEventListener('wheel', this._onMouseWheel.bind(this));
+    this.renderer.domElement.removeEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Keyboard events
+    window.removeEventListener('keydown', this._onKeyDown.bind(this));
+    window.removeEventListener('keyup', this._onKeyUp.bind(this));
+
+    // Window resize
+    window.removeEventListener('resize', this._onWindowResize.bind(this));
+
+    this.eventsBound = false;
   }
   
   _onMouseDown(event) {
     if (event.target !== this.renderer.domElement) return;
-    
+
     this.mouseDown = true;
     this.lastMousePos = { x: event.clientX, y: event.clientY };
-    
+
     // Check if right mouse button for camera rotation
     if (event.button === 2) { // Right mouse button
       this.isRotating = true;
       return;
     }
-    
+
     // Only left mouse button (button === 0) for object placement/selection
     if (event.button === 0) { // Left mouse button only
-      if (this.mode !== 'select') {
-        this._handlePlacement(event);
-      } else {
+      if (this.mode === 'select') {
         this._handleSelection(event);
+      } else {
+        this._handlePlacement(event);
       }
     }
     // Middle mouse button (button === 1) and other buttons are ignored
@@ -1234,7 +1367,55 @@ export class StandaloneLevelEditor {
     if (event.code === 'Delete' && this.selected) {
       this._deleteSelected();
     }
-    
+
+    // Camera rotation (laptop-friendly controls)
+    if (this.keys['ArrowLeft']) {
+      this.cameraYaw += this.sensitivity * 10;
+      this._updateCameraRotation();
+    }
+    if (this.keys['ArrowRight']) {
+      this.cameraYaw -= this.sensitivity * 10;
+      this._updateCameraRotation();
+    }
+    if (this.keys['ArrowUp']) {
+      this.cameraPitch += this.sensitivity * 10;
+      this.cameraPitch = THREE.MathUtils.clamp(this.cameraPitch, -Math.PI/2 + 0.1, Math.PI/2 - 0.1);
+      this._updateCameraRotation();
+    }
+    if (this.keys['ArrowDown']) {
+      this.cameraPitch -= this.sensitivity * 10;
+      this.cameraPitch = THREE.MathUtils.clamp(this.cameraPitch, -Math.PI/2 + 0.1, Math.PI/2 - 0.1);
+      this._updateCameraRotation();
+    }
+
+    // Alternative rotation keys (numpad for laptops without arrow keys)
+    if (this.keys['Numpad4']) {
+      this.cameraYaw += this.sensitivity * 10;
+      this._updateCameraRotation();
+    }
+    if (this.keys['Numpad6']) {
+      this.cameraYaw -= this.sensitivity * 10;
+      this._updateCameraRotation();
+    }
+    if (this.keys['Numpad8']) {
+      this.cameraPitch += this.sensitivity * 10;
+      this.cameraPitch = THREE.MathUtils.clamp(this.cameraPitch, -Math.PI/2 + 0.1, Math.PI/2 - 0.1);
+      this._updateCameraRotation();
+    }
+    if (this.keys['Numpad2']) {
+      this.cameraPitch -= this.sensitivity * 10;
+      this.cameraPitch = THREE.MathUtils.clamp(this.cameraPitch, -Math.PI/2 + 0.1, Math.PI/2 - 0.1);
+      this._updateCameraRotation();
+    }
+
+    // Zoom controls (laptop-friendly)
+    if (this.keys['NumpadAdd'] || this.keys['Equal']) { // Zoom in (+ or =)
+      this.camera.position.multiplyScalar(0.95);
+    }
+    if (this.keys['NumpadSubtract'] || this.keys['Minus']) { // Zoom out (-)
+      this.camera.position.multiplyScalar(1.05);
+    }
+
     // Mode switching
     if (event.code === 'Digit1') this.mode = 'enemy';
     if (event.code === 'Digit2') this.mode = 'light';
@@ -1242,8 +1423,12 @@ export class StandaloneLevelEditor {
     if (event.code === 'Digit4') this.mode = 'mesh';
     if (event.code === 'Digit5') this.mode = 'collider';
     if (event.code === 'Digit6') this.mode = 'select';
-    
-    this._updateUI();
+
+    if (event.code.startsWith('Digit')) {
+      this._clearVisualRepresentations();
+      this._createVisualRepresentations();
+      this._updateUI();
+    }
   }
   
   _onKeyUp(event) {
@@ -1297,18 +1482,24 @@ export class StandaloneLevelEditor {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
+
     this.raycaster.setFromCamera(this.mouse, this.camera);
-    
-    // Get intersection with level geometry or ground plane
+
+    if (this.mode === 'mesh') {
+      // In mesh mode, handle mesh selection separately
+      this._handleMeshSelection(event);
+      return;
+    }
+
+    // Get intersection with level geometry or ground plane for placement
     const intersects = this.raycaster.intersectObjects([
       ...this.levelGeometry.children,
       this.groundPlane
     ], true);
-    
+
     if (intersects.length > 0) {
       const point = intersects[0].point;
-      
+
       switch (this.mode) {
         case 'enemy':
           this._addEnemy(point);
@@ -1322,30 +1513,29 @@ export class StandaloneLevelEditor {
         case 'collider':
           this._addCollider(point);
           break;
-        case 'mesh':
-          // In mesh mode, try to select a mesh
-          this._handleMeshSelection(event);
-          break;
       }
     }
   }
   
   _handleSelection(event) {
+    // Only handle selection in select mode
+    if (this.mode !== 'select') return;
+
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
+
     this.raycaster.setFromCamera(this.mouse, this.camera);
-    
+
     const selectableObjects = [
       ...this.enemyMeshes,
       ...this.lightMeshes,
       ...this.patrolPointMeshes,
       ...this.colliderMeshes
     ];
-    
-    const intersects = this.raycaster.intersectObjects(selectableObjects);
-    
+
+    const intersects = this.raycaster.intersectObjects(selectableObjects, false);
+
     if (intersects.length > 0) {
       this._selectObject(intersects[0].object);
     } else {
@@ -1378,7 +1568,7 @@ export class StandaloneLevelEditor {
   
   _addEnemy(position) {
     const enemyTypeSelect = document.getElementById('enemy-type');
-    const type = enemyTypeSelect ? enemyTypeSelect.value : 'walker';
+    const type = enemyTypeSelect && enemyTypeSelect.value ? enemyTypeSelect.value : 'walker';
     
     const enemy = {
       type: type,
@@ -1398,7 +1588,7 @@ export class StandaloneLevelEditor {
   
   _addLight(position) {
     const lightTypeSelect = document.getElementById('light-type');
-    const type = lightTypeSelect ? lightTypeSelect.value : 'BasicLights';
+    const type = lightTypeSelect && lightTypeSelect.value ? lightTypeSelect.value : 'BasicLights';
     
     const light = {
       type: type,
@@ -1442,8 +1632,8 @@ export class StandaloneLevelEditor {
   _addCollider(position) {
     const typeSelect = document.getElementById('collider-type');
     const materialSelect = document.getElementById('material-type');
-    
-    const type = typeSelect ? typeSelect.value : 'box';
+
+    const type = typeSelect && typeSelect.value ? typeSelect.value : 'box';
     const materialType = materialSelect ? materialSelect.value : 'ground';
     
     // Default sizes based on type
@@ -1981,12 +2171,12 @@ export const levels = ${levelsJSON};`;
   
   _animate() {
     requestAnimationFrame(this._animate.bind(this));
-    
+
     const delta = 0.016; // Approximately 60fps
-    
+
     // Handle camera movement
     this._handleCameraMovement(delta);
-    
+
     // Render
     this.renderer.render(this.scene, this.camera);
   }
