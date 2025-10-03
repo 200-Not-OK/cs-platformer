@@ -4,8 +4,13 @@ import { EnemyBase } from './EnemyBase.js';
 
 export class FlyerEnemy extends EnemyBase {
   constructor(scene, physicsWorld, options = {}) {
-    super(scene, physicsWorld, options);
-    this.speed = options.speed ?? 3.0;
+    // Set default health for FlyerEnemy
+    const flyerOptions = {
+      health: 15, // Flyer enemies have 15 HP (weak but mobile)
+      speed: 3.0,
+      ...options
+    };
+    super(scene, physicsWorld, flyerOptions);
     this.patrolPoints = options.patrolPoints || [];
     this._patrolIndex = 0;
     

@@ -18,6 +18,7 @@ export class UIManager {
     }
     if (inst.mount) {
       inst.mount();
+      console.log(`📋 UI Component '${key}' mounted:`, inst); // Debug log
       // Ensure the component root accepts pointer events so interactive elements work
       // BUT respect if the component specifically set pointerEvents to 'none'
       try { 
@@ -27,6 +28,7 @@ export class UIManager {
       } catch (e) { /* ignore */ }
     }
     this.components.set(key, inst);
+    console.log(`📋 Total UI components: ${this.components.size}`); // Debug log
     return inst;
   }
 
@@ -48,6 +50,14 @@ export class UIManager {
   update(delta, ctx) {
     for (const inst of this.components.values()) {
       if (inst.update) inst.update(delta, ctx);
+    }
+  }
+
+  // Debug method to list all components
+  listComponents() {
+    console.log('📋 All UI Components:');
+    for (const [key, component] of this.components.entries()) {
+      console.log(`  - ${key}:`, component, `visible: ${component.root.style.display !== 'none'}`);
     }
   }
 }

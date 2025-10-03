@@ -11,10 +11,12 @@ import { Minimap } from './components/minimap.js';
 import { Objectives } from './components/objectives.js';
 import { SmallMenu } from './components/menu.js';
 import { FPS } from './components/fps.js';
+import { Crosshair } from './components/crosshair.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
 import { PhysicsWorld } from './physics/PhysicsWorld.js';
+import { CombatSystem } from './combatSystem.js';
 
 export class Game {
   constructor() {
@@ -103,6 +105,16 @@ export class Game {
   this.ui.add('hud', HUD, { health: 100 });
   // Add FPS counter
   this.ui.add('fps', FPS, { showFrameTime: true });
+  // Add crosshair for combat
+  this.ui.add('crosshair', Crosshair, { visible: true });
+
+  // Debug: List all UI components
+  setTimeout(() => {
+    this.ui.listComponents();
+  }, 1000);
+
+  // Combat system
+  this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
 
   // Lighting manager (modular per-level lights)
   this.lights = new LightManager(this.scene);
@@ -218,7 +230,10 @@ export class Game {
     // update UI each frame with some context (player model and simple state)
     if (this.ui) {
       const ctx = {
-        player: { health: this.player.health ?? 100 },
+        player: { 
+          health: this.player.health ?? 100,
+          maxHealth: this.player.maxHealth ?? 100 
+        },
         playerModel: this.player.mesh
       };
       this.ui.update(delta, ctx);
@@ -240,9 +255,34 @@ export class Game {
       playerActive = false;
     }
 
+    // Update crosshair visibility based on camera mode
+    const crosshair = this.ui.get('crosshair');
+    if (crosshair) {
+      console.log(`🎯 Crosshair found, playerActive: ${playerActive}, camera: ${this.activeCamera === this.thirdCameraObject ? 'third' : this.activeCamera === this.firstCameraObject ? 'first' : 'free'}`);
+      crosshair.setProps({ visible: true }); // Always visible for debugging
+      console.log(`🎯 Crosshair visibility set, display style: ${crosshair.root.style.display}`);
+    } else {
+      console.log('🎯 Crosshair not found in UI components');
+    }
+
     // update player (movement read from input manager)
     const platforms = this.level ? this.level.getPlatforms() : [];
     this.player.update(delta, this.input, camOrientation, platforms, playerActive);
+
+    // Handle combat input (right-click to attack)
+    if (playerActive && this.input.wasRightClicked() && this.combatSystem.canAttack()) {
+      if (this.player.performAttack()) {
+        // Set enemies for combat system if level has them
+        if (this.level && this.level.getEnemies) {
+          this.combatSystem.setEnemies(this.level.getEnemies());
+        }
+        // Perform the attack
+        this.combatSystem.performAttack(this.activeCamera, this.player);
+      }
+    }
+
+    // Update combat system
+    this.combatSystem.update(delta);
 
   // update lights (allow dynamic lights to animate)
   if (this.lights) this.lights.update(delta);
@@ -267,6 +307,9 @@ export class Game {
     
     // Update player's physics world reference
     this.player.physicsWorld = this.physicsWorld;
+    
+    // Update combat system's physics world reference
+    this.combatSystem.physicsWorld = this.physicsWorld;
     
     // Recreate player's physics body in the new physics world
     if (this.player.originalModelSize) {
@@ -321,12 +364,18 @@ export class Game {
     if (this.ui.get('fps')) {
       globalComponents.set('fps', this.ui.get('fps'));
     }
+    if (this.ui.get('crosshair')) {
+      globalComponents.set('crosshair', this.ui.get('crosshair'));
+    }
+    
+    console.log('🔄 Level loading - preserving global components:', Array.from(globalComponents.keys()));
     
     this.ui.clear();
     
     // Re-add global components first
     for (const [key, component] of globalComponents) {
       this.ui.components.set(key, component);
+      console.log(`🔄 Re-adding global component: ${key}`);
       // Re-mount the component since it was unmounted during clear
       if (component.mount) {
         component.mount();

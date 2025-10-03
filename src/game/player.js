@@ -37,8 +37,15 @@ export class Player {
     
     // Animation system
     this.mixer = null;
-    this.actions = { idle: null, walk: null, jump: null };
+    this.actions = { idle: null, walk: null, jump: null, attack: null };
     this.currentAction = null;
+    
+    // Combat system
+    this.maxHealth = 100;
+    this.health = this.maxHealth;
+    this.isAttacking = false;
+    this.attackDuration = 600; // Attack animation duration in ms
+    this.lastAttackTime = 0;
     
     // Movement state
     this.isGrounded = false;
@@ -106,7 +113,8 @@ export class Player {
           // Setup animations if available
           if (gltf.animations && gltf.animations.length > 0) {
             this.mixer = new THREE.AnimationMixer(gltf.scene);
-            
+
+            console.log(`${gltf.animations.map(a => a.name).join(', ')}`);
             // Find animation clips
             const findClip = (names) => {
               if (!names) return null;
@@ -122,6 +130,7 @@ export class Player {
             const idleClip = findClip(['idle', 'stand', 'rest']) || null;
             const walkClip = findClip(['walking', 'run', 'strafe']) || gltf.animations[0] || null;
             const jumpClip = findClip(['jump', 'leap']) || null;
+            const attackClip = findClip(['attack', 'hit', 'sword', 'punch', 'strike']) || null;
             
             if (idleClip) {
               this.actions.idle = this.mixer.clipAction(idleClip);
@@ -136,6 +145,12 @@ export class Player {
             if (jumpClip) {
               this.actions.jump = this.mixer.clipAction(jumpClip);
               this.actions.jump.setLoop(THREE.LoopOnce);
+            }
+            
+            if (attackClip) {
+              this.actions.attack = this.mixer.clipAction(attackClip);
+              this.actions.attack.setLoop(THREE.LoopOnce);
+              this.actions.attack.clampWhenFinished = true;
             }
             
             // Start with idle animation
@@ -311,6 +326,92 @@ export class Player {
         this.wallNormals.shift();
       }
     }
+  }
+
+  // Combat methods
+  performAttack() {
+    if (this.isAttacking) {
+      return false; // Already attacking
+    }
+
+    this.isAttacking = true;
+    this.lastAttackTime = Date.now();
+
+    // Play attack animation if available
+    if (this.actions.attack) {
+      this.playAction(this.actions.attack, 0.1, false);
+      
+      // Set up animation finished callback
+      const onFinished = () => {
+        this.isAttacking = false;
+        this.actions.attack.removeEventListener('finished', onFinished);
+        
+        // Return to appropriate animation
+        if (this.isGrounded) {
+          if (this.body && (Math.abs(this.body.velocity.x) > 0.1 || Math.abs(this.body.velocity.z) > 0.1)) {
+            this.playAction(this.actions.walk);
+          } else {
+            this.playAction(this.actions.idle);
+          }
+        }
+      };
+      
+      this.actions.attack.addEventListener('finished', onFinished);
+      
+      // Fallback timeout in case event doesn't fire
+      setTimeout(() => {
+        if (this.isAttacking) {
+          this.isAttacking = false;
+        }
+      }, this.attackDuration);
+    } else {
+      // No attack animation, just set a timer
+      setTimeout(() => {
+        this.isAttacking = false;
+      }, this.attackDuration);
+    }
+
+    console.log('🗡️ Player attacking!');
+    return true;
+  }
+
+  takeDamage(amount) {
+    this.health = Math.max(0, this.health - amount);
+    console.log(`💔 Player took ${amount} damage, health: ${this.health}/${this.maxHealth}`);
+    
+    if (this.health <= 0) {
+      this.onDeath();
+    }
+    
+    return this.health;
+  }
+
+  heal(amount) {
+    this.health = Math.min(this.maxHealth, this.health + amount);
+    console.log(`💚 Player healed ${amount} HP, health: ${this.health}/${this.maxHealth}`);
+    return this.health;
+  }
+
+  onDeath() {
+    console.log('💀 Player has died!');
+    // Can trigger game over, respawn, etc.
+  }
+
+  playAction(action, fadeDuration = 0.3, loop = true) {
+    if (!action || action === this.currentAction) return;
+    
+    if (this.currentAction) {
+      this.currentAction.crossFadeTo(action, fadeDuration, false);
+    }
+    
+    action.reset();
+    if (loop) {
+      action.setLoop(THREE.LoopRepeat);
+    } else {
+      action.setLoop(THREE.LoopOnce);
+    }
+    action.play();
+    this.currentAction = action;
   }
 
   update(delta, input, camOrientation = null, platforms = [], playerActive = true) {
