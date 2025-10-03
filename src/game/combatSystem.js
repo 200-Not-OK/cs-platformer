@@ -17,6 +17,12 @@ export class CombatSystem {
     
     // Reference to enemies (will be set by game manager)
     this.enemies = [];
+    
+    // Debug visualization
+    this.debugEnabled = true;
+    this.debugVisualsGroup = new THREE.Group();
+    this.debugVisualsGroup.name = 'CombatDebugVisuals';
+    this.scene.add(this.debugVisualsGroup);
   }
 
   setEnemies(enemies) {
@@ -26,6 +32,255 @@ export class CombatSystem {
   canAttack() {
     const currentTime = Date.now();
     return (currentTime - this.lastAttackTime) >= this.attackCooldown;
+  }
+
+  performSwordSwing(player, camera = null) {
+    if (!this.canAttack()) {
+      return false;
+    }
+
+    this.lastAttackTime = Date.now();
+    console.log('🗡️ Player performing sword swing attack!');
+
+    // Get player position and facing direction
+    const playerPos = player.mesh.position.clone();
+    playerPos.y += 0.8; // Chest/sword height
+    
+    // Use camera direction if available (more accurate for where player is looking)
+    // Otherwise fall back to player mesh rotation
+    let playerDirection;
+    if (camera) {
+      playerDirection = new THREE.Vector3();
+      camera.getWorldDirection(playerDirection);
+      // Project to horizontal plane
+      playerDirection.y = 0;
+      playerDirection.normalize();
+      console.log(`🗡️ Using camera direction for attack`);
+    } else {
+      // Fallback to player mesh rotation
+      playerDirection = new THREE.Vector3(0, 0, -1);
+      playerDirection.applyQuaternion(player.mesh.quaternion);
+      console.log(`🗡️ Using player mesh rotation for attack`);
+    }
+    
+    // Sword swing parameters
+    const swingRange = 2.5; // How far the sword reaches
+    const swingArc = Math.PI / 3; // 60 degree arc (30 degrees each side)
+    const swingHeight = 1.5; // Vertical range of sword swing
+    
+    console.log(`🗡️ Sword swing - Range: ${swingRange}, Arc: ${(swingArc * 180 / Math.PI).toFixed(1)}°`);
+    console.log(`🗡️ Player position:`, playerPos);
+    console.log(`🗡️ Player facing direction:`, playerDirection);
+    console.log(`🗡️ Checking ${this.enemies.length} enemies...`);
+
+    // Create debug visualization for the swing arc
+    this.createSwingArcDebug(playerPos, playerDirection, swingRange, swingArc);
+
+    let hitEnemies = [];
+
+    // Check each enemy against the sword swing area
+    for (const enemy of this.enemies) {
+      if (!enemy || !enemy.alive || !enemy.mesh) continue;
+
+      const enemyPos = enemy.mesh.position.clone();
+      const toEnemy = enemyPos.clone().sub(playerPos);
+      
+      console.log(`🔍 Checking enemy ${enemy.constructor.name} at position:`, enemyPos);
+      console.log(`🔍 Vector to enemy:`, toEnemy);
+      
+      // Check horizontal distance first
+      const horizontalDistance = Math.sqrt(toEnemy.x * toEnemy.x + toEnemy.z * toEnemy.z);
+      console.log(`🔍 Horizontal distance: ${horizontalDistance.toFixed(2)} (max: ${swingRange})`);
+      
+      if (horizontalDistance > swingRange) {
+        console.log(`❌ Enemy too far horizontally`);
+        continue;
+      }
+      
+      // Fix: Check vertical distance properly (difference in Y positions)
+      const verticalDistance = Math.abs(toEnemy.y);
+      console.log(`🔍 Vertical distance: ${verticalDistance.toFixed(2)} (max: ${swingHeight})`);
+      
+      if (verticalDistance > swingHeight) {
+        console.log(`❌ Enemy too far vertically`);
+        continue;
+      }
+      
+      // Normalize the horizontal vector for angle calculation
+      const horizontalToEnemy = new THREE.Vector3(toEnemy.x, 0, toEnemy.z).normalize();
+      const horizontalPlayerDir = new THREE.Vector3(playerDirection.x, 0, playerDirection.z).normalize();
+      
+      // Calculate angle between player facing direction and enemy direction
+      const angle = horizontalPlayerDir.angleTo(horizontalToEnemy);
+      
+      console.log(`🔍 Angle to enemy: ${(angle * 180 / Math.PI).toFixed(1)}° (max: ${(swingArc / 2 * 180 / Math.PI).toFixed(1)}°)`);
+      
+      // Check if enemy is within the swing arc
+      if (angle <= swingArc / 2) {
+        console.log(`🎯 SWORD HIT! Enemy: ${enemy.constructor.name}`);
+        console.log(`📏 Distance: ${horizontalDistance.toFixed(2)} units`);
+        console.log(`📐 Angle: ${(angle * 180 / Math.PI).toFixed(1)}° (max: ${(swingArc / 2 * 180 / Math.PI).toFixed(1)}°)`);
+        console.log(`📏 Vertical offset: ${verticalDistance.toFixed(2)} units`);
+        
+        // Debug visual for hit enemy
+        this.createEnemyHitDebug(enemyPos, true);
+        
+        hitEnemies.push({
+          enemy: enemy,
+          distance: horizontalDistance,
+          angle: angle,
+          position: enemyPos
+        });
+      } else {
+        console.log(`❌ Enemy outside swing arc`);
+        // Debug visual for missed enemy (within range but outside arc)
+        this.createEnemyHitDebug(enemyPos, false);
+      }
+    }
+
+    // Process hits (closest enemies first for multiple hits)
+    hitEnemies.sort((a, b) => a.distance - b.distance);
+    
+    let anyHit = false;
+    for (const hit of hitEnemies) {
+      const enemy = hit.enemy;
+      
+      console.log(`💔 Dealing ${this.attackDamage} damage to ${enemy.constructor.name}`);
+      console.log(`❤️ Enemy health before: ${enemy.health}/${enemy.maxHealth}`);
+      
+      const newHealth = enemy.takeDamage(this.attackDamage);
+      
+      console.log(`❤️ Enemy health after: ${newHealth}/${enemy.maxHealth}`);
+      if (newHealth <= 0) {
+        console.log(`💀 ${enemy.constructor.name} has been defeated!`);
+      }
+      
+      // Create hit effect at enemy position
+      this.createHitEffect(hit.position);
+      anyHit = true;
+    }
+
+    if (!anyHit) {
+      console.log('❌ Sword swing missed - no enemies in range');
+    } else {
+      console.log(`⚔️ Sword swing hit ${hitEnemies.length} enemies!`);
+    }
+
+    return anyHit;
+  }
+
+  // Debug visualization methods
+  createSwingArcDebug(playerPos, playerDirection, swingRange, swingArc) {
+    if (!this.debugEnabled) return;
+
+    // Clear previous debug visuals
+    this.clearDebugVisuals();
+
+    // Create arc geometry to show swing range
+    const arcGeometry = new THREE.RingGeometry(0, swingRange, 16, 1, -swingArc/2, swingArc);
+    const arcMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0x00ff00, 
+      transparent: true, 
+      opacity: 0.3,
+      side: THREE.DoubleSide
+    });
+    const arcMesh = new THREE.Mesh(arcGeometry, arcMaterial);
+    
+    // Position and rotate the arc
+    arcMesh.position.copy(playerPos);
+    arcMesh.position.y = 0.1; // Slightly above ground
+    
+    // Rotate to match player direction
+    const angle = Math.atan2(playerDirection.x, playerDirection.z);
+    arcMesh.rotation.y = -angle;
+    arcMesh.rotation.x = -Math.PI / 2; // Lay flat on ground
+    
+    this.debugVisualsGroup.add(arcMesh);
+
+    // Add center line showing player direction
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, swingRange)
+    ]);
+    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
+    const centerLine = new THREE.Line(lineGeometry, lineMaterial);
+    
+    centerLine.position.copy(playerPos);
+    centerLine.position.y = 0.5;
+    centerLine.rotation.y = -angle;
+    
+    this.debugVisualsGroup.add(centerLine);
+
+    // Add player position indicator
+    const playerMarkerGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+    const playerMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+    const playerMarker = new THREE.Mesh(playerMarkerGeometry, playerMarkerMaterial);
+    
+    playerMarker.position.copy(playerPos);
+    this.debugVisualsGroup.add(playerMarker);
+
+    // Auto-clear debug visuals after 2 seconds
+    setTimeout(() => {
+      this.clearDebugVisuals();
+    }, 2000);
+  }
+
+  createEnemyHitDebug(enemyPos, hit = false) {
+    if (!this.debugEnabled) return;
+
+    const markerGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+    const markerMaterial = new THREE.MeshBasicMaterial({ 
+      color: hit ? 0xff0000 : 0xffff00,
+      transparent: true,
+      opacity: 0.8
+    });
+    const marker = new THREE.Mesh(markerGeometry, markerMaterial);
+    
+    marker.position.copy(enemyPos);
+    marker.position.y += 1; // Above enemy
+    this.debugVisualsGroup.add(marker);
+
+    // Add hit/miss text
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 64;
+    const context = canvas.getContext('2d');
+    context.fillStyle = hit ? '#ff0000' : '#ffff00';
+    context.font = 'Bold 20px Arial';
+    context.fillText(hit ? 'HIT!' : 'MISS', 10, 30);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.position.copy(enemyPos);
+    sprite.position.y += 2;
+    sprite.scale.set(1, 0.5, 1);
+    
+    this.debugVisualsGroup.add(sprite);
+  }
+
+  clearDebugVisuals() {
+    // Remove all debug visuals
+    while (this.debugVisualsGroup.children.length > 0) {
+      const child = this.debugVisualsGroup.children[0];
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(mat => mat.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+      this.debugVisualsGroup.remove(child);
+    }
+  }
+
+  toggleDebug() {
+    this.debugEnabled = !this.debugEnabled;
+    if (!this.debugEnabled) {
+      this.clearDebugVisuals();
+    }
+    console.log(`🎯 Combat debug visuals: ${this.debugEnabled ? 'ON' : 'OFF'}`);
   }
 
   performAttack(camera, player) {
