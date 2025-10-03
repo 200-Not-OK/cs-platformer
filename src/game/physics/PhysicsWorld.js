@@ -4,8 +4,6 @@ import CannonDebugger from 'cannon-es-debugger';
 
 export class PhysicsWorld {
   constructor(scene = null, options = {}) {
-    console.log('🌍 Initializing new Cannon.js Physics World...');
-    
     // Global physics settings
     this.defaultUseAccurateCollision = options.useAccurateCollision || false;
     this.debugMode = options.debugMode || false;
@@ -57,11 +55,7 @@ export class PhysicsWorld {
     // Initialize debug renderer if scene is provided
     if (this.scene) {
       this.initDebugRenderer();
-    } else {
-      console.warn('🔧 No scene provided to PhysicsWorld constructor - debug renderer unavailable');
     }
-    
-    console.log('✅ Physics world initialized successfully');
   }
   
   setupContactMaterials() {
@@ -122,8 +116,6 @@ export class PhysicsWorld {
       }
     );
     this.world.addContactMaterial(enemyGroundContact);
-    
-    console.log('✅ Contact materials configured');
   }
   
   initDebugRenderer() {
@@ -145,10 +137,7 @@ export class PhysicsWorld {
       
       // Initially hide debug meshes
       this.setDebugVisibility(false);
-      
-      console.log('🔧 Physics debug renderer initialized successfully');
     } catch (error) {
-      console.error('🔧 Failed to initialize physics debug renderer:', error);
       this.debugRenderer = null;
     }
   }
@@ -169,9 +158,6 @@ export class PhysicsWorld {
     
     if (this.debugRenderer) {
       this.setDebugVisibility(enabled);
-      console.log(`🔧 Physics debug visualization ${enabled ? 'enabled' : 'disabled'}`);
-    } else {
-      console.warn('🔧 Physics debug renderer not available');
     }
     
     return this.debugRenderer !== null;
@@ -181,23 +167,6 @@ export class PhysicsWorld {
     return this.debugEnabled && this.debugRenderer !== null;
   }
 
-  // Debug method to show collision information for all bodies
-  logCollisionInfo() {
-    console.log('🔍 Physics World Collision Info:');
-    console.log(`  Static Bodies: ${this.staticBodies.size}`);
-    console.log(`  Dynamic Bodies: ${this.bodies.size}`);
-    
-    this.staticBodies.forEach((body, index) => {
-      const mesh = body.userData?.mesh;
-      const collisionType = body.userData?.collisionType || 'unknown';
-      console.log(`  Static ${index}: ${mesh?.name || 'unnamed'} (${collisionType})`);
-    });
-    
-    this.bodies.forEach((body, index) => {
-      console.log(`  Dynamic ${index}: mass=${body.mass}`);
-    });
-  }
-  
   step(deltaTime) {
     // Clamp delta time to prevent physics explosions
     const maxDelta = 1/30;
@@ -216,7 +185,6 @@ export class PhysicsWorld {
     try {
       const geometry = mesh.geometry;
       if (!geometry) {
-        console.warn('Mesh has no geometry, skipping physics body creation');
         return null;
       }
 
@@ -242,18 +210,12 @@ export class PhysicsWorld {
       if (shouldUseAccurate && !forceBoxCollider) {
         // Use Trimesh for accurate collision detection
         shape = this._createTrimeshShape(geometry, mesh);
-        console.log(`🔺 Created Trimesh collision for: ${mesh.name || 'unnamed'}`);
       } else {
         // Use bounding box collision (faster but less accurate)
         // Calculate the actual scaled bounding box
         const scaledSize = this._getScaledBoundingBoxSize(geometry, mesh);
         
         shape = new CANNON.Box(new CANNON.Vec3(scaledSize.x / 2, scaledSize.y / 2, scaledSize.z / 2));
-        
-        console.log(`📦 Created Box collision for: ${mesh.name || 'unnamed'}`);
-        console.log(`   📏 Size: (${scaledSize.x.toFixed(2)} × ${scaledSize.y.toFixed(2)} × ${scaledSize.z.toFixed(2)})`);
-        console.log(`   📍 Position: (${mesh.position.x.toFixed(2)}, ${mesh.position.y.toFixed(2)}, ${mesh.position.z.toFixed(2)})`);
-        console.log(`   📐 Scale: (${mesh.scale.x.toFixed(2)}, ${mesh.scale.y.toFixed(2)}, ${mesh.scale.z.toFixed(2)})`);
       }
 
       const body = new CANNON.Body({
@@ -280,13 +242,6 @@ export class PhysicsWorld {
       return body;
       
     } catch (error) {
-      console.error('Failed to create static physics body:', error);
-      console.error('Mesh details:', {
-        name: mesh.name,
-        position: mesh.position,
-        scale: mesh.scale,
-        hasGeometry: !!mesh.geometry
-      });
       return null;
     }
   }
@@ -310,7 +265,6 @@ export class PhysicsWorld {
     // Get position attribute from geometry
     const position = geometry.attributes.position;
     if (!position) {
-      console.warn('Geometry has no position attribute, falling back to box collision');
       return this._createBoxShape(geometry, mesh);
     }
 
@@ -344,20 +298,16 @@ export class PhysicsWorld {
     try {
       // Validate Trimesh data
       if (vertices.length === 0 || indices.length === 0) {
-        console.warn('Invalid Trimesh data: empty vertices or indices, falling back to box collision');
         return this._createBoxShape(geometry, mesh);
       }
       
       if (vertices.length % 3 !== 0) {
-        console.warn('Invalid Trimesh data: vertices length not divisible by 3, falling back to box collision');
         return this._createBoxShape(geometry, mesh);
       }
       
       const trimesh = new CANNON.Trimesh(vertices, indices);
-      console.log(`🔺 Created Trimesh with ${vertices.length/3} vertices, ${indices.length/3} faces`);
       return trimesh;
     } catch (error) {
-      console.warn('Failed to create Trimesh, falling back to box collision:', error);
       return this._createBoxShape(geometry, mesh);
     }
   }
@@ -410,7 +360,6 @@ export class PhysicsWorld {
     
     body.userData = { type: 'dynamic' };
     
-    console.log(`🎲 Created dynamic physics body (${shape}) at position [${position}]`);
     return body;
   }
   
@@ -420,8 +369,6 @@ export class PhysicsWorld {
     this.world.removeBody(body);
     this.bodies.delete(body);
     this.staticBodies.delete(body);
-    
-    console.log('🗑️ Removed physics body from world');
   }
   
   getContactsForBody(body) {
@@ -440,12 +387,6 @@ export class PhysicsWorld {
   isBodyGrounded(body, threshold = 0.5) {
     const contacts = this.getContactsForBody(body);
     
-    // console.log('🔍 Ground check:', {
-    //   bodyPosition: { x: body.position.x.toFixed(2), y: body.position.y.toFixed(2), z: body.position.z.toFixed(2) },
-    //   contactCount: contacts.length,
-    //   threshold
-    // });
-    
     for (const contact of contacts) {
       // The contact normal direction depends on which body is bi vs bj
       // If our body is bi, normal points from us to other body (downward = negative Y)
@@ -461,14 +402,11 @@ export class PhysicsWorld {
         normalY = contact.ni.y;
       }
       
-      //console.log('📏 Contact normal Y (corrected):', normalY.toFixed(3), 'threshold:', threshold);
       if (normalY > threshold) {
-        //console.log('✅ Ground contact found!');
         return true;
       }
     }
     
-    //console.log('❌ No ground contact found');
     return false;
   }
   
@@ -483,7 +421,6 @@ export class PhysicsWorld {
     this.world.addBody(body);
     this.staticBodies.add(body);
     
-    console.log(`📦 Created static box collider at [${position.x}, ${position.y}, ${position.z}] size [${size.x}, ${size.y}, ${size.z}]`);
     return body;
   }
   
@@ -497,7 +434,6 @@ export class PhysicsWorld {
     this.world.addBody(body);
     this.staticBodies.add(body);
     
-    console.log(`🔵 Created static sphere collider at [${position.x}, ${position.y}, ${position.z}] radius ${radius}`);
     return body;
   }
   
@@ -512,13 +448,10 @@ export class PhysicsWorld {
     this.world.addBody(body);
     this.staticBodies.add(body);
     
-    console.log(`🥤 Created static capsule collider at [${position.x}, ${position.y}, ${position.z}] radius ${radius} height ${height}`);
     return body;
   }
   
   dispose() {
-    console.log('🧹 Disposing physics world...');
-    
     const allBodies = [...this.bodies, ...this.staticBodies];
     allBodies.forEach(body => {
       this.world.removeBody(body);
@@ -535,8 +468,6 @@ export class PhysicsWorld {
       this.debugEnabled = false;
       this.debugRenderer = null;
     }
-    
-    console.log('✅ Physics world disposed');
   }
 
   _clearDebugMeshes() {
@@ -562,7 +493,5 @@ export class PhysicsWorld {
         }
       }
     });
-    
-    console.log(`🧹 Removed ${meshesToRemove.length} debug renderer meshes`);
   }
 }

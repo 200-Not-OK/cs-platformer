@@ -50,4 +50,12 @@ export class UIManager {
       if (inst.update) inst.update(delta, ctx);
     }
   }
+
+  // Debug method to list all components
+  listComponents() {
+    console.log('📋 All UI Components:');
+    for (const [key, component] of this.components.entries()) {
+      console.log(`  - ${key}:`, component, `visible: ${component.root.style.display !== 'none'}`);
+    }
+  }
 }

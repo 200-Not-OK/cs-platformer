@@ -20,6 +20,13 @@ export class Player {
       depth: options.colliderDepthScale ?? 0.4     // Scale factor for depth (Z)
     };
     
+    // Collider offset options (local space relative to player mesh)
+    this.colliderOffset = {
+      x: options.colliderOffsetX ?? 0,     // Sideways offset
+      y: options.colliderOffsetY ?? 0,     // Vertical offset  
+      z: options.colliderOffsetZ ?? -0.4   // Forward/backward offset (negative = backward)
+    };
+    
     // Visual mesh (Three.js)
     this.mesh = new THREE.Group();
     this.scene.add(this.mesh);
@@ -30,8 +37,27 @@ export class Player {
     
     // Animation system
     this.mixer = null;
-    this.actions = { idle: null, walk: null, jump: null };
+    this.actions = { 
+      idle: null, 
+      walk: null, 
+      sprint: null, 
+      jump: null, 
+      attack: null,
+      interact: null,
+      death: null 
+    };
     this.currentAction = null;
+    
+    // Combat system
+    this.maxHealth = 100;
+    this.health = this.maxHealth;
+    this.isAttacking = false;
+    this.attackDuration = 600; // Attack animation duration in ms
+    this.lastAttackTime = 0;
+    
+    // Interaction system
+    this.isInteracting = false;
+    this.lastInteractionTime = 0;
     
     // Movement state
     this.isGrounded = false;
@@ -99,36 +125,97 @@ export class Player {
           // Setup animations if available
           if (gltf.animations && gltf.animations.length > 0) {
             this.mixer = new THREE.AnimationMixer(gltf.scene);
+
+            console.log(`Available animations: ${gltf.animations.map(a => a.name).join(', ')}`);
             
-            // Find animation clips
+            // Find animation clips with exact names from your model
             const findClip = (names) => {
               if (!names) return null;
               for (const n of names) {
-                const lower = n.toLowerCase();
                 for (const c of gltf.animations) {
-                  if (c.name && c.name.toLowerCase().includes(lower)) return c;
+                  if (c.name && c.name === n) return c; // Exact match
                 }
               }
               return null;
             };
             
-            const idleClip = findClip(['idle', 'stand', 'rest']) || null;
-            const walkClip = findClip(['walking', 'run', 'strafe']) || gltf.animations[0] || null;
-            const jumpClip = findClip(['jump', 'leap']) || null;
+            // Find clips with fallback to similar names
+            const findClipWithFallback = (exactNames, fallbackNames) => {
+              let clip = findClip(exactNames);
+              if (!clip && fallbackNames) {
+                for (const n of fallbackNames) {
+                  const lower = n.toLowerCase();
+                  for (const c of gltf.animations) {
+                    if (c.name && c.name.toLowerCase().includes(lower)) {
+                      clip = c;
+                      break;
+                    }
+                  }
+                  if (clip) break;
+                }
+              }
+              return clip;
+            };
             
+            // Map animations to actions using exact names from your model
+            const idleClip = findClip(['Idle']);
+            const walkClip = findClip(['Walking_A', 'Walking_B', 'Walking_C']) || findClipWithFallback(null, ['walking']);
+            const sprintClip = findClip(['Running_A', 'Running_B']) || findClipWithFallback(null, ['running', 'sprint']);
+            const jumpClip = findClip(['Jump_Full_Long', 'Jump_Full_Short', 'Jump_Start']) || findClipWithFallback(null, ['jump']);
+            const attackClip = findClip(['1H_Melee_Attack_Slice_Horizontal', '1H_Melee_Attack_Chop', '1H_Melee_Attack_Stab', 'Unarmed_Melee_Attack_Punch_A']);
+            const interactClip = findClip(['Interact', 'Use_Item', 'PickUp']);
+            const deathClip = findClip(['Death_A', 'Death_B']);
+            
+            // Set up idle animation
             if (idleClip) {
               this.actions.idle = this.mixer.clipAction(idleClip);
               this.actions.idle.setLoop(THREE.LoopRepeat);
+              console.log('✅ Idle animation loaded:', idleClip.name);
             }
             
+            // Set up walk animation
             if (walkClip) {
               this.actions.walk = this.mixer.clipAction(walkClip);
               this.actions.walk.setLoop(THREE.LoopRepeat);
+              console.log('✅ Walk animation loaded:', walkClip.name);
             }
             
+            // Set up sprint animation
+            if (sprintClip) {
+              this.actions.sprint = this.mixer.clipAction(sprintClip);
+              this.actions.sprint.setLoop(THREE.LoopRepeat);
+              console.log('✅ Sprint animation loaded:', sprintClip.name);
+            }
+            
+            // Set up jump animation
             if (jumpClip) {
               this.actions.jump = this.mixer.clipAction(jumpClip);
               this.actions.jump.setLoop(THREE.LoopOnce);
+              console.log('✅ Jump animation loaded:', jumpClip.name);
+            }
+            
+            // Set up attack animation
+            if (attackClip) {
+              this.actions.attack = this.mixer.clipAction(attackClip);
+              this.actions.attack.setLoop(THREE.LoopOnce);
+              this.actions.attack.clampWhenFinished = true;
+              console.log('✅ Attack animation loaded:', attackClip.name);
+            }
+            
+            // Set up interact animation
+            if (interactClip) {
+              this.actions.interact = this.mixer.clipAction(interactClip);
+              this.actions.interact.setLoop(THREE.LoopOnce);
+              this.actions.interact.clampWhenFinished = true;
+              console.log('✅ Interact animation loaded:', interactClip.name);
+            }
+            
+            // Set up death animation
+            if (deathClip) {
+              this.actions.death = this.mixer.clipAction(deathClip);
+              this.actions.death.setLoop(THREE.LoopOnce);
+              this.actions.death.clampWhenFinished = true;
+              console.log('✅ Death animation loaded:', deathClip.name);
             }
             
             // Start with idle animation
@@ -306,6 +393,160 @@ export class Player {
     }
   }
 
+  // Combat methods
+  performAttack() {
+    if (this.isAttacking) {
+      console.log('🗡️ Attack blocked - already attacking');
+      return false; // Already attacking
+    }
+
+    this.isAttacking = true;
+    this.lastAttackTime = Date.now();
+    
+    console.log('🗡️ Player starting attack animation');
+
+    // Play attack animation if available
+    if (this.actions.attack) {
+      this.playAction(this.actions.attack, 0.1, false);
+      
+      // Use mixer event listener instead of action event listener
+      const onFinished = (event) => {
+        if (event.action === this.actions.attack) {
+          this.isAttacking = false;
+          this.mixer.removeEventListener('finished', onFinished);
+          
+          // Return to appropriate animation
+          if (this.isGrounded) {
+            if (this.body && (Math.abs(this.body.velocity.x) > 0.1 || Math.abs(this.body.velocity.z) > 0.1)) {
+              this.playAction(this.actions.walk);
+            } else {
+              this.playAction(this.actions.idle);
+            }
+          }
+        }
+      };
+      
+      this.mixer.addEventListener('finished', onFinished);
+      
+      // Fallback timeout in case event doesn't fire
+      setTimeout(() => {
+        if (this.isAttacking) {
+          this.isAttacking = false;
+          console.log('🗡️ Attack finished (timeout fallback)');
+        }
+      }, this.attackDuration);
+    } else {
+      console.log('🗡️ No attack animation found - using timer only');
+      // No attack animation, just set a timer
+      setTimeout(() => {
+        this.isAttacking = false;
+        console.log('🗡️ Attack finished (no animation)');
+      }, this.attackDuration);
+    }
+
+    return true;
+  }
+
+  takeDamage(amount) {
+    this.health = Math.max(0, this.health - amount);
+    console.log(`💔 Player took ${amount} damage, health: ${this.health}/${this.maxHealth}`);
+    
+    if (this.health <= 0) {
+      this.onDeath();
+    }
+    
+    return this.health;
+  }
+
+  heal(amount) {
+    this.health = Math.min(this.maxHealth, this.health + amount);
+    console.log(`💚 Player healed ${amount} HP, health: ${this.health}/${this.maxHealth}`);
+    return this.health;
+  }
+
+  onDeath() {
+    console.log('💀 Player has died!');
+    // Play death animation if available
+    if (this.actions.death) {
+      this.playAction(this.actions.death, 0.2, false);
+    }
+    // Can trigger game over, respawn, etc.
+  }
+
+  performInteract() {
+    if (this.isInteracting) {
+      console.log('🤝 Interact blocked - already interacting');
+      return false; // Already interacting
+    }
+
+    if (this.actions.interact) {
+      this.isInteracting = true;
+      console.log('🤝 Player starting interact animation');
+      
+      this.playAction(this.actions.interact, 0.2, false);
+      
+      // Use mixer event listener to detect when animation finishes
+      const onFinished = (event) => {
+        if (event.action === this.actions.interact) {
+          this.isInteracting = false;
+          this.mixer.removeEventListener('finished', onFinished);
+          
+          console.log('🤝 Interact animation finished');
+          
+          // Return to appropriate animation
+          if (this.isGrounded) {
+            if (this.body && (Math.abs(this.body.velocity.x) > 0.1 || Math.abs(this.body.velocity.z) > 0.1)) {
+              this.playAction(this.actions.walk);
+            } else {
+              this.playAction(this.actions.idle);
+            }
+          }
+        }
+      };
+      
+      this.mixer.addEventListener('finished', onFinished);
+      
+      // Fallback timeout in case event doesn't fire (3 seconds max)
+      setTimeout(() => {
+        if (this.isInteracting) {
+          this.isInteracting = false;
+          console.log('🤝 Interact finished (timeout fallback)');
+          
+          // Return to appropriate animation
+          if (this.isGrounded) {
+            if (this.body && (Math.abs(this.body.velocity.x) > 0.1 || Math.abs(this.body.velocity.z) > 0.1)) {
+              this.playAction(this.actions.walk);
+            } else {
+              this.playAction(this.actions.idle);
+            }
+          }
+        }
+      }, 3000); // 3 second fallback timeout
+      
+      return true;
+    } else {
+      console.log('🤝 No interact animation found');
+      return false;
+    }
+  }
+
+  playAction(action, fadeDuration = 0.3, loop = true) {
+    if (!action || action === this.currentAction) return;
+    
+    if (this.currentAction) {
+      this.currentAction.crossFadeTo(action, fadeDuration, false);
+    }
+    
+    action.reset();
+    if (loop) {
+      action.setLoop(THREE.LoopRepeat);
+    } else {
+      action.setLoop(THREE.LoopOnce);
+    }
+    action.play();
+    this.currentAction = action;
+  }
+
   update(delta, input, camOrientation = null, platforms = [], playerActive = true) {
     // Clear wall normals from previous frame
     this.wallNormals = [];
@@ -327,6 +568,7 @@ export class Player {
     if (playerActive) {
       this.handleMovementInput(input, camOrientation, delta);
       this.handleJumpInput(input);
+      this.handleInteractionInput(input);
     }
     
     // Apply wall sliding physics (works even without input)
@@ -514,14 +756,42 @@ export class Player {
     }
   }
 
+  handleInteractionInput(input) {
+    if (!input || !input.isKey) return;
+    
+    // Use 'E' key for interaction
+    if (input.isKey('KeyE')) {
+      // Add a small delay to prevent rapid triggering
+      const currentTime = Date.now();
+      if (currentTime - (this.lastInteractionTime || 0) > 500) { // 500ms cooldown
+        this.lastInteractionTime = currentTime;
+        this.performInteract();
+      }
+    }
+  }
+
   syncMeshWithBody() {
     if (!this.body) return;
     
-    // Copy position from physics body to visual mesh
-    this.mesh.position.copy(this.body.position);
+    // Sync Y-axis rotation from mesh to physics body while keeping it upright
+    // This ensures the collider rotates with the player's facing direction
+    const meshRotationY = this.mesh.rotation.y;
+    this.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), meshRotationY);
     
-    // Keep the physics body upright by resetting its rotation
-    this.body.quaternion.set(0, 0, 0, 1);
+    // Calculate offset position in world space
+    const offset = new THREE.Vector3(
+      this.colliderOffset.x,
+      this.colliderOffset.y, 
+      this.colliderOffset.z
+    );
+    
+    // Rotate offset by mesh rotation to get world space offset
+    offset.applyEuler(new THREE.Euler(0, meshRotationY, 0));
+    
+    // Position mesh relative to physics body with offset
+    // Mesh position = Physics body position - offset (so physics body is offset from mesh)
+    this.mesh.position.copy(this.body.position);
+    this.mesh.position.sub(offset);
   }
 
   updateAnimations(delta) {
@@ -530,18 +800,23 @@ export class Player {
     // Update animation mixer
     this.mixer.update(delta);
     
+    // Skip animation changes during attack or interaction
+    if (this.isAttacking || this.isInteracting) return;
+    
     // Determine which animation to play
     const velocity = this.body.velocity;
     const horizontalSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-    const isMoving = horizontalSpeed > 0.1; // Lowered threshold for more immediate stopping
+    const isMoving = horizontalSpeed > 0.1;
     
     let targetAction = null;
     
+    // Priority order: jump -> sprint -> walk -> idle
     if (!this.isGrounded && this.actions.jump) {
       targetAction = this.actions.jump;
+    } else if (isMoving && this.isSprinting && this.actions.sprint) {
+      targetAction = this.actions.sprint;
     } else if (isMoving && this.actions.walk) {
       targetAction = this.actions.walk;
-      this.actions.walk.paused = false;
     } else if (this.actions.idle) {
       targetAction = this.actions.idle;
     }
@@ -598,6 +873,15 @@ export class Player {
     // Restore position and velocity
     this.body.position.copy(currentPos);
     this.body.velocity.copy(currentVel);
+  }
+
+  // Method to update collider offset at runtime
+  updateColliderOffset(offsetX, offsetY, offsetZ) {
+    if (offsetX !== undefined) this.colliderOffset.x = offsetX;
+    if (offsetY !== undefined) this.colliderOffset.y = offsetY;
+    if (offsetZ !== undefined) this.colliderOffset.z = offsetZ;
+    
+    console.log(`🔧 Updated collider offset: (${this.colliderOffset.x.toFixed(2)}, ${this.colliderOffset.y.toFixed(2)}, ${this.colliderOffset.z.toFixed(2)})`);
   }
 
   calculateSlidingVelocity(desiredVelocity, wallNormals) {
