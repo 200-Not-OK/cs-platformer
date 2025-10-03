@@ -11,7 +11,7 @@ export class ThirdPersonCamera {
     this.distance = 8;           // radius from player
     this.pitch = 20 * (Math.PI / 180); // radians
     this.yaw = 0;                // around Y-axis
-    this.heightOffset = 1.2;     // How much higher to position the camera target (looking point)
+    this.heightOffset = 1.6;     // How much higher to position the camera target (was 1.2)
     this.minPitch = -0.3;
     this.maxPitch = Math.PI / 2 - 0.1;
     this.sensitivity = 0.0025;

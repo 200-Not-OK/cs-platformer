@@ -260,8 +260,8 @@ export class Game {
     const platforms = this.level ? this.level.getPlatforms() : [];
     this.player.update(delta, this.input, camOrientation, platforms, playerActive);
 
-    // Handle combat input (right-click to attack)
-    if (playerActive && this.input.wasRightClicked() && this.combatSystem.canAttack()) {
+    // Handle combat input (left-click to attack)
+    if (playerActive && this.input.wasLeftClicked() && this.combatSystem.canAttack()) {
       if (this.player.performAttack()) {
         // Set enemies for combat system if level has them
         if (this.level && this.level.getEnemies) {

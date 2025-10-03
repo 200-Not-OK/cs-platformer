@@ -34,16 +34,24 @@ export class CombatSystem {
     }
 
     this.lastAttackTime = Date.now();
+    console.log('🗡️ Player performing attack!');
 
     // Get camera direction for raycast
     const direction = new THREE.Vector3();
     camera.getWorldDirection(direction);
     
-    // Start raycast from camera position
-    const origin = camera.position.clone();
+    // For third-person camera, start raycast from player position instead of camera position
+    // This ensures we're shooting from where the crosshair appears to be aiming
+    const origin = player.mesh.position.clone();
+    origin.y += 1.0; // Add some height to aim from player's chest/head level
+    
+    console.log(`🎯 Using player-based origin for better third-person aiming`);
     
     // Setup raycaster
     this.raycaster.set(origin, direction);
+    
+    // Debug: Create a visual ray to see where we're aiming
+    this.createDebugRay(origin, direction);
 
     // Find all enemy meshes for raycasting
     const enemyMeshes = [];
@@ -59,8 +67,24 @@ export class CombatSystem {
       }
     }
 
+    console.log(`🎯 Scanning ${enemyMeshes.length} enemy meshes for hits...`);
+    console.log(`🎯 Raycast origin:`, origin);
+    console.log(`🎯 Raycast direction:`, direction);
+    console.log(`🎯 Attack range: ${this.attackRange}`);
+
     // Perform raycast
     const intersects = this.raycaster.intersectObjects(enemyMeshes, true);
+    
+    console.log(`🎯 Raycast found ${intersects.length} intersections`);
+    
+    // Debug: Log all intersections
+    if (intersects.length > 0) {
+      for (let i = 0; i < Math.min(5, intersects.length); i++) {
+        const hit = intersects[i];
+        const distance = origin.distanceTo(hit.point);
+        console.log(`  ${i}: Distance ${distance.toFixed(2)}, Point:`, hit.point, `Object:`, hit.object);
+      }
+    }
 
     if (intersects.length > 0) {
       const hit = intersects[0];
@@ -71,20 +95,31 @@ export class CombatSystem {
         const distance = origin.distanceTo(hit.point);
         
         if (distance <= this.attackRange) {
-          console.log(`🗡️ Hit ${enemy.constructor.name} for ${this.attackDamage} damage at distance ${distance.toFixed(2)}`);
+          console.log(`🎯 HIT! Target: ${enemy.constructor.name}`);
+          console.log(`📏 Distance: ${distance.toFixed(2)} units (max range: ${this.attackRange})`);
+          console.log(`💔 Damage dealt: ${this.attackDamage}`);
+          console.log(`❤️ Enemy health before: ${enemy.health}/${enemy.maxHealth}`);
           
           // Deal damage to enemy
-          enemy.takeDamage(this.attackDamage);
+          const newHealth = enemy.takeDamage(this.attackDamage);
+          
+          console.log(`❤️ Enemy health after: ${newHealth}/${enemy.maxHealth}`);
+          if (newHealth <= 0) {
+            console.log(`💀 ${enemy.constructor.name} has been defeated!`);
+          }
           
           // Optional: Add visual effects here (sparks, blood, etc.)
           this.createHitEffect(hit.point);
           
           return true; // Attack hit
+        } else {
+          console.log(`❌ Target too far! Distance: ${distance.toFixed(2)} > ${this.attackRange}`);
         }
       }
+    } else {
+      console.log('❌ No enemies in crosshair - attack missed');
     }
 
-    console.log('🗡️ Attack missed - no enemies in range');
     return false; // Attack missed
   }
 
@@ -124,6 +159,37 @@ export class CombatSystem {
     };
 
     animate();
+  }
+
+  createDebugRay(origin, direction) {
+    // Remove previous debug ray if it exists
+    if (this.debugRay) {
+      this.scene.remove(this.debugRay);
+      this.debugRay.geometry.dispose();
+      this.debugRay.material.dispose();
+    }
+
+    // Create a visual line to show the raycast direction
+    const rayEnd = origin.clone().add(direction.clone().multiplyScalar(this.attackRange));
+    const geometry = new THREE.BufferGeometry().setFromPoints([origin, rayEnd]);
+    const material = new THREE.LineBasicMaterial({ 
+      color: 0xff0000, // Red line
+      transparent: true,
+      opacity: 0.8
+    });
+    
+    this.debugRay = new THREE.Line(geometry, material);
+    this.scene.add(this.debugRay);
+
+    // Remove the debug ray after a short time
+    setTimeout(() => {
+      if (this.debugRay) {
+        this.scene.remove(this.debugRay);
+        this.debugRay.geometry.dispose();
+        this.debugRay.material.dispose();
+        this.debugRay = null;
+      }
+    }, 1000); // Show for 1 second
   }
 
   update(delta) {
