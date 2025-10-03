@@ -37,7 +37,15 @@ export class Player {
     
     // Animation system
     this.mixer = null;
-    this.actions = { idle: null, walk: null, jump: null, attack: null };
+    this.actions = { 
+      idle: null, 
+      walk: null, 
+      sprint: null, 
+      jump: null, 
+      attack: null,
+      interact: null,
+      death: null 
+    };
     this.currentAction = null;
     
     // Combat system
@@ -114,43 +122,96 @@ export class Player {
           if (gltf.animations && gltf.animations.length > 0) {
             this.mixer = new THREE.AnimationMixer(gltf.scene);
 
-            console.log(`${gltf.animations.map(a => a.name).join(', ')}`);
-            // Find animation clips
+            console.log(`Available animations: ${gltf.animations.map(a => a.name).join(', ')}`);
+            
+            // Find animation clips with exact names from your model
             const findClip = (names) => {
               if (!names) return null;
               for (const n of names) {
-                const lower = n.toLowerCase();
                 for (const c of gltf.animations) {
-                  if (c.name && c.name.toLowerCase().includes(lower)) return c;
+                  if (c.name && c.name === n) return c; // Exact match
                 }
               }
               return null;
             };
             
-            const idleClip = findClip(['idle', 'stand', 'rest']) || null;
-            const walkClip = findClip(['walking', 'run', 'strafe']) || gltf.animations[0] || null;
-            const jumpClip = findClip(['jump', 'leap']) || null;
-            const attackClip = findClip(['attack', 'hit', 'sword', 'punch', 'strike']) || null;
+            // Find clips with fallback to similar names
+            const findClipWithFallback = (exactNames, fallbackNames) => {
+              let clip = findClip(exactNames);
+              if (!clip && fallbackNames) {
+                for (const n of fallbackNames) {
+                  const lower = n.toLowerCase();
+                  for (const c of gltf.animations) {
+                    if (c.name && c.name.toLowerCase().includes(lower)) {
+                      clip = c;
+                      break;
+                    }
+                  }
+                  if (clip) break;
+                }
+              }
+              return clip;
+            };
             
+            // Map animations to actions using exact names from your model
+            const idleClip = findClip(['Idle']);
+            const walkClip = findClip(['Walking_A', 'Walking_B', 'Walking_C']) || findClipWithFallback(null, ['walking']);
+            const sprintClip = findClip(['Running_A', 'Running_B']) || findClipWithFallback(null, ['running', 'sprint']);
+            const jumpClip = findClip(['Jump_Full_Long', 'Jump_Full_Short', 'Jump_Start']) || findClipWithFallback(null, ['jump']);
+            const attackClip = findClip(['1H_Melee_Attack_Slice_Horizontal', '1H_Melee_Attack_Chop', '1H_Melee_Attack_Stab', 'Unarmed_Melee_Attack_Punch_A']);
+            const interactClip = findClip(['Interact', 'Use_Item', 'PickUp']);
+            const deathClip = findClip(['Death_A', 'Death_B']);
+            
+            // Set up idle animation
             if (idleClip) {
               this.actions.idle = this.mixer.clipAction(idleClip);
               this.actions.idle.setLoop(THREE.LoopRepeat);
+              console.log('✅ Idle animation loaded:', idleClip.name);
             }
             
+            // Set up walk animation
             if (walkClip) {
               this.actions.walk = this.mixer.clipAction(walkClip);
               this.actions.walk.setLoop(THREE.LoopRepeat);
+              console.log('✅ Walk animation loaded:', walkClip.name);
             }
             
+            // Set up sprint animation
+            if (sprintClip) {
+              this.actions.sprint = this.mixer.clipAction(sprintClip);
+              this.actions.sprint.setLoop(THREE.LoopRepeat);
+              console.log('✅ Sprint animation loaded:', sprintClip.name);
+            }
+            
+            // Set up jump animation
             if (jumpClip) {
               this.actions.jump = this.mixer.clipAction(jumpClip);
               this.actions.jump.setLoop(THREE.LoopOnce);
+              console.log('✅ Jump animation loaded:', jumpClip.name);
             }
             
+            // Set up attack animation
             if (attackClip) {
               this.actions.attack = this.mixer.clipAction(attackClip);
               this.actions.attack.setLoop(THREE.LoopOnce);
               this.actions.attack.clampWhenFinished = true;
+              console.log('✅ Attack animation loaded:', attackClip.name);
+            }
+            
+            // Set up interact animation
+            if (interactClip) {
+              this.actions.interact = this.mixer.clipAction(interactClip);
+              this.actions.interact.setLoop(THREE.LoopOnce);
+              this.actions.interact.clampWhenFinished = true;
+              console.log('✅ Interact animation loaded:', interactClip.name);
+            }
+            
+            // Set up death animation
+            if (deathClip) {
+              this.actions.death = this.mixer.clipAction(deathClip);
+              this.actions.death.setLoop(THREE.LoopOnce);
+              this.actions.death.clampWhenFinished = true;
+              console.log('✅ Death animation loaded:', deathClip.name);
             }
             
             // Start with idle animation
@@ -401,7 +462,28 @@ export class Player {
 
   onDeath() {
     console.log('💀 Player has died!');
+    // Play death animation if available
+    if (this.actions.death) {
+      this.playAction(this.actions.death, 0.2, false);
+    }
     // Can trigger game over, respawn, etc.
+  }
+
+  performInteract() {
+    if (this.actions.interact) {
+      console.log('🤝 Player interacting');
+      this.playAction(this.actions.interact, 0.2, false);
+      
+      // Return to idle after interaction
+      setTimeout(() => {
+        if (this.isGrounded) {
+          this.playAction(this.actions.idle);
+        }
+      }, 1000); // 1 second interaction duration
+      
+      return true;
+    }
+    return false;
   }
 
   playAction(action, fadeDuration = 0.3, loop = true) {
@@ -442,6 +524,7 @@ export class Player {
     if (playerActive) {
       this.handleMovementInput(input, camOrientation, delta);
       this.handleJumpInput(input);
+      this.handleInteractionInput(input);
     }
     
     // Apply wall sliding physics (works even without input)
@@ -629,6 +712,20 @@ export class Player {
     }
   }
 
+  handleInteractionInput(input) {
+    if (!input || !input.isKey) return;
+    
+    // Use 'E' key for interaction
+    if (input.isKey('KeyE')) {
+      // Add a small delay to prevent rapid triggering
+      const currentTime = Date.now();
+      if (currentTime - (this.lastInteractionTime || 0) > 500) { // 500ms cooldown
+        this.lastInteractionTime = currentTime;
+        this.performInteract();
+      }
+    }
+  }
+
   syncMeshWithBody() {
     if (!this.body) return;
     
@@ -659,18 +756,23 @@ export class Player {
     // Update animation mixer
     this.mixer.update(delta);
     
+    // Skip animation changes during attack
+    if (this.isAttacking) return;
+    
     // Determine which animation to play
     const velocity = this.body.velocity;
     const horizontalSpeed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
-    const isMoving = horizontalSpeed > 0.1; // Lowered threshold for more immediate stopping
+    const isMoving = horizontalSpeed > 0.1;
     
     let targetAction = null;
     
+    // Priority order: jump -> sprint -> walk -> idle
     if (!this.isGrounded && this.actions.jump) {
       targetAction = this.actions.jump;
+    } else if (isMoving && this.isSprinting && this.actions.sprint) {
+      targetAction = this.actions.sprint;
     } else if (isMoving && this.actions.walk) {
       targetAction = this.actions.walk;
-      this.actions.walk.paused = false;
     } else if (this.actions.idle) {
       targetAction = this.actions.idle;
     }
