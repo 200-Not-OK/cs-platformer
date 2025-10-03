@@ -39,7 +39,7 @@ export class Game {
 
   // Player
   this.player = new Player(this.scene, this.physicsWorld, { 
-    speed: 25, 
+    speed: 17, 
     jumpStrength: 12, 
     size: [1, 1.5, 1],
     // Collider size scaling factors (optional)
