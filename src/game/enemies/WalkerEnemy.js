@@ -3,7 +3,12 @@ import { EnemyBase } from './EnemyBase.js';
 
 export class WalkerEnemy extends EnemyBase {
   constructor(scene, physicsWorld, options = {}) {
-    super(scene, physicsWorld, options);
+    // Set default health for WalkerEnemy
+    const walkerOptions = {
+      health: 30, // Walker enemies have 30 HP
+      ...options
+    };
+    super(scene, physicsWorld, walkerOptions);
     this.patrolPoints = options.patrolPoints || [];
     this._patrolIndex = 0;
     this.waitTime = options.waitTime ?? 0.5;

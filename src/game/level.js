@@ -353,4 +353,8 @@ export class Level {
   getCinematicsManager() {
     return this.cinematicsManager;
   }
+
+  getEnemies() {
+    return this.enemyManager.enemies;
+  }
 }

@@ -857,11 +857,19 @@ export class StandaloneLevelEditor {
         </div>
         <div style="margin-top: 5px;">
           <label style="font-size: 11px;">Speed:</label><br>
-          <input type="number" id="selected-speed" value="${enemyData.speed || 2}" step="0.1" min="0" style="width: 100%; padding: 3px; font-size: 11px;">
+          <input type="number" id="selected-speed" value="${enemyData.speed || 2}" step="0.1" min="0" 
+                 style="width: 100%; padding: 3px; font-size: 11px;" 
+                 onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                 oninput="window.editor._onPropertyInputChange()"
+                 onchange="window.editor._onPropertyInputChange()">
         </div>
         <div style="margin-top: 5px;">
           <label style="font-size: 11px;">Chase Range:</label><br>
-          <input type="number" id="selected-chase-range" value="${enemyData.chaseRange || 5}" step="0.5" min="0" style="width: 100%; padding: 3px; font-size: 11px;">
+          <input type="number" id="selected-chase-range" value="${enemyData.chaseRange || 5}" step="0.5" min="0" 
+                 style="width: 100%; padding: 3px; font-size: 11px;" 
+                 onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                 oninput="window.editor._onPropertyInputChange()"
+                 onchange="window.editor._onPropertyInputChange()">
         </div>
       `;
     } else if (this.selectedType === 'light') {
@@ -917,15 +925,27 @@ export class StandaloneLevelEditor {
           <div style="display: flex; gap: 5px;">
             <div>
               <label style="font-size: 10px;">X:</label><br>
-              <input type="number" id="selected-pos-x" value="${pos.x.toFixed(2)}" step="0.1" style="width: 60px; padding: 3px; font-size: 11px;">
+              <input type="number" id="selected-pos-x" value="${pos.x.toFixed(2)}" step="0.1" 
+                     style="width: 60px; padding: 3px; font-size: 11px;" 
+                     onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                     oninput="window.editor._onPropertyInputChange()"
+                     onchange="window.editor._onPropertyInputChange()">
             </div>
             <div>
               <label style="font-size: 10px;">Y:</label><br>
-              <input type="number" id="selected-pos-y" value="${pos.y.toFixed(2)}" step="0.1" style="width: 60px; padding: 3px; font-size: 11px;">
+              <input type="number" id="selected-pos-y" value="${pos.y.toFixed(2)}" step="0.1" 
+                     style="width: 60px; padding: 3px; font-size: 11px;" 
+                     onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                     oninput="window.editor._onPropertyInputChange()"
+                     onchange="window.editor._onPropertyInputChange()">
             </div>
             <div>
               <label style="font-size: 10px;">Z:</label><br>
-              <input type="number" id="selected-pos-z" value="${pos.z.toFixed(2)}" step="0.1" style="width: 60px; padding: 3px; font-size: 11px;">
+              <input type="number" id="selected-pos-z" value="${pos.z.toFixed(2)}" step="0.1" 
+                     style="width: 60px; padding: 3px; font-size: 11px;" 
+                     onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                     oninput="window.editor._onPropertyInputChange()"
+                     onchange="window.editor._onPropertyInputChange()">
             </div>
           </div>
         </div>
@@ -935,15 +955,27 @@ export class StandaloneLevelEditor {
           <div style="display: flex; gap: 5px;">
             <div>
               <label style="font-size: 10px;">X:</label><br>
-              <input type="number" id="selected-rot-x" value="${(rot.x * 180 / Math.PI).toFixed(1)}" step="1" style="width: 60px; padding: 3px; font-size: 11px;">
+              <input type="number" id="selected-rot-x" value="${(rot.x * 180 / Math.PI).toFixed(1)}" step="1" 
+                     style="width: 60px; padding: 3px; font-size: 11px;" 
+                     onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                     oninput="window.editor._onPropertyInputChange()"
+                     onchange="window.editor._onPropertyInputChange()">
             </div>
             <div>
               <label style="font-size: 10px;">Y:</label><br>
-              <input type="number" id="selected-rot-y" value="${(rot.y * 180 / Math.PI).toFixed(1)}" step="1" style="width: 60px; padding: 3px; font-size: 11px;">
+              <input type="number" id="selected-rot-y" value="${(rot.y * 180 / Math.PI).toFixed(1)}" step="1" 
+                     style="width: 60px; padding: 3px; font-size: 11px;" 
+                     onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                     oninput="window.editor._onPropertyInputChange()"
+                     onchange="window.editor._onPropertyInputChange()">
             </div>
             <div>
               <label style="font-size: 10px;">Z:</label><br>
-              <input type="number" id="selected-rot-z" value="${(rot.z * 180 / Math.PI).toFixed(1)}" step="1" style="width: 60px; padding: 3px; font-size: 11px;">
+              <input type="number" id="selected-rot-z" value="${(rot.z * 180 / Math.PI).toFixed(1)}" step="1" 
+                     style="width: 60px; padding: 3px; font-size: 11px;" 
+                     onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                     oninput="window.editor._onPropertyInputChange()"
+                     onchange="window.editor._onPropertyInputChange()">
             </div>
           </div>
         </div>
@@ -971,7 +1003,11 @@ export class StandaloneLevelEditor {
       return `
         <div>
           <label style="font-size: 10px;">Radius:</label><br>
-          <input type="number" id="selected-size-0" value="${colliderData.size[0] || 1}" step="0.1" min="0.1" style="width: 100%; padding: 3px; font-size: 11px;">
+          <input type="number" id="selected-size-0" value="${colliderData.size[0] || 1}" step="0.1" min="0.1" 
+                 style="width: 100%; padding: 3px; font-size: 11px;" 
+                 onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                 oninput="window.editor._onPropertyInputChange()"
+                 onchange="window.editor._onPropertyInputChange()">
         </div>
       `;
     } else if (currentType === 'capsule') {
@@ -979,11 +1015,19 @@ export class StandaloneLevelEditor {
         <div style="display: flex; gap: 5px;">
           <div style="flex: 1;">
             <label style="font-size: 10px;">Radius:</label><br>
-            <input type="number" id="selected-size-0" value="${colliderData.size[0] || 0.5}" step="0.1" min="0.1" style="width: 100%; padding: 3px; font-size: 11px;">
+            <input type="number" id="selected-size-0" value="${colliderData.size[0] || 0.5}" step="0.1" min="0.1" 
+                   style="width: 100%; padding: 3px; font-size: 11px;" 
+                   onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                   oninput="window.editor._onPropertyInputChange()"
+                   onchange="window.editor._onPropertyInputChange()">
           </div>
           <div style="flex: 1;">
             <label style="font-size: 10px;">Height:</label><br>
-            <input type="number" id="selected-size-1" value="${colliderData.size[1] || 2}" step="0.1" min="0.1" style="width: 100%; padding: 3px; font-size: 11px;">
+            <input type="number" id="selected-size-1" value="${colliderData.size[1] || 2}" step="0.1" min="0.1" 
+                   style="width: 100%; padding: 3px; font-size: 11px;" 
+                   onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                   oninput="window.editor._onPropertyInputChange()"
+                   onchange="window.editor._onPropertyInputChange()">
           </div>
         </div>
       `;
@@ -992,15 +1036,27 @@ export class StandaloneLevelEditor {
         <div style="display: flex; gap: 5px;">
           <div style="flex: 1;">
             <label style="font-size: 10px;">W:</label><br>
-            <input type="number" id="selected-size-0" value="${colliderData.size[0] || 1}" step="0.1" min="0.1" style="width: 100%; padding: 3px; font-size: 11px;">
+            <input type="number" id="selected-size-0" value="${colliderData.size[0] || 1}" step="0.1" min="0.1" 
+                   style="width: 100%; padding: 3px; font-size: 11px;" 
+                   onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                   oninput="window.editor._onPropertyInputChange()"
+                   onchange="window.editor._onPropertyInputChange()">
           </div>
           <div style="flex: 1;">
             <label style="font-size: 10px;">H:</label><br>
-            <input type="number" id="selected-size-1" value="${colliderData.size[1] || 1}" step="0.1" min="0.1" style="width: 100%; padding: 3px; font-size: 11px;">
+            <input type="number" id="selected-size-1" value="${colliderData.size[1] || 1}" step="0.1" min="0.1" 
+                   style="width: 100%; padding: 3px; font-size: 11px;" 
+                   onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                   oninput="window.editor._onPropertyInputChange()"
+                   onchange="window.editor._onPropertyInputChange()">
           </div>
           <div style="flex: 1;">
             <label style="font-size: 10px;">D:</label><br>
-            <input type="number" id="selected-size-2" value="${colliderData.size[2] || 1}" step="0.1" min="0.1" style="width: 100%; padding: 3px; font-size: 11px;">
+            <input type="number" id="selected-size-2" value="${colliderData.size[2] || 1}" step="0.1" min="0.1" 
+                   style="width: 100%; padding: 3px; font-size: 11px;" 
+                   onkeydown="if(event.key==='Enter'){window.editor._applySelectedProperties();return;}event.stopPropagation();" 
+                   oninput="window.editor._onPropertyInputChange()"
+                   onchange="window.editor._onPropertyInputChange()">
           </div>
         </div>
       `;
@@ -1679,6 +1735,114 @@ export class StandaloneLevelEditor {
     }
     
     this._updateStatus('Properties updated successfully');
+  }
+
+  // Real-time property updates as user types
+  _onPropertyInputChange() {
+    if (!this.selected) return;
+    
+    // This method updates the visual representation immediately as the user types
+    // without applying to the data arrays (that happens on Apply button click)
+    
+    // Get position inputs
+    const posX = document.getElementById('selected-pos-x');
+    const posY = document.getElementById('selected-pos-y');
+    const posZ = document.getElementById('selected-pos-z');
+    
+    // Get rotation inputs
+    const rotX = document.getElementById('selected-rot-x');
+    const rotY = document.getElementById('selected-rot-y');
+    const rotZ = document.getElementById('selected-rot-z');
+    
+    // Update visual mesh position in real-time
+    if (posX && posY && posZ) {
+      const x = parseFloat(posX.value) || 0;
+      const y = parseFloat(posY.value) || 0;
+      const z = parseFloat(posZ.value) || 0;
+      this.selected.position.set(x, y, z);
+    }
+    
+    // Update visual mesh rotation in real-time (convert degrees to radians)
+    if (rotX && rotY && rotZ) {
+      const x = (parseFloat(rotX.value) || 0) * Math.PI / 180;
+      const y = (parseFloat(rotY.value) || 0) * Math.PI / 180;
+      const z = (parseFloat(rotZ.value) || 0) * Math.PI / 180;
+      this.selected.rotation.set(x, y, z);
+    }
+    
+    // Update collider size in real-time if this is a collider
+    if (this.selectedType === 'collider') {
+      const index = this.selected.userData.index;
+      const collider = this.colliders[index];
+      
+      if (collider) {
+        const sizeInputs = [];
+        for (let i = 0; i < 3; i++) {
+          const input = document.getElementById(`selected-size-${i}`);
+          if (input && input.value !== '') {
+            sizeInputs.push(parseFloat(input.value));
+          }
+        }
+        
+        if (sizeInputs.length > 0) {
+          // Create a temporary size array to update visuals
+          let tempSize;
+          if (collider.type === 'sphere') {
+            tempSize = [sizeInputs[0] || 1];
+          } else if (collider.type === 'capsule') {
+            tempSize = [sizeInputs[0] || 0.5, sizeInputs[1] || 2];
+          } else { // box
+            tempSize = [
+              sizeInputs[0] || 1,
+              sizeInputs[1] || 1,
+              sizeInputs[2] || 1
+            ];
+          }
+          
+          // Update the visual mesh geometry to match the exact size (not scaling)
+          this._updateColliderVisualSize(this.selected, collider.type, tempSize);
+        }
+      }
+    }
+    
+    // Update patrol connections if this is a patrol point
+    if (this.selectedType === 'patrol') {
+      this.patrolConnections.forEach(line => this.scene.remove(line));
+      this.patrolConnections = [];
+      this._createPatrolConnections();
+    }
+  }
+
+  // Helper method to update collider visual size without recreating the entire mesh
+  _updateColliderVisualSize(mesh, type, size) {
+    if (!mesh || !mesh.geometry) return;
+    
+    try {
+      // Dispose of the old geometry to prevent memory leaks
+      mesh.geometry.dispose();
+      
+      // Create new geometry with the correct dimensions (same as _createColliderVisuals)
+      let newGeometry;
+      if (type === 'box') {
+        newGeometry = new THREE.BoxGeometry(size[0], size[1], size[2]);
+      } else if (type === 'sphere') {
+        newGeometry = new THREE.SphereGeometry(size[0], 16, 12);
+      } else if (type === 'capsule') {
+        newGeometry = new THREE.CylinderGeometry(size[0], size[0], size[1], 16);
+      } else {
+        // Default to box
+        newGeometry = new THREE.BoxGeometry(1, 1, 1);
+      }
+      
+      // Replace the geometry
+      mesh.geometry = newGeometry;
+      
+      // Reset scale to 1,1,1 since we're using the actual geometry size
+      mesh.scale.set(1, 1, 1);
+      
+    } catch (error) {
+      console.warn('Failed to update collider visual size:', error);
+    }
   }
   
   _deleteSelected() {

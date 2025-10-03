@@ -16,7 +16,15 @@ export class EnemyBase {
     this.colliderSize = options.colliderSize ?? [this.size[0] * 0.5, this.size[1], this.size[2] * 0.5];
 
     this.health = options.health ?? 10;
+    this.maxHealth = this.health;
     this.alive = true;
+
+    // Health bar system
+    this.healthBarVisible = false;
+    this.healthBarGroup = null;
+    this.healthBarBg = null;
+    this.healthBarFill = null;
+    // Don't create health bar immediately - wait for mesh to be ready
 
     // Physics body
     this.body = null;
@@ -35,6 +43,46 @@ export class EnemyBase {
     this._desiredMovement = new THREE.Vector3();
 
     if (options.modelUrl) this._loadModel(options.modelUrl);
+  }
+
+  _createHealthBar() {
+    console.log(`🔍 Creating health bar for ${this.constructor.name}`);
+    
+    // Create health bar group that will float above the enemy
+    this.healthBarGroup = new THREE.Group();
+    this.healthBarGroup.position.y = this.size[1] + 0.5; // Position above enemy
+    this.healthBarGroup.visible = false; // Hidden initially
+    
+    console.log(`🔍 Health bar positioned at y: ${this.healthBarGroup.position.y}`);
+    
+    // Health bar background
+    const bgGeometry = new THREE.PlaneGeometry(1.2, 0.15);
+    const bgMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0x000000, 
+      transparent: true, 
+      opacity: 0.7,
+      side: THREE.DoubleSide
+    });
+    this.healthBarBg = new THREE.Mesh(bgGeometry, bgMaterial);
+    this.healthBarGroup.add(this.healthBarBg);
+    
+    // Health bar fill
+    const fillGeometry = new THREE.PlaneGeometry(1.1, 0.1);
+    const fillMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0x00ff00, 
+      transparent: true, 
+      opacity: 0.9,
+      side: THREE.DoubleSide
+    });
+    this.healthBarFill = new THREE.Mesh(fillGeometry, fillMaterial);
+    this.healthBarFill.position.z = 0.001; // Slightly in front of background
+    this.healthBarGroup.add(this.healthBarFill);
+    
+    // Add to enemy mesh so it moves with the enemy
+    this.mesh.add(this.healthBarGroup);
+    
+    console.log(`🔍 Health bar created with ${this.healthBarGroup.children.length} children`);
+    console.log(`🔍 Health bar added to mesh:`, !!this.mesh);
   }
 
   _createPhysicsBody() {
@@ -253,8 +301,127 @@ export class EnemyBase {
       if (this.mixer) this.mixer.update(delta); 
     } catch (e) {}
 
+    // Update health bar to face camera
+    if (this.healthBarVisible && this.healthBarGroup && player && player.mesh) {
+      this.healthBarGroup.lookAt(player.mesh.position);
+    }
+
     // Reset desired movement
     this._desiredMovement.set(0, 0, 0);
+  }
+
+  takeDamage(amount) {
+    if (!this.alive) return;
+    
+    console.log(`🔍 takeDamage called on ${this.constructor.name}`);
+    console.log(`🔍 healthBarVisible before: ${this.healthBarVisible}`);
+    console.log(`🔍 healthBarGroup exists: ${!!this.healthBarGroup}`);
+    
+    // Show health bar on first hit
+    if (!this.healthBarVisible) {
+      console.log(`🔍 Showing health bar for first time...`);
+      this.showHealthBar();
+    }
+    
+    this.health = Math.max(0, this.health - amount);
+    console.log(`💥 ${this.constructor.name} took ${amount} damage, health: ${this.health}/${this.maxHealth}`);
+    
+    // Update health bar
+    this.updateHealthBar();
+    
+    if (this.health <= 0) {
+      this.onDeath();
+    }
+    
+    return this.health;
+  }
+
+  showHealthBar() {
+    console.log(`🔍 showHealthBar called`);
+    console.log(`🔍 healthBarGroup exists: ${!!this.healthBarGroup}`);
+    
+    // Create health bar if it doesn't exist yet
+    if (!this.healthBarGroup) {
+      console.log(`🔍 Health bar doesn't exist, creating it now...`);
+      this._createHealthBar();
+    }
+    
+    if (this.healthBarGroup) {
+      console.log(`🔍 Setting healthBarGroup.visible = true`);
+      this.healthBarGroup.visible = true;
+      this.healthBarVisible = true;
+      
+      console.log(`🔍 healthBarGroup.visible is now: ${this.healthBarGroup.visible}`);
+      console.log(`🔍 healthBarVisible is now: ${this.healthBarVisible}`);
+      
+      // Add a brief pulse animation when first shown
+      const originalScale = this.healthBarGroup.scale.clone();
+      this.healthBarGroup.scale.setScalar(1.3);
+      
+      // Animate back to normal size
+      const animate = () => {
+        this.healthBarGroup.scale.lerp(originalScale, 0.15);
+        if (this.healthBarGroup.scale.distanceTo(originalScale) > 0.01) {
+          requestAnimationFrame(animate);
+        } else {
+          this.healthBarGroup.scale.copy(originalScale);
+        }
+      };
+      animate();
+    } else {
+      console.error(`❌ healthBarGroup is still null after creation attempt!`);
+    }
+  }
+
+  updateHealthBar() {
+    if (!this.healthBarGroup || !this.healthBarVisible) return;
+    
+    const healthPercent = Math.max(0, this.health / this.maxHealth);
+    
+    // Update fill width by scaling
+    this.healthBarFill.scale.x = healthPercent;
+    
+    // Adjust position to keep it left-aligned
+    this.healthBarFill.position.x = -(1.1 * (1 - healthPercent)) / 2;
+    
+    // Change color based on health percentage
+    if (healthPercent > 0.6) {
+      this.healthBarFill.material.color.setHex(0x00ff00); // Green
+    } else if (healthPercent > 0.3) {
+      this.healthBarFill.material.color.setHex(0xffff00); // Yellow
+    } else {
+      this.healthBarFill.material.color.setHex(0xff0000); // Red
+    }
+  }
+
+  heal(amount) {
+    if (!this.alive) return;
+    
+    this.health = Math.min(this.maxHealth, this.health + amount);
+    console.log(`💚 ${this.constructor.name} healed ${amount} HP, health: ${this.health}/${this.maxHealth}`);
+    return this.health;
+  }
+
+  onDeath() {
+    console.log(`💀 ${this.constructor.name} has died!`);
+    this.alive = false;
+    
+    // Hide health bar on death
+    if (this.healthBarGroup) {
+      this.healthBarGroup.visible = false;
+      this.healthBarVisible = false;
+    }
+    
+    // Hide the enemy (could also add death animation here)
+    if (this.mesh) {
+      this.mesh.visible = false;
+    }
+    
+    // Remove physics body to prevent further interactions
+    if (this.body) {
+      this.physicsWorld.removeBody(this.body);
+      this.body = null;
+    }
   }
 
   dispose() {
@@ -262,6 +429,28 @@ export class EnemyBase {
       this.physicsWorld.removeBody(this.body);
       this.body = null;
     }
+    
+    // Clean up health bar resources
+    if (this.healthBarGroup) {
+      // Dispose of materials and geometries
+      this.healthBarGroup.children.forEach(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(mat => mat.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
+      
+      // Remove from scene
+      if (this.mesh) {
+        this.mesh.remove(this.healthBarGroup);
+      }
+      this.healthBarGroup = null;
+    }
+    
     if (this.mesh) this.scene.remove(this.mesh);
   }
 }
