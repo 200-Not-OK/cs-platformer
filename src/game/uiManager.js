@@ -18,7 +18,6 @@ export class UIManager {
     }
     if (inst.mount) {
       inst.mount();
-      console.log(`📋 UI Component '${key}' mounted:`, inst); // Debug log
       // Ensure the component root accepts pointer events so interactive elements work
       // BUT respect if the component specifically set pointerEvents to 'none'
       try { 
@@ -28,7 +27,6 @@ export class UIManager {
       } catch (e) { /* ignore */ }
     }
     this.components.set(key, inst);
-    console.log(`📋 Total UI components: ${this.components.size}`); // Debug log
     return inst;
   }
 
