@@ -255,7 +255,7 @@ export class HUD extends UIComponent {
     }
   }
 
-  updateCollectibles(apples, totalApples, potions, score) {
+  updateCollectibles(apples, totalApples, potions) {
     // Update apples with color coding
     this.applesCollected = apples || 0;
     this.totalApples = totalApples || 10;
@@ -287,26 +287,26 @@ export class HUD extends UIComponent {
       this.potionText.style.color = '#4caf50'; // Green when good
       this.potionIcon.textContent = '🧪';
     }
-    
-    // Update score with formatting
-    if (score !== undefined) {
-      this.playerScore = score;
-      this.scoreText.textContent = `Score: ${this.playerScore.toLocaleString()}`;
-    }
   }
 
   // Method to collect an apple (example usage)
   collectApple() {
     this.applesCollected = Math.min(this.applesCollected + 1, this.totalApples);
-    this.playerScore += 100; // Award points for collecting apples
-    this.updateCollectibles(this.applesCollected, this.totalApples, this.healthPotions, this.playerScore);
+    this.updateCollectibles(this.applesCollected, this.totalApples, this.healthPotions);
+  }
+
+  // Method to add a health potion to inventory
+  addPotion() {
+    this.healthPotions++;
+    this.updateCollectibles(this.applesCollected, this.totalApples, this.healthPotions);
+    console.log(`🧪 Added potion! Total: ${this.healthPotions}`);
   }
 
   // Method to use a health potion
   useHealthPotion() {
     if (this.healthPotions > 0) {
       this.healthPotions--;
-      this.updateCollectibles(this.applesCollected, this.totalApples, this.healthPotions, this.playerScore);
+      this.updateCollectibles(this.applesCollected, this.totalApples, this.healthPotions);
       return true; // Successfully used potion
     }
     return false; // No potions available

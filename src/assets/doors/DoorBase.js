@@ -725,13 +725,13 @@ export class DoorBase {
       this.body.position.set(worldPosition.x, worldPosition.y, worldPosition.z);
       this.body.quaternion.set(worldQuaternion.x, worldQuaternion.y, worldQuaternion.z, worldQuaternion.w);
 
-      console.log('Updated door physics body position:', {
-        doorPanelPos: this.doorPanel.position,
-        worldPos: worldPosition,
-        physicsPos: this.body.position,
-        centerOffset: centerOffset,
-        rotation: this.currentRotation
-      });
+      // console.log('Updated door physics body position:', {
+      //   doorPanelPos: this.doorPanel.position,
+      //   worldPos: worldPosition,
+      //   physicsPos: this.body.position,
+      //   centerOffset: centerOffset,
+      //   rotation: this.currentRotation
+      // });
     }
   }
 

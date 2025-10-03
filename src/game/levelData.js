@@ -17,7 +17,6 @@ export const levels = [
         config: {
           applesTotal: 12,
           potionsStart: 2,
-          scoreStart: 0,
           pointsPerApple: 150,
           collectibleTypes: {
             apples: { 
@@ -34,11 +33,6 @@ export const levels = [
               lowColor: '#ffd43b', 
               emptyColor: '#ff6b6b', 
               emptyIcon: '💔' 
-            },
-            score: { 
-              icon: '⭐', 
-              name: 'Score', 
-              color: '#ffd43b' 
             }
           }
         }
@@ -212,7 +206,7 @@ export const levels = [
     startPosition: [
       195,
       6,
-      -82
+      -83
     ],
     ui: [
       "hud",
@@ -220,9 +214,8 @@ export const levels = [
       {
         type: "collectibles",
         config: {
-          applesTotal: 8,
+          applesTotal: 5,
           potionsStart: 5,
-          scoreStart: 1500,
           pointsPerApple: 200,
           collectibleTypes: {
             apples: { 
@@ -234,16 +227,11 @@ export const levels = [
             },
             potions: { 
               icon: '🧪', 
-              name: 'Mana Potions', 
-              color: '#9775fa', 
+              name: 'Health Potions', 
+              color: '#9775fa',
               lowColor: '#ffd43b', 
               emptyColor: '#ff6b6b', 
               emptyIcon: '💔' 
-            },
-            score: { 
-              icon: '💎', 
-              name: 'Score', 
-              color: '#66d9ef' 
             }
           }
         }
@@ -251,6 +239,17 @@ export const levels = [
     ],
     lights: ["BasicLights"],
     enemies: [],
+    collectibles: {
+      chests: [
+        { id: "chest_1", position: [145, 1.4, -46], contents: "apple" },
+        { id: "chest_2", position: [146, 1.4, 49], contents: "apple" },
+        { id: "chest_3", position: [108, 1.4, 86], contents: "potion" },
+        { id: "chest_4", position: [103, 1.4, 125], contents: "apple" },
+        { id: "chest_5", position: [135, 1.4, 116], contents: "potion" },
+        { id: "chest_6", position: [18, 1.4, 179], contents: "apple" },
+        { id: "chest_7", position: [110, 1.4, 163], contents: "apple" }
+      ]
+    },
     colliders: [
       {
         id: "collider_20",

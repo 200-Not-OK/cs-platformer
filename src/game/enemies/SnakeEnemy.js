@@ -18,7 +18,7 @@ export class SnakeEnemy extends EnemyBase {
     
     // Snake-specific properties
     this.enemyType = 'snake';
-    this.attackRange = 1.8; // Close range attacker
+    this.attackRange = 2.5; // Increased attack range to account for collider sizes
     this.chaseRange = options.chaseRange ?? 6.0;
     this.patrolSpeed = 0.8;
     this.chaseSpeed = 1.7; // Reduced from 2.2 to make chase less aggressive
@@ -297,7 +297,7 @@ export class SnakeEnemy extends EnemyBase {
         // Reached patrol point - play search animation (idle state)
         if (this.snakeAnimations.coil && this.currentAction !== this.snakeAnimations.coil) {
           this._playSnakeAction(this.snakeAnimations.coil);
-          console.log('🐍 Snake reached patrol point, playing search animation...');
+          //console.log('🐍 Snake reached patrol point, playing search animation...');
         }
         
         // Stop movement while searching
@@ -307,7 +307,7 @@ export class SnakeEnemy extends EnemyBase {
         if (this.stateTimer > 2.0) {
           this.currentPatrolIndex = (this.currentPatrolIndex + 1) % this.patrolPoints.length;
           this.stateTimer = 0;
-          console.log('🐍 Moving to next patrol point...');
+          //console.log('🐍 Moving to next patrol point...');
         }
       } else {
         // Move towards patrol point using base class movement system
@@ -326,7 +326,7 @@ export class SnakeEnemy extends EnemyBase {
         // Play movement animation when actually moving
         if (this.snakeAnimations.slither && this.currentAction !== this.snakeAnimations.slither) {
           this._playSnakeAction(this.snakeAnimations.slither);
-          console.log('🐍 Playing slither animation while moving...');
+          //console.log('🐍 Playing slither animation while moving...');
         }
       }
     }
@@ -347,11 +347,18 @@ export class SnakeEnemy extends EnemyBase {
       if (currentTime - this.lastAttackTime >= this.attackCooldown) {
         this.behaviorState = 'attack';
         this.stateTimer = 0;
-        console.log('🐍 Snake attacking player!');
+        console.log(`🐍 Snake attacking player! Distance: ${distanceToPlayer.toFixed(2)}, Attack Range: ${this.attackRange}`);
         if (this.snakeAnimations.strike) {
           this._playSnakeAction(this.snakeAnimations.strike);
         }
         return;
+      } else {
+        console.log(`🐍 Snake in range but cooling down. Distance: ${distanceToPlayer.toFixed(2)}, Time since last attack: ${currentTime - this.lastAttackTime}ms`);
+      }
+    } else {
+      // Debug: Show when snake is close but not quite in range
+      if (distanceToPlayer <= this.attackRange + 0.5) {
+        console.log(`🐍 Snake close to attack range. Distance: ${distanceToPlayer.toFixed(2)}, Attack Range: ${this.attackRange}`);
       }
     }
 
