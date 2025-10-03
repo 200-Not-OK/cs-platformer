@@ -16,6 +16,7 @@ export class EnemyBase {
     this.colliderSize = options.colliderSize ?? [this.size[0] * 0.5, this.size[1], this.size[2] * 0.5];
 
     this.health = options.health ?? 10;
+    this.maxHealth = this.health;
     this.alive = true;
 
     // Physics body
@@ -255,6 +256,43 @@ export class EnemyBase {
 
     // Reset desired movement
     this._desiredMovement.set(0, 0, 0);
+  }
+
+  takeDamage(amount) {
+    if (!this.alive) return;
+    
+    this.health = Math.max(0, this.health - amount);
+    console.log(`💥 ${this.constructor.name} took ${amount} damage, health: ${this.health}/${this.maxHealth}`);
+    
+    if (this.health <= 0) {
+      this.onDeath();
+    }
+    
+    return this.health;
+  }
+
+  heal(amount) {
+    if (!this.alive) return;
+    
+    this.health = Math.min(this.maxHealth, this.health + amount);
+    console.log(`💚 ${this.constructor.name} healed ${amount} HP, health: ${this.health}/${this.maxHealth}`);
+    return this.health;
+  }
+
+  onDeath() {
+    console.log(`💀 ${this.constructor.name} has died!`);
+    this.alive = false;
+    
+    // Hide the enemy (could also add death animation here)
+    if (this.mesh) {
+      this.mesh.visible = false;
+    }
+    
+    // Remove physics body to prevent further interactions
+    if (this.body) {
+      this.physicsWorld.removeBody(this.body);
+      this.body = null;
+    }
   }
 
   dispose() {

@@ -38,7 +38,8 @@ export class HUD extends UIComponent {
     // ctx can contain game state like player health/score
     if (ctx && ctx.player) {
       const hp = Math.round(ctx.player.health ?? 100);
-      this.healthEl.textContent = `Health: ${hp}`;
+      const maxHp = Math.round(ctx.player.maxHealth ?? 100);
+      this.healthEl.textContent = `Health: ${hp}/${maxHp}`;
     }
   }
 }

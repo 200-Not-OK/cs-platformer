@@ -4,10 +4,15 @@ import { WalkerEnemy } from './WalkerEnemy.js';
 
 export class JumperEnemy extends WalkerEnemy {
   constructor(scene, physicsWorld, options = {}) {
-    super(scene, physicsWorld, options);
-    this.jumpInterval = options.jumpInterval ?? 2.5; // seconds
+    // Set default health for JumperEnemy
+    const jumperOptions = {
+      health: 40, // Jumper enemies have 40 HP (stronger due to mobility)
+      jumpInterval: 2.5,
+      jumpStrength: 10,
+      ...options
+    };
+    super(scene, physicsWorld, jumperOptions);
     this._jumpTimer = 0;
-    this.jumpStrength = options.jumpStrength ?? 10;
   }
 
   update(delta, player, platforms = []) {
