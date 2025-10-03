@@ -11,7 +11,38 @@ export const levels = [
     ],
     ui: [
       "hud",
-      "fps"
+      "fps",
+      {
+        type: "collectibles",
+        config: {
+          applesTotal: 12,
+          potionsStart: 2,
+          scoreStart: 0,
+          pointsPerApple: 150,
+          collectibleTypes: {
+            apples: { 
+              icon: '🍎', 
+              name: 'Red Apples', 
+              color: '#ff6b6b', 
+              completeColor: '#51cf66', 
+              completeIcon: '🏆' 
+            },
+            potions: { 
+              icon: '🧪', 
+              name: 'Health Potions', 
+              color: '#4dabf7', 
+              lowColor: '#ffd43b', 
+              emptyColor: '#ff6b6b', 
+              emptyIcon: '💔' 
+            },
+            score: { 
+              icon: '⭐', 
+              name: 'Score', 
+              color: '#ffd43b' 
+            }
+          }
+        }
+      }
     ],
     lights: [
       "BasicLights"
@@ -236,7 +267,38 @@ export const levels = [
     ],
     ui: [
       "hud",
-      "minimap"
+      "minimap",
+      {
+        type: "collectibles",
+        config: {
+          applesTotal: 8,
+          potionsStart: 5,
+          scoreStart: 1500,
+          pointsPerApple: 200,
+          collectibleTypes: {
+            apples: { 
+              icon: '🍏', 
+              name: 'Green Apples', 
+              color: '#51cf66', 
+              completeColor: '#ffd43b', 
+              completeIcon: '👑' 
+            },
+            potions: { 
+              icon: '🧪', 
+              name: 'Mana Potions', 
+              color: '#9775fa', 
+              lowColor: '#ffd43b', 
+              emptyColor: '#ff6b6b', 
+              emptyIcon: '💔' 
+            },
+            score: { 
+              icon: '💎', 
+              name: 'Score', 
+              color: '#66d9ef' 
+            }
+          }
+        }
+      }
     ],
     lights: ["BasicLights"],
     enemies: [],
