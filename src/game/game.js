@@ -11,10 +11,13 @@ import { Minimap } from './components/minimap.js';
 import { Objectives } from './components/objectives.js';
 import { SmallMenu } from './components/menu.js';
 import { FPS } from './components/fps.js';
+import { Crosshair } from './components/crosshair.js';
+import { Collectibles } from './components/collectibles.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
 import { PhysicsWorld } from './physics/PhysicsWorld.js';
+import { CombatSystem } from './combatSystem.js';
 
 export class Game {
   constructor() {
@@ -22,91 +25,11 @@ export class Game {
     this.scene = scene;
     this.renderer = renderer;
 
-    // Initialize physics world with scene for debug rendering and improved collision detection
+    // Initialize physics world with scene for improved collision detection
     this.physicsWorld = new PhysicsWorld(this.scene, {
       useAccurateCollision: false, // Disable Trimesh by default for more reliable collision
       debugMode: false
     });
-
-    // Physics debug toggle accessible from browser console
-    window.__physicsDebugOn = false;
-    window.togglePhysicsDebug = () => {
-      window.__physicsDebugOn = !window.__physicsDebugOn;
-      this.physicsWorld.enableDebugRenderer(window.__physicsDebugOn);
-      console.log(`Physics debug ${window.__physicsDebugOn ? 'enabled' : 'disabled'}`);
-    };
-
-    // Collision info debug command
-    window.showCollisionInfo = () => {
-      this.physicsWorld.logCollisionInfo();
-    };
-
-    // Toggle between box and trimesh collision for testing
-    window.toggleAccurateCollision = () => {
-      const newSetting = !this.physicsWorld.defaultUseAccurateCollision;
-      this.physicsWorld.defaultUseAccurateCollision = newSetting;
-      console.log(`Accurate collision detection ${newSetting ? 'enabled' : 'disabled'}`);
-      console.log('💡 Reload the level to see changes: window.game.loadLevel(0) or window.game.loadLevel(1)');
-    };
-
-    // Debug specific mesh collision properties
-    window.inspectMesh = (meshName) => {
-      if (!this.level) {
-        console.log('❌ No level loaded');
-        return;
-      }
-      
-      const mesh = this.level.objects.find(obj => obj.name.includes(meshName));
-      if (!mesh) {
-        console.log(`❌ Mesh containing "${meshName}" not found`);
-        console.log('Available meshes:', this.level.objects.map(obj => obj.name));
-        return;
-      }
-      
-      console.log(`🔍 Inspecting mesh: ${mesh.name}`);
-      console.log(`   📍 Position: (${mesh.position.x.toFixed(2)}, ${mesh.position.y.toFixed(2)}, ${mesh.position.z.toFixed(2)})`);
-      console.log(`   📏 Scale: (${mesh.scale.x.toFixed(2)}, ${mesh.scale.y.toFixed(2)}, ${mesh.scale.z.toFixed(2)})`);
-      console.log(`   🔄 Rotation: (${mesh.rotation.x.toFixed(2)}, ${mesh.rotation.y.toFixed(2)}, ${mesh.rotation.z.toFixed(2)})`);
-      
-      if (mesh.geometry && mesh.geometry.boundingBox) {
-        const size = new THREE.Vector3();
-        mesh.geometry.boundingBox.getSize(size);
-        const scaledSize = size.clone().multiply(mesh.scale);
-        console.log(`   📦 Bounding box (unscaled): (${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)})`);
-        console.log(`   📦 Bounding box (scaled): (${scaledSize.x.toFixed(2)} × ${scaledSize.y.toFixed(2)} × ${scaledSize.z.toFixed(2)})`);
-      }
-      
-      if (mesh.userData.physicsBody) {
-        const body = mesh.userData.physicsBody;
-        console.log(`   ⚛️  Physics body position: (${body.position.x.toFixed(2)}, ${body.position.y.toFixed(2)}, ${body.position.z.toFixed(2)})`);
-        console.log(`   ⚛️  Physics body type: ${body.userData?.collisionType || 'unknown'}`);
-      }
-    };
-
-    // Wall sliding debug commands
-    window.toggleWallSliding = () => {
-      if (this.player) {
-        this.player.enableWallSliding = !this.player.enableWallSliding;
-        console.log(`Wall sliding ${this.player.enableWallSliding ? 'enabled' : 'disabled'}`);
-      }
-    };
-
-    window.debugWallNormals = () => {
-      if (this.player) {
-        this.player.debugWallNormals();
-      } else {
-        console.log('❌ Player not available');
-      }
-    };
-
-    window.setWallSlideSmoothing = (value) => {
-      if (this.player && typeof value === 'number' && value >= 0 && value <= 1) {
-        this.player.wallSlideSmoothing = value;
-        console.log(`Wall slide smoothing set to ${value}`);
-      } else {
-        console.log('❌ Please provide a value between 0 and 1');
-      }
-    };
 
     // Input
     this.input = new InputManager(window);
@@ -117,13 +40,13 @@ export class Game {
 
   // Player
   this.player = new Player(this.scene, this.physicsWorld, { 
-    speed: 25, 
+    speed: 17, 
     jumpStrength: 12, 
     size: [1, 1.5, 1],
     // Collider size scaling factors (optional)
     colliderWidthScale: 0.5,   // 40% of model width (default: 0.4)
     colliderHeightScale: 1,  // 90% of model height (default: 0.9)  
-    colliderDepthScale: 0.7    // 40% of model depth (default: 0.4)
+    colliderDepthScale: 0.5    // 40% of model depth (default: 0.4)
   });
   // Player position will be set by loadLevel() call
 
@@ -183,21 +106,21 @@ export class Game {
   this.ui.add('hud', HUD, { health: 100 });
   // Add FPS counter
   this.ui.add('fps', FPS, { showFrameTime: true });
+  // Add crosshair for combat
+  this.ui.add('crosshair', Crosshair, { visible: true });
+
+  // Combat system
+  this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
 
   // Lighting manager (modular per-level lights)
   this.lights = new LightManager(this.scene);
 
-  // Load the initial level early so subsequent code can reference `this.level`
-  this._initializeLevel();
-
-    // debug toggles (will be applied once level loads)
-    this.showColliders = true;
+    // Load the initial level early so subsequent code can reference `this.level`
+    this._initializeLevel();
 
     // small world grid
     const grid = new THREE.GridHelper(200, 200, 0x444444, 0x222222);
-    this.scene.add(grid);
-
-    // Pause state
+    this.scene.add(grid);    // Pause state
     this.paused = false;
     this.pauseMenu = document.getElementById('pauseMenu');
     const resumeBtn = document.getElementById('resumeBtn');
@@ -230,31 +153,6 @@ export class Game {
     await this.loadLevel(0);
     // Apply lights for current level   
     this.applyLevelLights(this.level?.data);
-    
-    // Expose debug functions globally for console access
-    this._setupGlobalDebugFunctions();
-  }
-
-  _setupGlobalDebugFunctions() {
-    // Make physics debug toggle available globally
-    window.togglePhysicsDebug = () => {
-      const enabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
-      console.log(`🔧 Physics debug visualization ${enabled ? 'ON' : 'OFF'}`);
-      return enabled;
-    };
-    
-    // Show current debug status
-    window.physicsDebugStatus = () => {
-      return this.physicsWorld.isDebugEnabled();
-    };
-    
-    console.log('🔧 Debug functions available:');
-    console.log('  togglePhysicsDebug() - Toggle physics collision visualization');
-    console.log('  physicsDebugStatus() - Check if physics debug is enabled');
-    console.log('  toggleWallSliding() - Enable/disable wall sliding');
-    console.log('  debugWallNormals() - Show current wall collision normals');
-    console.log('  setWallSlideSmoothing(0.8) - Adjust wall sliding smoothness (0-1)');
-    console.log('  Press L to toggle physics debug visualization');
   }
 
   _bindKeys() {
@@ -296,17 +194,14 @@ export class Game {
         // next level — use loadLevel so per-level UI is applied
         const nextIndex = this.levelManager.currentIndex + 1;
         this.loadLevel(nextIndex).catch(err => console.error('Failed to load level:', err));
-      } else if (code === 'KeyH') {
-        // toggle collider visualization
-        this.showColliders = !this.showColliders;
-        if (this.level && this.level.toggleColliders) {
-          this.level.toggleColliders(this.showColliders);
-        }
-        this.player.toggleHelperVisible(this.showColliders);
       } else if (code === 'KeyL') {
         // toggle physics debug visualization
         const debugEnabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
-        console.log(`🔧 Physics debug visualization ${debugEnabled ? 'ON' : 'OFF'}`);
+      } else if (code === 'KeyB') {
+        // toggle combat debug visuals
+        if (this.combatSystem) {
+          this.combatSystem.toggleDebug();
+        }
       }
     });
   }
@@ -336,7 +231,10 @@ export class Game {
     // update UI each frame with some context (player model and simple state)
     if (this.ui) {
       const ctx = {
-        player: { health: this.player.health ?? 100 },
+        player: { 
+          health: this.player.health ?? 100,
+          maxHealth: this.player.maxHealth ?? 100 
+        },
         playerModel: this.player.mesh
       };
       this.ui.update(delta, ctx);
@@ -358,9 +256,30 @@ export class Game {
       playerActive = false;
     }
 
+    // Update crosshair visibility based on camera mode
+    const crosshair = this.ui.get('crosshair');
+    if (crosshair) {
+      crosshair.setProps({ visible: true }); // Always visible for debugging
+    }
+
     // update player (movement read from input manager)
     const platforms = this.level ? this.level.getPlatforms() : [];
     this.player.update(delta, this.input, camOrientation, platforms, playerActive);
+
+    // Handle combat input (left-click to attack)
+    if (playerActive && this.input.wasLeftClicked() && this.combatSystem.canAttack()) {
+      if (this.player.performAttack()) {
+        // Set enemies for combat system if level has them
+        if (this.level && this.level.getEnemies) {
+          this.combatSystem.setEnemies(this.level.getEnemies());
+        }
+        // Perform the sword swing attack (better for horizontal sword animation)
+        this.combatSystem.performSwordSwing(this.player, this.activeCamera);
+      }
+    }
+
+    // Update combat system
+    this.combatSystem.update(delta);
 
   // update lights (allow dynamic lights to animate)
   if (this.lights) this.lights.update(delta);
@@ -386,6 +305,9 @@ export class Game {
     // Update player's physics world reference
     this.player.physicsWorld = this.physicsWorld;
     
+    // Update combat system's physics world reference
+    this.combatSystem.physicsWorld = this.physicsWorld;
+    
     // Recreate player's physics body in the new physics world
     if (this.player.originalModelSize) {
       this.player.createPhysicsBody(this.player.originalModelSize);
@@ -394,26 +316,14 @@ export class Game {
     // Update level manager's physics world reference
     this.levelManager.physicsWorld = this.physicsWorld;
     
-    console.log('Loading level...', index);
     this.level = await this.levelManager.loadIndex(index);
-    
-    // Physics bodies are already created during level loading in level.js
-    console.log('✅ Level loaded with', this.level.physicsBodies.length, 'physics bodies');
 
     // Position player at start position
     const start = this.level.data.startPosition;
     this.player.setPosition(new THREE.Vector3(...start));
     
-    // Apply debug settings
-    if (this.level.toggleColliders) {
-      this.level.toggleColliders(this.showColliders);
-    }
-    this.player.toggleHelperVisible(this.showColliders);
-    
     // Trigger level start cinematic
     this.level.triggerLevelStartCinematic(this.activeCamera, this.player);
-    
-    console.log('Level loaded successfully');
 
     // swap UI components according to level.data.ui (array of strings)
     this.applyLevelUI(this.level.data);
@@ -446,17 +356,16 @@ export class Game {
     // Clear existing UI and re-add defaults according to level metadata
     if (!this.ui) return;
     
-    console.log('🎯 applyLevelUI called, current components:', Array.from(this.ui.components.keys()));
-    
     // Store global components that should persist across levels
     const globalComponents = new Map();
     if (this.ui.get('fps')) {
       globalComponents.set('fps', this.ui.get('fps'));
-      console.log('🎯 Stored FPS component for preservation');
+    }
+    if (this.ui.get('crosshair')) {
+      globalComponents.set('crosshair', this.ui.get('crosshair'));
     }
     
     this.ui.clear();
-    console.log('🎯 UI cleared, components after clear:', Array.from(this.ui.components.keys()));
     
     // Re-add global components first
     for (const [key, component] of globalComponents) {
@@ -464,32 +373,48 @@ export class Game {
       // Re-mount the component since it was unmounted during clear
       if (component.mount) {
         component.mount();
-        console.log('🎯 Re-mounted global component:', key);
       }
-      console.log('🎯 Restored global component:', key);
     }
-    
-    console.log('🎯 Components after restoring globals:', Array.from(this.ui.components.keys()));
     
     const uiList = (levelData && levelData.ui) ? levelData.ui : ['hud'];
-    console.log('🎯 Level UI list:', uiList);
     
-    for (const key of uiList) {
-      if (key === 'hud') this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
-      else if (key === 'minimap') this.ui.add('minimap', Minimap, {});
-      else if (key === 'objectives') this.ui.add('objectives', Objectives, { items: levelData.objectives ?? ['Reach the goal'] });
-      else if (key === 'menu') this.ui.add('menu', SmallMenu, { onResume: () => this.setPaused(false) });
-      else if (key === 'fps') {
-        // FPS is already added as a global component, skip warning
-        console.log('🎯 FPS found in level UI list, skipping (already global)');
+    for (const uiItem of uiList) {
+      // Handle both string format ("hud") and object format ({ type: "collectibles", config: {...} })
+      let key, config;
+      if (typeof uiItem === 'string') {
+        key = uiItem;
+        config = {};
+      } else if (typeof uiItem === 'object' && uiItem.type) {
+        key = uiItem.type;
+        config = uiItem.config || {};
+      } else {
+        console.warn('Invalid UI item format in level data:', uiItem);
         continue;
       }
-      else {
-        console.warn('Unknown UI key in level data:', key);
+      
+      if (key === 'hud') {
+        this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
+      } else if (key === 'minimap') {
+        this.ui.add('minimap', Minimap, config);
+      } else if (key === 'objectives') {
+        this.ui.add('objectives', Objectives, { 
+          items: levelData.objectives ?? ['Reach the goal'],
+          ...config 
+        });
+      } else if (key === 'menu') {
+        this.ui.add('menu', SmallMenu, { 
+          onResume: () => this.setPaused(false),
+          ...config 
+        });
+      } else if (key === 'collectibles') {
+        this.ui.add('collectibles', Collectibles, config);
+      } else if (key === 'fps') {
+        // FPS is already added as a global component, skip
+        continue;
+      } else {
+        console.warn('Unknown UI component type in level data:', key);
       }
     }
-    
-    console.log('🎯 Final components after applyLevelUI:', Array.from(this.ui.components.keys()));
   }
 
   setPaused(v) {

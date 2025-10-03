@@ -11,94 +11,74 @@ export const levels = [
     ],
     ui: [
       "hud",
-      "fps"
+      "fps",
+      {
+        type: "collectibles",
+        config: {
+          applesTotal: 12,
+          potionsStart: 2,
+          scoreStart: 0,
+          pointsPerApple: 150,
+          collectibleTypes: {
+            apples: { 
+              icon: '🍎', 
+              name: 'Red Apples', 
+              color: '#ff6b6b', 
+              completeColor: '#51cf66', 
+              completeIcon: '🏆' 
+            },
+            potions: { 
+              icon: '🧪', 
+              name: 'Health Potions', 
+              color: '#4dabf7', 
+              lowColor: '#ffd43b', 
+              emptyColor: '#ff6b6b', 
+              emptyIcon: '💔' 
+            },
+            score: { 
+              icon: '⭐', 
+              name: 'Score', 
+              color: '#ffd43b' 
+            }
+          }
+        }
+      }
     ],
     lights: [
       "BasicLights"
     ],
     enemies: [
       {
-        type: "walker",
+        type: "snake",
         position: [
-          5,
-          6,
-          8
+          -5,
+          2,
+          5
         ],
-        modelUrl: "src/assets/low_poly_female/scene.gltf",
-        patrolPoints: [[7, 2, -8, 0.5], [13, 2, -8, 0.5]],
-        speed: 15,
-        chaseRange: 5
-      },
-      {
-        type: "runner",
-        position: [
-          10,
-          6,
-          6
-        ],
-        modelUrl: "src/assets/low_poly_male/scene.gltf",
+        modelUrl: "src/assets/enemies/snake/scene.gltf",
         patrolPoints: [
           [
-            12,
-            2,
-            6,
-            0.4
+            -5,
+            1,
+            5,
+            0.3
           ],
           [
-            16,
-            2,
-            6,
-            0.4
-          ]
-        ],
-        speed: 17,
-        chaseRange: 7
-      },
-      {
-        type: "jumper",
-        position: [
-          2,
-          6,
-          10
-        ],
-        modelUrl: "src/assets/low_poly_female/scene.gltf",
-        patrolPoints: [
+            -8,
+            1,
+            8,
+            0.3
+          ],
           [
-            2,
+            -3,
             1,
             10,
-            0.6
+            0.3
           ]
         ],
-        jumpInterval: 1.8,
-        jumpStrength: 5.5
-      },
-      {
-        type: "flyer",
-        position: [
-          8,
-          6,
-          -2
-        ],
-        modelUrl: "src/assets/futuristic_flying_animated_robot_-_low_poly/scene.gltf",
-        patrolPoints: [
-          [
-            8,
-            6,
-            -2
-          ],
-          [
-            12,
-            8,
-            -4
-          ],
-          [
-            6,
-            7,
-            2
-          ]
-        ],
-        speed: 2.5
+        speed: 10,
+        chaseRange: 6,
+        health: 35
       }
     ],
     colliders: [
@@ -236,7 +216,38 @@ export const levels = [
     ],
     ui: [
       "hud",
-      "minimap"
+      "minimap",
+      {
+        type: "collectibles",
+        config: {
+          applesTotal: 8,
+          potionsStart: 5,
+          scoreStart: 1500,
+          pointsPerApple: 200,
+          collectibleTypes: {
+            apples: { 
+              icon: '🍏', 
+              name: 'Green Apples', 
+              color: '#51cf66', 
+              completeColor: '#ffd43b', 
+              completeIcon: '👑' 
+            },
+            potions: { 
+              icon: '🧪', 
+              name: 'Mana Potions', 
+              color: '#9775fa', 
+              lowColor: '#ffd43b', 
+              emptyColor: '#ff6b6b', 
+              emptyIcon: '💔' 
+            },
+            score: { 
+              icon: '💎', 
+              name: 'Score', 
+              color: '#66d9ef' 
+            }
+          }
+        }
+      }
     ],
     lights: ["BasicLights"],
     enemies: [],
