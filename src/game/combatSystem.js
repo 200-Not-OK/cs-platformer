@@ -66,7 +66,8 @@ export class CombatSystem {
     // Sword swing parameters
     const swingRange = 2.5; // How far the sword reaches
     const swingArc = Math.PI / 3; // 60 degree arc (30 degrees each side)
-    const swingHeight = 1.5; // Vertical range of sword swing
+    const swingHeight = 2.5; // Increased vertical range to hit low enemies like snakes
+    const swingLowReach = 2.0; // Increased downward reach to hit very low enemies like snakes
     
     console.log(`🗡️ Sword swing - Range: ${swingRange}, Arc: ${(swingArc * 180 / Math.PI).toFixed(1)}°`);
     console.log(`🗡️ Player position:`, playerPos);
@@ -97,12 +98,15 @@ export class CombatSystem {
         continue;
       }
       
-      // Fix: Check vertical distance properly (difference in Y positions)
-      const verticalDistance = Math.abs(toEnemy.y);
-      console.log(`🔍 Vertical distance: ${verticalDistance.toFixed(2)} (max: ${swingHeight})`);
+      // Enhanced vertical check: allow hits both above and below player sword height
+      const verticalOffset = toEnemy.y; // Positive if enemy is above, negative if below
+      console.log(`🔍 Vertical offset: ${verticalOffset.toFixed(2)} (range: -${swingLowReach} to +${swingHeight})`);
       
-      if (verticalDistance > swingHeight) {
-        console.log(`❌ Enemy too far vertically`);
+      // Check if enemy is within vertical reach (can hit above or below)
+      const withinVerticalReach = (verticalOffset >= -swingLowReach) && (verticalOffset <= swingHeight);
+      
+      if (!withinVerticalReach) {
+        console.log(`❌ Enemy outside vertical reach`);
         continue;
       }
       
@@ -120,7 +124,7 @@ export class CombatSystem {
         console.log(`🎯 SWORD HIT! Enemy: ${enemy.constructor.name}`);
         console.log(`📏 Distance: ${horizontalDistance.toFixed(2)} units`);
         console.log(`📐 Angle: ${(angle * 180 / Math.PI).toFixed(1)}° (max: ${(swingArc / 2 * 180 / Math.PI).toFixed(1)}°)`);
-        console.log(`📏 Vertical offset: ${verticalDistance.toFixed(2)} units`);
+        console.log(`📏 Vertical offset: ${verticalOffset.toFixed(2)} units (range: -${swingLowReach} to +${swingHeight})`);
         
         // Debug visual for hit enemy
         this.createEnemyHitDebug(enemyPos, true);
