@@ -89,16 +89,16 @@ export class PhysicsWorld {
     );
     this.world.addContactMaterial(playerPlatformContact);
     
-    // Player-Wall contact: High friction to prevent sliding
+    // Player-Wall contact: Very low friction for natural sliding when airborne
     const playerWallContact = new CANNON.ContactMaterial(
       this.materials.player,
       this.materials.wall,
       {
-        friction: 0.1,
+        friction: 0.0, // Zero friction - let player slide freely on walls
         restitution: 0.0,
-        contactEquationStiffness: 1e8,
-        contactEquationRelaxation: 3,
-        frictionEquationStiffness: 1e8,
+        contactEquationStiffness: 1e7, // Reduced from 1e8 for softer collision response
+        contactEquationRelaxation: 4, // Increased for more forgiving collisions
+        frictionEquationStiffness: 1e6, // Much lower friction stiffness
         frictionEquationRelaxation: 3
       }
     );

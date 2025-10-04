@@ -640,23 +640,25 @@ export class Player {
       let targetVelX = moveDirection.x * targetSpeed;
       let targetVelZ = moveDirection.z * targetSpeed;
       
-      // Apply wall sliding if enabled and there are wall collisions
-      if (this.enableWallSliding && this.wallNormals.length > 0) {
-        const slidingVelocity = this.calculateSlidingVelocity(
-          new THREE.Vector3(targetVelX, 0, targetVelZ),
-          this.wallNormals
-        );
-        targetVelX = slidingVelocity.x;
-        targetVelZ = slidingVelocity.z;
-      }
-      
       // Apply movement based on grounded state
       if (this.isGrounded) {
-        // When grounded, use direct velocity for stable movement
+        // When grounded, apply wall sliding to movement input for smooth wall movement
+        if (this.enableWallSliding && this.wallNormals.length > 0) {
+          const slidingVelocity = this.calculateSlidingVelocity(
+            new THREE.Vector3(targetVelX, 0, targetVelZ),
+            this.wallNormals
+          );
+          targetVelX = slidingVelocity.x;
+          targetVelZ = slidingVelocity.z;
+        }
+        
+        // Use direct velocity for stable movement
         this.body.velocity.x = targetVelX;
         this.body.velocity.z = targetVelZ;
       } else {
-        // When airborne, use blended velocity for responsive but realistic movement
+        // When airborne, DON'T apply wall sliding to input
+        // Let the player gain velocity, then applyWallSlidingPhysics will handle collision
+        // This prevents "clinging" when jumping then pressing forward into wall
         const airControl = 0.3; // Reduce air control compared to ground movement
         const currentVelX = this.body.velocity.x;
         const currentVelZ = this.body.velocity.z;
@@ -692,63 +694,24 @@ export class Player {
   }
 
   applyWallSlidingPhysics(delta) {
-    // Only apply wall sliding physics when touching walls
-    if (!this.enableWallSliding || this.wallNormals.length === 0) {
+    // Only apply wall sliding physics when grounded
+    // When airborne, let the physics engine handle collisions naturally
+    if (!this.enableWallSliding || this.wallNormals.length === 0 || !this.isGrounded) {
       return;
     }
 
     // Get current velocity
     const currentVel = this.body.velocity.clone();
     
-    // Calculate wall sliding for current velocity
+    // When grounded, apply full wall sliding for smooth movement along walls
     const slidingVelocity = this.calculateSlidingVelocity(
-      new THREE.Vector3(currentVel.x, 0, currentVel.z), // Only horizontal components
+      new THREE.Vector3(currentVel.x, 0, currentVel.z),
       this.wallNormals
     );
     
-    // Apply sliding to horizontal velocity with stronger effect for enemies
-    const slidingStrength = 1.2; // Stronger sliding effect
+    const slidingStrength = 0.8;
     this.body.velocity.x = THREE.MathUtils.lerp(this.body.velocity.x, slidingVelocity.x, slidingStrength * delta * 60);
     this.body.velocity.z = THREE.MathUtils.lerp(this.body.velocity.z, slidingVelocity.z, slidingStrength * delta * 60);
-    
-    // Add small downward slide when airborne and against walls
-    if (!this.isGrounded && this.wallNormals.length > 0) {
-      // Calculate average wall normal
-      let avgNormal = new THREE.Vector3();
-      for (const normal of this.wallNormals) {
-        avgNormal.add(normal);
-      }
-      avgNormal.divideScalar(this.wallNormals.length).normalize();
-      
-      // Add slight downward sliding along the wall
-      const wallSlideSpeed = this.wallSlideSpeed; // Use configurable speed
-      const tangentVector = new THREE.Vector3();
-      
-      // Calculate tangent vector (perpendicular to wall normal, pointing down)
-      const up = new THREE.Vector3(0, 1, 0);
-      tangentVector.crossVectors(avgNormal, up).normalize();
-      
-      // If the cross product is near zero, use a different approach
-      if (tangentVector.length() < 0.1) {
-        // Wall is nearly horizontal, slide in the direction of current horizontal velocity
-        const horizontalVel = new THREE.Vector3(currentVel.x, 0, currentVel.z);
-        if (horizontalVel.length() > 0.1) {
-          tangentVector.copy(horizontalVel.normalize());
-        }
-      }
-      
-      // Apply wall sliding force with stronger effect for enemy collisions
-      if (tangentVector.length() > 0.1) {
-        const slideForce = tangentVector.multiplyScalar(wallSlideSpeed);
-        this.body.velocity.x += slideForce.x * delta * 2; // Doubled for enemies
-        this.body.velocity.z += slideForce.z * delta * 2;
-      }
-      
-      // Reduce vertical velocity when sliding against walls (friction effect)
-      if (this.body.velocity.y < 0) {
-        this.body.velocity.y *= 0.98; // Less friction for smoother sliding
-      }
-    }
   }
 
   handleJumpInput(input) {
