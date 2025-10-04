@@ -277,7 +277,7 @@ export const levels = [
         ],
         "health": 35,
         "speed": 10,
-        "chaseRange": 6.0,
+        "chaseRange": 6,
         "modelUrl": "src/assets/enemies/snake/scene.gltf"
       }
     ],
@@ -1169,12 +1169,12 @@ export const levels = [
         "id": "wall_7000",
         "type": "box",
         "position": [
-          187.42000000000002,
+          188.52,
           3,
           -66.49
         ],
         "size": [
-          7.02000000000001,
+          9.7,
           6,
           0.5
         ],
@@ -1185,12 +1185,12 @@ export const levels = [
         "id": "wall_7001",
         "type": "box",
         "position": [
-          203.42000000000002,
-          3,
+          202.62,
+          3.1,
           -66.49
         ],
         "size": [
-          7.5800000000000125,
+          9.7,
           6,
           0.5
         ],
@@ -1329,14 +1329,14 @@ export const levels = [
         "id": "wall_7010",
         "type": "box",
         "position": [
-          128.185,
+          129.89,
           3,
-          -8.650000000000002
+          -8.65
         ],
         "size": [
-          14.189999999999998,
+          15.8,
           6,
-          0.5
+          0.8
         ],
         "materialType": "wall",
         "meshName": null
@@ -1345,14 +1345,14 @@ export const levels = [
         "id": "wall_7011",
         "type": "box",
         "position": [
-          153.335,
+          151.54,
           3,
-          -8.650000000000002
+          -8.65
         ],
         "size": [
-          16.110000000000014,
+          18.4,
           6,
-          0.5
+          1.1
         ],
         "materialType": "wall",
         "meshName": null
@@ -1411,12 +1411,12 @@ export const levels = [
         "position": [
           121.09,
           3,
-          -42.504999999999995
+          -41
         ],
         "size": [
-          0.5,
+          1,
           6,
-          15.089999999999996
+          16
         ],
         "materialType": "wall",
         "meshName": null
@@ -1427,12 +1427,12 @@ export const levels = [
         "position": [
           121.09,
           3,
-          -17.755000000000003
+          -19.06
         ],
         "size": [
-          0.5,
+          1,
           6,
-          18.209999999999997
+          19
         ],
         "materialType": "wall",
         "meshName": null
@@ -1457,14 +1457,14 @@ export const levels = [
         "id": "wall_7018",
         "type": "box",
         "position": [
-          131.535,
+          133.33,
           3,
-          10.350000000000001
+          10.35
         ],
         "size": [
-          7.490000000000009,
+          9,
           6,
-          0.5
+          2.1
         ],
         "materialType": "wall",
         "meshName": null
@@ -1473,14 +1473,14 @@ export const levels = [
         "id": "wall_7019",
         "type": "box",
         "position": [
-          156.685,
+          154.69,
           3,
-          10.350000000000001
+          10.35
         ],
         "size": [
-          22.810000000000002,
+          24.810000000000002,
           6,
-          0.5
+          1.6
         ],
         "materialType": "wall",
         "meshName": null
@@ -1491,12 +1491,12 @@ export const levels = [
         "position": [
           168.09,
           3,
-          21.925
+          23.13
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          23.15
+          24.6
         ],
         "materialType": "wall",
         "meshName": null
@@ -1507,12 +1507,12 @@ export const levels = [
         "position": [
           168.09,
           3,
-          46.724999999999994
+          45.22
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          9.250000000000007
+          10.7
         ],
         "materialType": "wall",
         "meshName": null
@@ -2417,14 +2417,14 @@ export const levels = [
         "id": "wall_7078",
         "type": "box",
         "position": [
-          73.815,
+          75.41,
           3,
-          11.16
+          10.66
         ],
         "size": [
-          17.909999999999997,
+          20,
           6,
-          0.5
+          1.6
         ],
         "materialType": "wall",
         "meshName": null
@@ -2433,14 +2433,14 @@ export const levels = [
         "id": "wall_7079",
         "type": "box",
         "position": [
-          99.015,
+          97.72,
           3,
-          11.16
+          10.86
         ],
         "size": [
-          14.490000000000009,
+          16,
           6,
-          0.5
+          1.5
         ],
         "materialType": "wall",
         "meshName": null
@@ -2449,14 +2449,14 @@ export const levels = [
         "id": "wall_7080",
         "type": "box",
         "position": [
-          73.89500000000001,
+          71.3,
           3,
           -13.54
         ],
         "size": [
-          18.070000000000007,
+          27,
           6,
-          0.5
+          1.5
         ],
         "materialType": "wall",
         "meshName": null
@@ -2465,14 +2465,14 @@ export const levels = [
         "id": "wall_7081",
         "type": "box",
         "position": [
-          98.845,
+          97.04,
           3,
-          -13.54
+          -13.24
         ],
         "size": [
-          14.829999999999998,
+          15.3,
           6,
-          0.5
+          1.3
         ],
         "materialType": "wall",
         "meshName": null
@@ -2483,12 +2483,12 @@ export const levels = [
         "position": [
           106.26,
           3,
-          -8.465
+          -7.66
         ],
         "size": [
-          0.5,
+          1.4,
           6,
-          10.149999999999999
+          12.4
         ],
         "materialType": "wall",
         "meshName": null
@@ -2499,12 +2499,12 @@ export const levels = [
         "position": [
           106.26,
           3,
-          7.984999999999999
+          6.78
         ],
         "size": [
-          0.5,
+          1.5,
           6,
-          6.3500000000000005
+          7.6
         ],
         "materialType": "wall",
         "meshName": null
@@ -2771,12 +2771,12 @@ export const levels = [
         "position": [
           96.89,
           3,
-          68.02
+          69.42
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          8.93999999999999
+          9.6
         ],
         "materialType": "wall",
         "meshName": null
@@ -2787,12 +2787,12 @@ export const levels = [
         "position": [
           96.89,
           3,
-          84.42
+          83.02
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          7.860000000000014
+          8.7
         ],
         "materialType": "wall",
         "meshName": null
@@ -3171,12 +3171,12 @@ export const levels = [
         "position": [
           72.6,
           3,
-          157.65000000000003
+          158.95
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          15.539999999999992
+          17
         ],
         "materialType": "wall",
         "meshName": null
@@ -3235,12 +3235,12 @@ export const levels = [
         "position": [
           20.71,
           3,
-          176.52
+          176.22
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          8.599999999999994
+          9.4
         ],
         "materialType": "wall",
         "meshName": null
@@ -3961,6 +3961,262 @@ export const levels = [
           10.3,
           6,
           0.5
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_10",
+        "type": "box",
+        "position": [
+          195.52,
+          6.76,
+          -65.87
+        ],
+        "size": [
+          4,
+          2,
+          2
+        ],
+        "materialType": "ground",
+        "meshName": null
+      },
+      {
+        "id": "collider_10",
+        "type": "box",
+        "position": [
+          161.53,
+          6.98,
+          -31.09
+        ],
+        "size": [
+          2,
+          2,
+          8.5
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_11",
+        "type": "box",
+        "position": [
+          161.33,
+          3.71,
+          -34.08
+        ],
+        "size": [
+          1.5,
+          6,
+          2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_12",
+        "type": "box",
+        "position": [
+          161.43,
+          3.64,
+          -27.73
+        ],
+        "size": [
+          1.4,
+          6,
+          2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_10",
+        "type": "box",
+        "position": [
+          121,
+          6.63,
+          -30.9
+        ],
+        "size": [
+          1.1,
+          2,
+          4.2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          140.3,
+          7.1,
+          -8.58
+        ],
+        "size": [
+          4,
+          2,
+          1.1
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_10",
+        "type": "box",
+        "position": [
+          106.22,
+          7.03,
+          0.83
+        ],
+        "size": [
+          1.2,
+          2,
+          4.2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_11",
+        "type": "box",
+        "position": [
+          87.37,
+          6.73,
+          -13.37
+        ],
+        "size": [
+          4.2,
+          2,
+          1.1
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_12",
+        "type": "box",
+        "position": [
+          87.6,
+          7.01,
+          10.85
+        ],
+        "size": [
+          4,
+          2,
+          1.6
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_13",
+        "type": "box",
+        "position": [
+          140.05,
+          6.89,
+          10.35
+        ],
+        "size": [
+          4.2,
+          2,
+          1.6
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_16",
+        "type": "box",
+        "position": [
+          168.14,
+          6.97,
+          37.64
+        ],
+        "size": [
+          1.6,
+          2,
+          4.3
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_17",
+        "type": "box",
+        "position": [
+          96.91,
+          6.82,
+          76.51
+        ],
+        "size": [
+          1.6,
+          2,
+          4.3
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_19",
+        "type": "box",
+        "position": [
+          72.72,
+          3.12,
+          172.79
+        ],
+        "size": [
+          1.6,
+          6,
+          1.9
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_20",
+        "type": "box",
+        "position": [
+          72.72,
+          7,
+          169.59
+        ],
+        "size": [
+          1.6,
+          2,
+          4.2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_21",
+        "type": "box",
+        "position": [
+          20.48,
+          3.23,
+          166.4
+        ],
+        "size": [
+          1.6,
+          6,
+          1.7
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_22",
+        "type": "box",
+        "position": [
+          20.68,
+          7.06,
+          169.3
+        ],
+        "size": [
+          1.6,
+          2,
+          4
         ],
         "materialType": "wall",
         "meshName": null
