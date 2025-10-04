@@ -120,6 +120,13 @@ export class Game {
     // Lighting manager (modular per-level lights)
     this.lights = new LightManager(this.scene);
 
+    // Flame placement positions
+    this.flamePositions = [];
+    this.maxActiveFlames = 40;
+    this.flameCounter = 0;
+    this.placedFlameKeys = [];
+    this.jPressed = false;
+
     // Load the initial level early so subsequent code can reference `this.level`
     this._initializeLevel();
 
@@ -302,6 +309,14 @@ export class Game {
     // Update door system
     this.doorManager.update(delta, this.player.getPosition());
 
+    // Handle flame placement input (j key to place flames at predefined positions)
+    if (this.input.isKey('KeyJ') && !this.jPressed) {
+      this.jPressed = true;
+      this.placeFlames();
+    } else if (!this.input.isKey('KeyJ')) {
+      this.jPressed = false;
+    }
+
   // update lights (allow dynamic lights to animate)
   if (this.lights) this.lights.update(delta);
 
@@ -346,18 +361,21 @@ export class Game {
     
     this.level = await this.levelManager.loadIndex(index);
 
+    // Set flame placement positions
+    this.flamePositions = this.level.data.flamePlacementPositions || [];
+
     // Position player at start position
     // const start = this.level.data.startPosition;
     // this.player.setPosition(new THREE.Vector3(...start));
     
     // TEMPORARY: Position player at second door location for testing on level 2
-    if (index === 1) { // level2
-      this.player.setPosition(new THREE.Vector3(50, 5, -10.5));
-      console.log('TEMP: Spawned player at second door position [55, 5, -4.5] on level 2');
-    } else {
+    // if (index === 1) { // level2
+    //   this.player.setPosition(new THREE.Vector3(50, 5, -10.5));
+    //   console.log('TEMP: Spawned player at second door position [55, 5, -4.5] on level 2');
+    // } else {
       const start = this.level.data.startPosition;
       this.player.setPosition(new THREE.Vector3(...start));
-    }
+    // }
     
     // Trigger level start cinematic
     this.level.triggerLevelStartCinematic(this.activeCamera, this.player);
@@ -403,7 +421,7 @@ export class Game {
     // swap UI components according to level.data.ui (array of strings)
     this.applyLevelUI(this.level.data);
     // swap lighting according to level.data.lights (array of descriptors)
-    this.applyLevelLights(this.level.data);
+    await this.applyLevelLights(this.level.data);
     return this.level;
   }
 
@@ -414,17 +432,25 @@ export class Game {
     const list = (levelData && levelData.lights) ? levelData.lights : null;
     if (!list) return;
     // list is array of either string keys or objects { key, props }
+    const loadPromises = [];
     for (const item of list) {
       let key, props;
       if (typeof item === 'string') { key = item; props = {}; }
       else { key = item.key; props = item.props || {}; }
+      
+      // Pass camera reference to FlameParticles
+      if (key === 'FlameParticles') {
+        props.camera = this.activeCamera;
+      }
+      
       const Module = LightModules[key];
       if (!Module) {
         console.warn('Unknown light module key in level data:', key);
         continue;
       }
-      this.lights.add(key, Module, props);
+      loadPromises.push(this.lights.add(key + '_' + Math.random().toString(36).substr(2, 9), Module, props));
     }
+    return Promise.all(loadPromises);
   }
 
   applyLevelUI(levelData) {
@@ -509,5 +535,22 @@ export class Game {
     if (want && document.pointerLockElement) {
       try { document.exitPointerLock(); } catch (e) { /* ignore */ }
     }
+  }
+
+  placeFlames() {
+    console.log('Placing flame at player position, current flames:', this.placedFlameKeys.length);
+    const pos = this.player.getPosition().toArray();
+    const key = 'placedFlame_' + this.flameCounter++;
+    this.placedFlameKeys.push(key);
+    if (this.placedFlameKeys.length > this.maxActiveFlames) {
+      const oldKey = this.placedFlameKeys.shift();
+      console.log('Removing old flame:', oldKey);
+      this.lights.remove(oldKey);
+    }
+    console.log('Adding flame at', pos, 'with key', key, 'total now:', this.placedFlameKeys.length);
+    // Make add async-aware
+    this.lights.add(key, LightModules.FlameParticles, { position: pos, camera: this.activeCamera, particleCount: 10 }).catch(err => {
+      console.error('Failed to add flame:', err);
+    });
   }
 }

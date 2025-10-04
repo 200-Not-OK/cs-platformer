@@ -13,6 +13,9 @@ export class DoorBase {
       this.mesh = new THREE.Group();
       this.scene.add(this.mesh);
 
+      // Initialize doorPanel to prevent undefined errors during async loading
+      this.doorPanel = null;
+
       // Door properties - support both size array and individual width/height
       const width = options.width || (options.size ? options.size[0] : 2);
       const height = options.height || (options.size ? options.size[1] : 4);
@@ -622,7 +625,9 @@ export class DoorBase {
       }
 
       // Apply rotation to door panel
-      this.doorPanel.rotation.y = this.currentRotation;
+      if (this.doorPanel) {
+        this.doorPanel.rotation.y = this.currentRotation;
+      }
     }
 
     // Update auto-open cooldown
@@ -671,7 +676,7 @@ export class DoorBase {
     }
 
     // Update the physics body's position and rotation to match the door panel
-    if (this.body) {
+    if (this.body && this.doorPanel) {
       // Get the world position and rotation of the door panel
       this.doorPanel.updateWorldMatrix(true, false);
       const worldPosition = new THREE.Vector3();
@@ -797,6 +802,9 @@ export class DoorBase {
       return canInteract;
     } else {
       // When door is open, allow interaction from around the door panel's current position
+      if (!this.doorPanel) {
+        return false; // Cannot interact if doorPanel not loaded yet
+      }
       this.doorPanel.updateWorldMatrix(true, false);
       const panelWorldPos = new THREE.Vector3();
       this.doorPanel.getWorldPosition(panelWorldPos);
