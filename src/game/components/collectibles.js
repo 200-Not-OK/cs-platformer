@@ -8,15 +8,13 @@ export class Collectibles extends UIComponent {
     // Default collectible types and values
     this.collectibleTypes = props.collectibleTypes || {
       apples: { icon: '🍎', name: 'Apples', color: '#ffeb3b', completeColor: '#4caf50', completeIcon: '🏆' },
-      potions: { icon: '🧪', name: 'Health Potions', color: '#4caf50', lowColor: '#ff9800', emptyColor: '#f44336', emptyIcon: '💔' },
-      score: { icon: '⭐', name: 'Score', color: '#ffd700' }
+      potions: { icon: '🧪', name: 'Health Potions', color: '#4caf50', lowColor: '#ff9800', emptyColor: '#f44336', emptyIcon: '💔' }
     };
     
     // Initial values
     this.collectibles = {
       apples: { collected: 0, total: props.applesTotal || 10 },
-      potions: { count: props.potionsStart || 3 },
-      score: { value: props.scoreStart || 0 }
+      potions: { count: props.potionsStart || 3 }
     };
     
     this.pointsPerApple = props.pointsPerApple || 100;
@@ -54,7 +52,6 @@ export class Collectibles extends UIComponent {
     this.sections = {};
     this._createAppleSection();
     this._createPotionSection();
-    this._createScoreSection();
 
     this.root.appendChild(this.collectiblesContainer);
   }
@@ -127,85 +124,23 @@ export class Collectibles extends UIComponent {
     this.collectiblesContainer.appendChild(this.sections.potions);
   }
 
-  _createScoreSection() {
-    const config = this.collectibleTypes.score;
-    
-    this.sections.score = document.createElement('div');
-    this.sections.score.style.cssText = `
-      display: flex;
-      align-items: center;
-      font-weight: bold;
-      padding: 4px 0;
-      border-top: 1px solid rgba(255, 215, 0, 0.3);
-      margin-top: 6px;
-      padding-top: 10px;
-    `;
-    
-    this.scoreIcon = document.createElement('span');
-    this.scoreIcon.textContent = config.icon;
-    this.scoreIcon.style.cssText = `
-      font-size: 16px;
-      margin-right: 10px;
-      filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.6));
-      animation: sparkle 2s infinite ease-in-out;
-    `;
-    
-    this.scoreText = document.createElement('span');
-    this.scoreText.textContent = `${config.name}: ${this.collectibles.score.value.toLocaleString()}`;
-    this.scoreText.style.cssText = `
-      color: ${config.color};
-      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-    `;
-    
-    this.sections.score.appendChild(this.scoreIcon);
-    this.sections.score.appendChild(this.scoreText);
-    this.collectiblesContainer.appendChild(this.sections.score);
-
-    // Add sparkle animation for score
-    this._addSparkleAnimation();
-  }
-
-  _addSparkleAnimation() {
-    if (!document.getElementById('collectibles-animations')) {
-      const style = document.createElement('style');
-      style.id = 'collectibles-animations';
-      style.textContent = `
-        @keyframes sparkle {
-          0%, 100% { 
-            transform: scale(1);
-            filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.6));
-          }
-          50% { 
-            transform: scale(1.1);
-            filter: drop-shadow(2px 2px 8px rgba(255, 215, 0, 0.8));
-          }
-        }
-        
-        @keyframes collectPulse {
-          0% { transform: scale(1); }
-          50% { transform: scale(1.2); }
-          100% { transform: scale(1); }
-        }
-        
-        @keyframes lowWarning {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.6; }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-  }
-
   // Public methods for updating collectibles
   collectApple() {
     if (this.collectibles.apples.collected < this.collectibles.apples.total) {
       this.collectibles.apples.collected++;
-      this.addScore(this.pointsPerApple);
       this._updateAppleDisplay();
       this._playCollectAnimation(this.appleIcon);
       return true;
     }
     return false;
+  }
+
+  addPotion() {
+    this.collectibles.potions.count++;
+    this._updatePotionDisplay();
+    this._playCollectAnimation(this.potionIcon);
+    console.log(`🧪 Added potion! Total: ${this.collectibles.potions.count}`);
+    return true;
   }
 
   useHealthPotion() {
@@ -222,16 +157,6 @@ export class Collectibles extends UIComponent {
     this.collectibles.potions.count += count;
     this._updatePotionDisplay();
     this._playCollectAnimation(this.potionIcon);
-  }
-
-  addScore(points) {
-    this.collectibles.score.value += points;
-    this._updateScoreDisplay();
-  }
-
-  setScore(score) {
-    this.collectibles.score.value = score;
-    this._updateScoreDisplay();
   }
 
   _updateAppleDisplay() {
@@ -272,15 +197,10 @@ export class Collectibles extends UIComponent {
     }
   }
 
-  _updateScoreDisplay() {
-    const config = this.collectibleTypes.score;
-    this.scoreText.textContent = `${config.name}: ${this.collectibles.score.value.toLocaleString()}`;
-  }
-
   _playCollectAnimation(iconElement) {
     iconElement.style.animation = 'collectPulse 0.5s ease-out';
     setTimeout(() => {
-      iconElement.style.animation = iconElement === this.scoreIcon ? 'sparkle 2s infinite ease-in-out' : 'none';
+      iconElement.style.animation = 'none';
     }, 500);
   }
 
@@ -288,8 +208,7 @@ export class Collectibles extends UIComponent {
   getCollectiblesData() {
     return {
       apples: { ...this.collectibles.apples },
-      potions: { ...this.collectibles.potions },
-      score: { ...this.collectibles.score }
+      potions: { ...this.collectibles.potions }
     };
   }
 
@@ -302,10 +221,6 @@ export class Collectibles extends UIComponent {
     if (data.potions) {
       this.collectibles.potions = { ...this.collectibles.potions, ...data.potions };
       this._updatePotionDisplay();
-    }
-    if (data.score) {
-      this.collectibles.score = { ...this.collectibles.score, ...data.score };
-      this._updateScoreDisplay();
     }
   }
 

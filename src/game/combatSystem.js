@@ -6,7 +6,7 @@ export class CombatSystem {
     this.physicsWorld = physicsWorld;
     
     // Combat settings
-    this.attackRange = 3.0; // Attack range in units
+    this.attackRange = 5.0; // Increased attack range for easier combat
     this.attackDamage = 25; // Damage per attack
     this.attackCooldown = 1000; // 1 second cooldown between attacks (in ms)
     this.lastAttackTime = 0;
@@ -65,7 +65,7 @@ export class CombatSystem {
     
     // Sword swing parameters
     const swingRange = 2.5; // How far the sword reaches
-    const swingArc = Math.PI / 3; // 60 degree arc (30 degrees each side)
+    const swingArc = Math.PI / 2; // 90 degree arc (45 degrees each side)
     const swingHeight = 2.5; // Increased vertical range to hit low enemies like snakes
     const swingLowReach = 2.0; // Increased downward reach to hit very low enemies like snakes
     
