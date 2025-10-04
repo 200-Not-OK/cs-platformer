@@ -191,31 +191,15 @@ export class Minimap extends UIComponent {
     // Draw player (always centered)
     const playerPos = { x: this.canvas.width / 2, y: this.canvas.height / 2 };
     
-    // Player direction indicator (triangle)
-    this.ctx.save();
-    this.ctx.translate(playerPos.x, playerPos.y);
-    
-    // Get player rotation if available
-    let rotation = 0;
-    if (player.rotation) {
-      rotation = player.rotation.y;
-    }
-    this.ctx.rotate(rotation);
-    
-    // Draw player as triangle
+    // Draw player as green circle
     this.ctx.fillStyle = '#00ff00';
     this.ctx.beginPath();
-    this.ctx.moveTo(0, -7);
-    this.ctx.lineTo(-5, 5);
-    this.ctx.lineTo(5, 5);
-    this.ctx.closePath();
+    this.ctx.arc(playerPos.x, playerPos.y, 6, 0, Math.PI * 2);
     this.ctx.fill();
     
     // Player outline
     this.ctx.strokeStyle = '#ffffff';
     this.ctx.lineWidth = 2;
     this.ctx.stroke();
-    
-    this.ctx.restore();
   }
 }
