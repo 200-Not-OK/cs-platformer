@@ -10,7 +10,7 @@ export class SnakeBossEnemy extends EnemyBase {
       speed: options.speed ?? 2.5, // Faster than regular snake
       health: options.health ?? 500, // Boss health - very high
       size: [1.5, 0.8, 3.0], // Larger than regular snake
-      colliderSize: [3.0, 1.8, 3.0], // Bigger collision box with increased height
+      colliderSize: [3.0, 3.0, 3.0], // Bigger collision box with increased height
       modelUrl: 'src/assets/enemies/snake_boss/Snake_Angry.gltf',
       ...options
     };
@@ -79,12 +79,15 @@ export class SnakeBossEnemy extends EnemyBase {
       this.physicsWorld.removeBody(this.body);
     }
     
+    // Add vertical offset to collider position to better match visual model
+    const colliderOffset = 1.5; // Vertical offset for better collision alignment
+    
     // Create boss physics body with higher mass
     this.body = this.physicsWorld.createDynamicBody({
       mass: 5.0, // Much heavier than regular enemies
       shape: 'box',
       size: this.colliderSize,
-      position: [this.mesh.position.x, this.mesh.position.y, this.mesh.position.z],
+      position: [this.mesh.position.x, this.mesh.position.y + colliderOffset, this.mesh.position.z],
       material: 'enemy'
     });
     
@@ -107,7 +110,7 @@ export class SnakeBossEnemy extends EnemyBase {
       enemyType: this.enemyType || 'snake_boss'
     };
     
-    console.log(`👑 Created boss physics body at [${this.mesh.position.x}, ${this.mesh.position.y}, ${this.mesh.position.z}]`);
+    console.log(`👑 Created boss physics body at [${this.mesh.position.x}, ${this.mesh.position.y + colliderOffset}, ${this.mesh.position.z}]`);
   }
 
   // Override health bar creation for boss-sized health bar
@@ -242,6 +245,10 @@ export class SnakeBossEnemy extends EnemyBase {
     this.mixer = null; // Temporarily disable base class animation updates
     super.update(deltaTime, player);
     this.mixer = originalMixer; // Restore mixer
+
+    // Adjust mesh position to compensate for collider offset
+    const colliderOffset = 1.5; // Same offset used in _createPhysicsBody
+    this.mesh.position.y = this.body.position.y - colliderOffset;
 
     // Check for enrage state
     if (!this.isEnraged && this.health <= this.enrageThreshold) {
@@ -418,8 +425,19 @@ export class SnakeBossEnemy extends EnemyBase {
       if (this.bossAnimations.attack) {
         this._playAnimation(this.bossAnimations.attack, false);
         console.log(`👑 Playing attack animation`);
+        
+        // Use actual animation duration instead of hardcoded value
+        const animationClip = this.bossAnimations.attack._clip;
+        if (animationClip) {
+          this.attackDuration = (animationClip.duration * 1000); // Convert to milliseconds
+          console.log(`👑 Animation duration set to: ${this.attackDuration}ms (from clip: ${animationClip.duration}s)`);
+        } else {
+          this.attackDuration = 1500; // Fallback
+          console.log(`👑 Using fallback animation duration: ${this.attackDuration}ms`);
+        }
       } else {
         console.log(`👑 Warning: No attack animation available`);
+        this.attackDuration = 1500; // Fallback duration
       }
       
       // Boss deals more damage
@@ -450,9 +468,8 @@ export class SnakeBossEnemy extends EnemyBase {
         console.log(`👑 Boss grace period disabled - no more mercy!`);
       }
       
-      // Set attack duration - stay in attack state for animation to complete
+      // Set attack start time to track animation completion
       this.attackStartTime = currentTime;
-      this.attackDuration = 1500; // 1.5 seconds for animation to complete at normal speed
       
       // Don't immediately change state - let the animation play
       console.log(`👑 Attack started, staying in attack state for ${this.attackDuration}ms`);
@@ -494,12 +511,18 @@ export class SnakeBossEnemy extends EnemyBase {
     if (action) {
       action.reset();
       action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce);
+      
+      // For attack animations, ensure they complete fully
+      if (!loop && action._clip) {
+        action.clampWhenFinished = true; // Stay at final frame when finished
+      }
+      
       action.fadeIn(0.2); // Faster fade in
       action.play();
       this.currentAction = action;
       
       // Log animation details for debugging
-      console.log(`👑 Playing animation: ${action._clip?.name || 'unknown'}, Loop: ${loop}, TimeScale: ${action.timeScale}`);
+      console.log(`👑 Playing animation: ${action._clip?.name || 'unknown'}, Loop: ${loop}, Duration: ${action._clip?.duration || 'unknown'}s, TimeScale: ${action.timeScale}`);
     }
   }
 
