@@ -77,6 +77,27 @@ export const levels = [
     ],
     "colliders": [
       {
+        "id": "collider_18",
+        "type": "box",
+        "position": [
+          0,
+          2,
+          0
+        ],
+        "size": [
+          11.6,
+          0.1,
+          6
+        ],
+        "rotation": [
+          44,
+          0,
+          0
+        ],
+        "materialType": "ground",
+        "meshName": null
+      },
+      {
         "id": "collider_10",
         "type": "box",
         "position": [
@@ -247,43 +268,143 @@ export const levels = [
     ],
     "enemies": [
       {
-        type: "snake",
-        position: [140, 1.4, -30],
-        patrolPoints: [
-          [140, 1.4, -30],
-          [130, 1.4, -20],
-          [150, 1.4, -20],
-          [145, 1.4, -35]
+        "type": "snake",
+        "position": [
+          140,
+          1.4,
+          -30
         ],
-        health: 35,
-        speed: 10,
-        chaseRange: 6.0,
-        modelUrl: "src/assets/enemies/snake/scene.gltf"
+        "patrolPoints": [
+          [
+            140,
+            1.4,
+            -30
+          ],
+          [
+            130,
+            1.4,
+            -20
+          ],
+          [
+            150,
+            1.4,
+            -20
+          ],
+          [
+            145,
+            1.4,
+            -35
+          ]
+        ],
+        "health": 35,
+        "speed": 10,
+        "chaseRange": 6,
+        "modelUrl": "src/assets/enemies/snake/scene.gltf"
       },
       {
-        type: "snake_boss",
-        position: [30, 2, -25],
-        patrolPoints: [
-          [30, 2, -25],
-          [25, 2, -20],
-          [35, 2, -30],
-          [40, 2, -20],
-          [25, 2, -35]
+        "type": "snake_boss",
+        "position": [
+          30,
+          2,
+          -25
         ],
-        health: 300,
-        speed: 5,
-        chaseRange: 12.0
+        "patrolPoints": [
+          [
+            30,
+            2,
+            -25
+          ],
+          [
+            25,
+            2,
+            -20
+          ],
+          [
+            35,
+            2,
+            -30
+          ],
+          [
+            40,
+            2,
+            -20
+          ],
+          [
+            25,
+            2,
+            -35
+          ]
+        ],
+        "health": 300,
+        "speed": 5,
+        "chaseRange": 12
       }
     ],
-    collectibles: {
-      chests: [
-        { id: "chest_1", position: [145, 0.5, -46], contents: "apple" },
-        { id: "chest_2", position: [146, 0.5, 49], contents: "apple" },
-        { id: "chest_3", position: [108, 0.5, 86], contents: "potion" },
-        { id: "chest_4", position: [103, 0.5, 125], contents: "apple" },
-        { id: "chest_5", position: [135, 0.5, 116], contents: "potion" },
-        { id: "chest_6", position: [18, 0.5, 179], contents: "apple" },
-        { id: "chest_7", position: [110, 0.5, 163], contents: "apple" }
+    "collectibles": {
+      "chests": [
+        {
+          "id": "chest_1",
+          "position": [
+            145,
+            0.5,
+            -46
+          ],
+          "contents": "apple"
+        },
+        {
+          "id": "chest_2",
+          "position": [
+            146,
+            0.5,
+            49
+          ],
+          "contents": "apple"
+        },
+        {
+          "id": "chest_3",
+          "position": [
+            108,
+            0.5,
+            86
+          ],
+          "contents": "potion"
+        },
+        {
+          "id": "chest_4",
+          "position": [
+            103,
+            0.5,
+            125
+          ],
+          "contents": "apple"
+        },
+        {
+          "id": "chest_5",
+          "position": [
+            135,
+            0.5,
+            116
+          ],
+          "contents": "potion"
+        },
+        {
+          "id": "chest_6",
+          "position": [
+            18,
+            0.5,
+            179
+          ],
+          "contents": "apple"
+        },
+        {
+          "id": "chest_7",
+          "position": [
+            110,
+            0.5,
+            163
+          ],
+          "contents": "apple"
+        }
       ]
     },
     "colliders": [
@@ -853,12 +974,12 @@ export const levels = [
         "position": [
           0.51,
           0.12,
-          169.27
+          176.77
         ],
         "size": [
           40.4,
           0.1,
-          37.9
+          22.9
         ],
         "materialType": "ground",
         "meshName": null
@@ -3899,6 +4020,272 @@ export const levels = [
           10.3,
           6,
           0.5
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          134.35,
+          3.77,
+          23.64
+        ],
+        "size": [
+          11.7,
+          7.2,
+          1.7
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_17",
+        "type": "box",
+        "position": [
+          134.32,
+          2.96,
+          33.17
+        ],
+        "size": [
+          11.7,
+          7.2,
+          1.7
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_18",
+        "type": "box",
+        "position": [
+          134.39,
+          3.56,
+          42.3
+        ],
+        "size": [
+          11.7,
+          7.2,
+          1.7
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_19",
+        "type": "box",
+        "position": [
+          140.91,
+          3.64,
+          25.23
+        ],
+        "size": [
+          1.5,
+          7.2,
+          5
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_20",
+        "type": "box",
+        "position": [
+          140.93,
+          3.66,
+          34.78
+        ],
+        "size": [
+          1.5,
+          7.2,
+          5
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_22",
+        "type": "box",
+        "position": [
+          140.88,
+          3.99,
+          43.97
+        ],
+        "size": [
+          1.5,
+          7.2,
+          5
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          27.4,
+          4.33,
+          -47.91
+        ],
+        "size": [
+          56.7,
+          0.1,
+          12.6
+        ],
+        "materialType": "ground",
+        "meshName": null
+      },
+      {
+        "id": "collider_16",
+        "type": "box",
+        "position": [
+          27.71,
+          2.12,
+          -41.79
+        ],
+        "size": [
+          28.7,
+          4.5,
+          0.4
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_17",
+        "type": "box",
+        "position": [
+          6.68,
+          2.17,
+          -39.44
+        ],
+        "size": [
+          11.5,
+          0.1,
+          6.2
+        ],
+        "rotation": [
+          44,
+          0,
+          0
+        ],
+        "materialType": "ground",
+        "meshName": null
+      },
+      {
+        "id": "collider_18",
+        "type": "box",
+        "position": [
+          48.84,
+          2.27,
+          -39.74
+        ],
+        "size": [
+          11.6,
+          0.1,
+          6
+        ],
+        "rotation": [
+          44,
+          0,
+          0
+        ],
+        "materialType": "ground",
+        "meshName": null
+      },
+      {
+        "id": "collider_19",
+        "type": "box",
+        "position": [
+          12.98,
+          0.93,
+          -39.72
+        ],
+        "size": [
+          1.2,
+          1.5,
+          4
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_20",
+        "type": "box",
+        "position": [
+          12.98,
+          2.98,
+          -40.98
+        ],
+        "size": [
+          1.2,
+          2.5,
+          1.3
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_21",
+        "type": "box",
+        "position": [
+          12.98,
+          2.25,
+          -39.72
+        ],
+        "size": [
+          1.2,
+          1.1,
+          1.2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_22",
+        "type": "box",
+        "position": [
+          42.43,
+          2.33,
+          -39.89
+        ],
+        "size": [
+          1.2,
+          1.1,
+          1.2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_23",
+        "type": "box",
+        "position": [
+          42.33,
+          0.89,
+          -39.76
+        ],
+        "size": [
+          1.2,
+          1.9,
+          4
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_24",
+        "type": "box",
+        "position": [
+          42.33,
+          3,
+          -41.09
+        ],
+        "size": [
+          1.2,
+          2.3,
+          1.3
         ],
         "materialType": "wall",
         "meshName": null

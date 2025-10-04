@@ -60,16 +60,17 @@ export class PhysicsWorld {
   
   setupContactMaterials() {
     // Player-Ground contact: Lower friction for smooth movement, no bounce
+    // Reduced stiffness for better slope handling
     const playerGroundContact = new CANNON.ContactMaterial(
       this.materials.player,
       this.materials.ground,
       {
         friction: 0.1,
         restitution: 0.0,
-        contactEquationStiffness: 1e8,
-        contactEquationRelaxation: 3,
-        frictionEquationStiffness: 1e8,
-        frictionEquationRelaxation: 3
+        contactEquationStiffness: 1e6, // Reduced from 1e8 for smoother slope interaction
+        contactEquationRelaxation: 4,  // Increased for more relaxed contact resolution
+        frictionEquationStiffness: 1e6, // Reduced from 1e8
+        frictionEquationRelaxation: 4   // Increased for smoother sliding
       }
     );
     this.world.addContactMaterial(playerGroundContact);
@@ -81,10 +82,10 @@ export class PhysicsWorld {
       {
         friction: 0.1,
         restitution: 0.0,
-        contactEquationStiffness: 1e8,
-        contactEquationRelaxation: 3,
-        frictionEquationStiffness: 1e8,
-        frictionEquationRelaxation: 3
+        contactEquationStiffness: 1e6, // Reduced from 1e8 for smoother slope interaction
+        contactEquationRelaxation: 4,  // Increased for more relaxed contact resolution
+        frictionEquationStiffness: 1e6, // Reduced from 1e8
+        frictionEquationRelaxation: 4   // Increased for smoother sliding
       }
     );
     this.world.addContactMaterial(playerPlatformContact);
@@ -468,11 +469,34 @@ export class PhysicsWorld {
   }
   
   // Manual collider creation methods for editor
-  addStaticBox(position, size, materialType = 'ground') {
+  addStaticBox(position, size, materialType = 'ground', rotation = null) {
     const shape = new CANNON.Box(new CANNON.Vec3(size.x / 2, size.y / 2, size.z / 2));
     const body = new CANNON.Body({ mass: 0, material: this.materials[materialType] });
     body.addShape(shape);
     body.position.set(position.x, position.y, position.z);
+    
+    // Apply rotation if provided
+    if (rotation) {
+      // Convert degrees to radians and apply rotation
+      const x = (rotation.x || rotation[0] || 0) * Math.PI / 180;
+      const y = (rotation.y || rotation[1] || 0) * Math.PI / 180;
+      const z = (rotation.z || rotation[2] || 0) * Math.PI / 180;
+      
+      console.log(`🔄 Applying rotation to static box: [${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)}] radians`);
+      
+      body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), x);
+      if (y !== 0) {
+        const yQuat = new CANNON.Quaternion();
+        yQuat.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), y);
+        body.quaternion = body.quaternion.mult(yQuat);
+      }
+      if (z !== 0) {
+        const zQuat = new CANNON.Quaternion();
+        zQuat.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), z);
+        body.quaternion = body.quaternion.mult(zQuat);
+      }
+    }
+    
     body.type = CANNON.Body.KINEMATIC;
     
     this.world.addBody(body);
@@ -481,11 +505,31 @@ export class PhysicsWorld {
     return body;
   }
   
-  addStaticSphere(position, radius, materialType = 'ground') {
+  addStaticSphere(position, radius, materialType = 'ground', rotation = null) {
     const shape = new CANNON.Sphere(radius);
     const body = new CANNON.Body({ mass: 0, material: this.materials[materialType] });
     body.addShape(shape);
     body.position.set(position.x, position.y, position.z);
+    
+    // Apply rotation if provided (though spheres don't visually rotate, this maintains consistency)
+    if (rotation) {
+      const x = (rotation.x || rotation[0] || 0) * Math.PI / 180;
+      const y = (rotation.y || rotation[1] || 0) * Math.PI / 180;
+      const z = (rotation.z || rotation[2] || 0) * Math.PI / 180;
+      
+      body.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), x);
+      if (y !== 0) {
+        const yQuat = new CANNON.Quaternion();
+        yQuat.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), y);
+        body.quaternion = body.quaternion.mult(yQuat);
+      }
+      if (z !== 0) {
+        const zQuat = new CANNON.Quaternion();
+        zQuat.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), z);
+        body.quaternion = body.quaternion.mult(zQuat);
+      }
+    }
+    
     body.type = CANNON.Body.KINEMATIC;
     
     this.world.addBody(body);
