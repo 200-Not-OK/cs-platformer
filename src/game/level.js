@@ -355,6 +355,6 @@ export class Level {
   }
 
   getEnemies() {
-    return this.enemyManager.enemies;
+    return this.enemyManager ? this.enemyManager.enemies : [];
   }
 }
