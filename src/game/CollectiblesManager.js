@@ -577,6 +577,16 @@ export class CollectiblesManager {
   openChest(chestCollectible) {
     console.log(`📦 Opening chest containing: ${chestCollectible.contents}`);
     
+    // Lock player movement during chest animation
+    if (this.playerRef && this.playerRef.lockMovement) {
+      this.playerRef.lockMovement('Chest Animation');
+    }
+
+    // Play player interact animation if available
+    if (this.playerRef && this.playerRef.performInteract) {
+      this.playerRef.performInteract();
+    }
+    
     // Mark chest as collected and animating
     chestCollectible.collected = true;
     chestCollectible.isOpen = true;
@@ -610,6 +620,11 @@ export class CollectiblesManager {
     
     // Remove from our tracking after a delay to allow animation
     setTimeout(() => {
+      // Unlock player movement when animation is complete
+      if (this.playerRef && this.playerRef.unlockMovement) {
+        this.playerRef.unlockMovement();
+      }
+      
       this.scene.remove(chestCollectible.mesh);
       this.physicsWorld.removeBody(chestCollectible.body);
       this.collectibles.delete(chestCollectible.id);
