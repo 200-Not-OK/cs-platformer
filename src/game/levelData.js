@@ -46,7 +46,7 @@ export const levels = [
         type: "snake",
         position: [
           -5,
-          2,
+          0.5,
           5
         ],
         modelUrl: "src/assets/enemies/snake/scene.gltf",
@@ -238,16 +238,31 @@ export const levels = [
       }
     ],
     lights: ["BasicLights"],
-    enemies: [],
+    enemies: [
+      {
+        type: "snake",
+        position: [140, 1.4, -30],
+        patrolPoints: [
+          [140, 1.4, -30],
+          [130, 1.4, -20],
+          [150, 1.4, -20],
+          [145, 1.4, -35]
+        ],
+        health: 35,
+        speed: 10,
+        chaseRange: 6.0,
+        modelUrl: "src/assets/enemies/snake/scene.gltf"
+      }
+    ],
     collectibles: {
       chests: [
-        { id: "chest_1", position: [145, 1.4, -46], contents: "apple" },
-        { id: "chest_2", position: [146, 1.4, 49], contents: "apple" },
-        { id: "chest_3", position: [108, 1.4, 86], contents: "potion" },
-        { id: "chest_4", position: [103, 1.4, 125], contents: "apple" },
-        { id: "chest_5", position: [135, 1.4, 116], contents: "potion" },
-        { id: "chest_6", position: [18, 1.4, 179], contents: "apple" },
-        { id: "chest_7", position: [110, 1.4, 163], contents: "apple" }
+        { id: "chest_1", position: [145, 0.5, -46], contents: "apple" },
+        { id: "chest_2", position: [146, 0.5, 49], contents: "apple" },
+        { id: "chest_3", position: [108, 0.5, 86], contents: "potion" },
+        { id: "chest_4", position: [103, 0.5, 125], contents: "apple" },
+        { id: "chest_5", position: [135, 0.5, 116], contents: "potion" },
+        { id: "chest_6", position: [18, 0.5, 179], contents: "apple" },
+        { id: "chest_7", position: [110, 0.5, 163], contents: "apple" }
       ]
     },
     colliders: [

@@ -290,7 +290,7 @@ export class CollectiblesManager {
       const originalSize = originalBox.getSize(new THREE.Vector3());
       
       // Target chest size (should be reasonable for a collectible chest)
-      const targetSize = 1.5; // Maximum dimension should be about 1.5 units
+      const targetSize = 2.5; // Increased size - maximum dimension should be about 2.5 units
       const maxDimension = Math.max(originalSize.x, originalSize.y, originalSize.z);
       const scaleFactor = targetSize / maxDimension;
       
