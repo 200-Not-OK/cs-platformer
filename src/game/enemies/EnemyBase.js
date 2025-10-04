@@ -42,6 +42,9 @@ export class EnemyBase {
 
     this._desiredMovement = new THREE.Vector3();
 
+    // Store scale for model loading
+    this.modelScale = options.scale ?? 1.0;
+
     if (options.modelUrl) this._loadModel(options.modelUrl);
   }
 
@@ -127,6 +130,12 @@ export class EnemyBase {
     loader.load(url, (gltf) => {
       while (this.mesh.children.length > 0) this.mesh.remove(this.mesh.children[0]);
 
+      // Apply scale if specified
+      if (this.modelScale !== 1.0) {
+        gltf.scene.scale.set(this.modelScale, this.modelScale, this.modelScale);
+        console.log(`🔍 Applied scale ${this.modelScale} to enemy model`);
+      }
+
       // compute bbox and center like Player
       try {
         const bbox = new THREE.Box3().setFromObject(gltf.scene);
@@ -183,7 +192,9 @@ export class EnemyBase {
   }
 
   _preventWallSticking() {
-    if (!this.body) return;
+    // Only prevent wall sticking when grounded
+    // When airborne (jumping), let physics engine handle collisions naturally
+    if (!this.body || !this.onGround) return;
     
     const contacts = this.physicsWorld.getContactsForBody(this.body);
     
@@ -197,12 +208,24 @@ export class EnemyBase {
       
       // Check if this is a wall contact (not ground)
       if (Math.abs(normal.y) < 0.5) {
-        // This is a wall contact - reduce velocity in the normal direction
-        const velocityInNormal = this.body.velocity.dot(normal);
-        if (velocityInNormal < 0) {
-          // Moving into the wall, reduce that component
-          const correction = normal.clone().scale(-velocityInNormal * 0.5);
-          this.body.velocity.vadd(correction, this.body.velocity);
+        // This is a wall contact - only prevent velocity INTO the wall
+        const horizontalNormal = normal.clone();
+        horizontalNormal.y = 0;
+        
+        if (horizontalNormal.length() > 0.01) {
+          horizontalNormal.normalize();
+          
+          // Calculate velocity component INTO the wall (horizontal only)
+          const velocityIntoWall = 
+            this.body.velocity.x * horizontalNormal.x + 
+            this.body.velocity.z * horizontalNormal.z;
+          
+          // Only correct if moving INTO wall strongly
+          if (velocityIntoWall < -0.2) {
+            // Remove the component pushing into wall
+            this.body.velocity.x -= horizontalNormal.x * velocityIntoWall * 0.3;
+            this.body.velocity.z -= horizontalNormal.z * velocityIntoWall * 0.3;
+          }
         }
       }
     }
