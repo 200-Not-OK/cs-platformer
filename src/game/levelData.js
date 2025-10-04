@@ -279,42 +279,6 @@ export const levels = [
         "speed": 10,
         "chaseRange": 6.0,
         "modelUrl": "src/assets/enemies/snake/scene.gltf"
-      },
-      {
-        "type": "snake",
-        "position": [
-          27,
-          0.16,
-          -30
-        ],
-        "patrolPoints": [
-          [
-            27,
-            0.16,
-            -30
-          ],
-          [
-            20,
-            0.16,
-            -25
-          ],
-          [
-            34,
-            0.16,
-            -25
-          ],
-          [
-            27,
-            0.16,
-            -35
-          ]
-        ],
-        "health": 150,
-        "speed": 8,
-        "chaseRange": 12.0,
-        "modelUrl": "src/assets/enemies/Boss Snake/Untitled.gltf",
-        "scale": 2.5,
-        "isBoss": true
       }
     ],
     "collectibles": {
