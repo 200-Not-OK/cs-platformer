@@ -622,7 +622,9 @@ export class DoorBase {
       }
 
       // Apply rotation to door panel
-      this.doorPanel.rotation.y = this.currentRotation;
+      if (this.doorPanel) {
+        this.doorPanel.rotation.y = this.currentRotation;
+      }
     }
 
     // Update auto-open cooldown
@@ -671,7 +673,7 @@ export class DoorBase {
     }
 
     // Update the physics body's position and rotation to match the door panel
-    if (this.body) {
+    if (this.body && this.doorPanel) {
       // Get the world position and rotation of the door panel
       this.doorPanel.updateWorldMatrix(true, false);
       const worldPosition = new THREE.Vector3();
