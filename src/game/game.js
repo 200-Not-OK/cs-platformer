@@ -22,6 +22,7 @@ import { PhysicsWorld } from './physics/PhysicsWorld.js';
 import { CombatSystem } from './combatSystem.js';
 import { DoorManager } from '../assets/doors/DoorManager.js';
 import { CollectiblesManager } from './CollectiblesManager.js';
+import { SoundManager } from './soundManager.js';
 
 export class Game {
   constructor() {
@@ -134,6 +135,9 @@ export class Game {
     // Lighting manager (modular per-level lights)
     this.lights = new LightManager(this.scene);
 
+    // Sound manager (initialize with camera for 3D audio)
+    this.soundManager = new SoundManager(this.thirdCameraObject);
+
     // Load the initial level early so subsequent code can reference `this.level`
     this._initializeLevel();
 
@@ -144,6 +148,8 @@ export class Game {
     this.paused = false;
     this.playerDead = false; // Flag to track if player is dead
     this.pauseMenu = document.getElementById('pauseMenu');
+
+    // Resume button
     const resumeBtn = document.getElementById('resumeBtn');
     if (resumeBtn) resumeBtn.addEventListener('click', (e) => {
       // prevent the click from bubbling to the global click handler which would
@@ -162,6 +168,9 @@ export class Game {
         }
       }
     });
+
+    // Setup audio controls
+    this._setupAudioControls();
 
     // loop
     this.last = performance.now();
@@ -232,7 +241,7 @@ export class Game {
         this.loadLevel(nextIndex).catch(err => console.error('Failed to load level:', err));
       } else if (code === 'KeyM') {
         // toggle physics debug visualization
-        const debugEnabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
+        this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
       } else if (code === 'KeyH') {
         // toggle door collision helpers (green boxes around doors)
         if (this.doorManager) {
@@ -580,11 +589,13 @@ export class Game {
     this.applyLevelUI(this.level.data);
     // swap lighting according to level.data.lights (array of descriptors)
     this.applyLevelLights(this.level.data);
-    
+    // load and play sounds for this level
+    await this.applyLevelSounds(this.level.data);
+
     // Spawn collectibles after all systems are initialized
     this.collectiblesManager.cleanup();
     await this.collectiblesManager.spawnCollectiblesForLevel(this.level.data);
-    
+
     return this.level;
   }
 
@@ -683,6 +694,117 @@ export class Game {
     }
     if (interactionPrompt) {
       this.collectiblesManager.setInteractionPrompt(interactionPrompt);
+    }
+  }
+
+  async applyLevelSounds(levelData) {
+    console.log('🔊 applyLevelSounds called for level:', levelData.name);
+    console.log('🔊 Sound manager exists?', !!this.soundManager);
+    console.log('🔊 Level sounds config:', levelData.sounds);
+
+    if (!this.soundManager) {
+      console.warn('⚠️ Sound manager not available!');
+      return;
+    }
+
+    if (!levelData.sounds) {
+      console.warn('⚠️ No sounds config in level data!');
+      return;
+    }
+
+    try {
+      console.log('🔊 Starting to load sounds...');
+      // Load sounds for this level
+      await this.soundManager.loadSounds(levelData.sounds);
+      console.log('🔊 Sounds loaded successfully!');
+
+      // Play music if specified
+      if (levelData.sounds.playMusic) {
+        console.log('🔊 Attempting to play music:', levelData.sounds.playMusic);
+        this.soundManager.playMusic(levelData.sounds.playMusic);
+      } else {
+        console.log('🔊 No playMusic specified in level data');
+      }
+
+      // Play ambient if specified
+      if (levelData.sounds.playAmbient) {
+        console.log('🔊 Attempting to play ambient:', levelData.sounds.playAmbient);
+        this.soundManager.playAmbient(levelData.sounds.playAmbient);
+      } else {
+        console.log('🔊 No playAmbient specified in level data');
+      }
+
+      console.log(`🔊 Loaded sounds for level: ${levelData.name}`);
+    } catch (error) {
+      console.error(`❌ Failed to load sounds for level ${levelData.name}:`, error);
+    }
+  }
+
+  _setupAudioControls() {
+    if (!this.soundManager) return;
+
+    // Get all audio control elements
+    const masterSlider = document.getElementById('masterVolume');
+    const musicSlider = document.getElementById('musicVolume');
+    const sfxSlider = document.getElementById('sfxVolume');
+    const ambientSlider = document.getElementById('ambientVolume');
+    const muteBtn = document.getElementById('muteBtn');
+
+    const masterValue = document.getElementById('masterValue');
+    const musicValue = document.getElementById('musicValue');
+    const sfxValue = document.getElementById('sfxValue');
+    const ambientValue = document.getElementById('ambientValue');
+
+    // Update volume display helper
+    const updateDisplay = (slider, valueElement, value) => {
+      if (slider) slider.value = value;
+      if (valueElement) valueElement.textContent = `${value}%`;
+    };
+
+    // Master volume control
+    if (masterSlider) {
+      masterSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        this.soundManager.setVolume('master', value / 100);
+        updateDisplay(null, masterValue, value);
+      });
+    }
+
+    // Music volume control
+    if (musicSlider) {
+      musicSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        this.soundManager.setVolume('music', value / 100);
+        updateDisplay(null, musicValue, value);
+      });
+    }
+
+    // SFX volume control
+    if (sfxSlider) {
+      sfxSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        this.soundManager.setVolume('sfx', value / 100);
+        updateDisplay(null, sfxValue, value);
+      });
+    }
+
+    // Ambient volume control
+    if (ambientSlider) {
+      ambientSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        this.soundManager.setVolume('ambient', value / 100);
+        updateDisplay(null, ambientValue, value);
+      });
+    }
+
+    // Mute button
+    if (muteBtn) {
+      muteBtn.addEventListener('click', () => {
+        this.soundManager.toggleMute();
+        const isMuted = this.soundManager.muted;
+        muteBtn.textContent = isMuted ? '🔊 Unmute All' : '🔇 Mute All';
+        muteBtn.classList.toggle('muted', isMuted);
+      });
     }
   }
 

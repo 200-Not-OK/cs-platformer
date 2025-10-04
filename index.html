@@ -31,14 +31,57 @@
         background: rgba(20,20,20,0.95);
         padding: 24px 32px;
         border-radius: 8px;
-        min-width: 260px;
+        min-width: 320px;
+        max-width: 400px;
         text-align: center;
         box-shadow: 0 8px 24px rgba(0,0,0,0.6);
       }
       #pauseMenu h1 { margin: 0 0 12px 0; font-size: 20px; }
+      #pauseMenu h2 { margin: 18px 0 12px 0; font-size: 16px; color: #aaa; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 18px; }
       #pauseMenu p { margin: 0 0 18px 0; color: #ccc; }
       #pauseMenu button { padding: 8px 14px; border-radius: 6px; border: none; background: #2b6eff; color: white; cursor: pointer; }
       #pauseMenu button:active { transform: translateY(1px); }
+
+      /* Audio controls */
+      .audio-controls { text-align: left; margin: 12px 0; }
+      .audio-control { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+      .audio-control label { color: #ccc; font-size: 13px; min-width: 80px; }
+      .audio-control input[type="range"] {
+        flex: 1;
+        margin: 0 12px;
+        -webkit-appearance: none;
+        appearance: none;
+        height: 6px;
+        border-radius: 3px;
+        background: rgba(255,255,255,0.2);
+        outline: none;
+      }
+      .audio-control input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #2b6eff;
+        cursor: pointer;
+      }
+      .audio-control input[type="range"]::-moz-range-thumb {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #2b6eff;
+        cursor: pointer;
+        border: none;
+      }
+      .audio-control .value { color: #fff; font-size: 12px; min-width: 35px; text-align: right; }
+      .mute-btn {
+        margin-top: 8px;
+        background: rgba(255,255,255,0.1) !important;
+        font-size: 12px;
+      }
+      .mute-btn.muted {
+        background: #ff6b6b !important;
+      }
       /* UI component defaults */
       .game-hud { font-size: 14px; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.6); }
       .game-minimap { border-radius: 6px; overflow: hidden; }
@@ -52,7 +95,33 @@
       <div class="panel">
         <h1>Paused</h1>
         <p>Game is paused. Press <strong>Esc</strong> or click Resume to continue.</p>
-        <div style="display:flex;gap:12px;justify-content:center">
+
+        <h2>🔊 Audio Settings</h2>
+        <div class="audio-controls">
+          <div class="audio-control">
+            <label for="masterVolume">Master</label>
+            <input type="range" id="masterVolume" min="0" max="100" value="100">
+            <span class="value" id="masterValue">100%</span>
+          </div>
+          <div class="audio-control">
+            <label for="musicVolume">Music</label>
+            <input type="range" id="musicVolume" min="0" max="100" value="50">
+            <span class="value" id="musicValue">50%</span>
+          </div>
+          <div class="audio-control">
+            <label for="sfxVolume">SFX</label>
+            <input type="range" id="sfxVolume" min="0" max="100" value="90">
+            <span class="value" id="sfxValue">90%</span>
+          </div>
+          <div class="audio-control">
+            <label for="ambientVolume">Ambient</label>
+            <input type="range" id="ambientVolume" min="0" max="100" value="20">
+            <span class="value" id="ambientValue">20%</span>
+          </div>
+          <button id="muteBtn" class="mute-btn">🔇 Mute All</button>
+        </div>
+
+        <div style="display:flex;gap:12px;justify-content:center;margin-top:20px;">
           <button id="resumeBtn">Resume</button>
         </div>
       </div>

@@ -197,6 +197,38 @@ export const levels = [
           }
         ]
       }
+    },
+    // Example sound configuration (add your audio files to use)
+    sounds: {
+      music: {
+        'intro-theme': {
+          url: 'src/assets/audio/ambient/whispers_beneath_the_canopy.mp3',
+          loop: true
+        }
+      },
+      sfx: {
+        'walk': {
+          url: 'src/assets/audio/sfx/walking.mp3',
+          loop: false
+        },
+        'running': {
+          url: 'src/assets/audio/sfx/running.mp3',
+          loop: false
+        },
+        'jump': {
+          url: 'src/assets/audio/sfx/jumping.wav',
+          loop: false
+        }
+      },
+      ambient: {
+        'training-grounds': {
+          url: 'src/assets/audio/ambient/whispers_beneath_the_canoy.mp3',
+          loop: true
+        }
+      },
+      // Auto-play on level start (commented out until audio files are added)
+      playMusic: 'intro-theme',
+      playAmbient: 'training-grounds'
     }
   },
   {
