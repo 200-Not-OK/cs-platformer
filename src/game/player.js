@@ -64,6 +64,11 @@ export class Player {
     this.isGrounded = false;
     this.isSprinting = false;
     this.isJumping = false;
+    this.isMoving = false;
+
+    // Sound state for footsteps
+    this.footstepTimer = 0;
+    this.footstepInterval = 0.4; // Time between footsteps (seconds)
     
     // Ground detection
     this.groundCheckDistance = 0.1;
@@ -586,6 +591,36 @@ export class Player {
     
     // Update animations
     this.updateAnimations(delta);
+
+    // Handle footstep sounds
+    this.updateFootsteps(delta);
+  }
+
+  updateFootsteps(delta) {
+    // Only play footsteps when moving and grounded
+    if (this.isMoving && this.isGrounded) {
+      // Adjust footstep speed based on whether sprinting
+      const currentInterval = this.isSprinting ? this.footstepInterval * 0.6 : this.footstepInterval;
+
+      this.footstepTimer += delta;
+
+      if (this.footstepTimer >= currentInterval) {
+        this.footstepTimer = 0;
+
+        // Play footstep sound if sound manager is available
+        if (this.game && this.game.soundManager) {
+          // Use different sound for running vs walking
+          const soundName = this.isSprinting ? 'running' : 'walk';
+          console.log(`🎵 Playing footstep: ${soundName}, SFX available:`, Object.keys(this.game.soundManager.sfx));
+          this.game.soundManager.playSFX(soundName, 0.4);
+        } else {
+          console.warn('⚠️ Sound manager not available for footsteps');
+        }
+      }
+    } else {
+      // Reset timer when not moving
+      this.footstepTimer = 0;
+    }
   }
 
   updateGroundDetection() {
@@ -603,22 +638,26 @@ export class Player {
     if (!input || !input.isKey) {
       return;
     }
-    
+
     if (!this.body) {
       return;
     }
-    
+
     let moveForward = 0;
     let moveRight = 0;
-    
+
     // Read input
     if (input.isKey('KeyW')) moveForward = 1;
     if (input.isKey('KeyS')) moveForward = -1;
     if (input.isKey('KeyA')) moveRight = -1;
     if (input.isKey('KeyD')) moveRight = 1;
-    
+
     // Check for sprint
     this.isSprinting = input.isKey('ShiftLeft') || input.isKey('ShiftRight');
+
+    // Track movement state for footsteps
+    const wasMoving = this.isMoving;
+    this.isMoving = (moveForward !== 0 || moveRight !== 0);
     
     // Apply movement if there's input
     if (moveForward !== 0 || moveRight !== 0) {
@@ -753,12 +792,17 @@ export class Player {
 
   handleJumpInput(input) {
     if (!input || !input.isKey) return;
-    
+
     if (input.isKey('Space')) {
       if (this.isGrounded && !this.isJumping) {
         // Apply upward impulse for jumping
         this.body.velocity.y = this.jumpStrength;
         this.isJumping = true;
+
+        // Play jump sound
+        if (this.game && this.game.soundManager) {
+          this.game.soundManager.playSFX('jump', 0.5);
+        }
       }
     }
   }
