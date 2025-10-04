@@ -431,7 +431,9 @@ export class Game {
           health: this.player.health ?? 100,
           maxHealth: this.player.maxHealth ?? 100 
         },
-        playerModel: this.player.mesh
+        playerModel: this.player.mesh,
+        enemies: this.level ? this.level.getEnemies() : [],
+        collectibles: this.collectiblesManager ? this.collectiblesManager.getAllCollectibles() : []
       };
       this.ui.update(delta, ctx);
     }
@@ -654,7 +656,11 @@ export class Game {
       if (key === 'hud') {
         this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
       } else if (key === 'minimap') {
-        this.ui.add('minimap', Minimap, config);
+        const minimap = this.ui.add('minimap', Minimap, config);
+        // Set level data for minimap rendering
+        if (minimap && minimap.setLevelData) {
+          minimap.setLevelData(levelData);
+        }
       } else if (key === 'objectives') {
         this.ui.add('objectives', Objectives, { 
           items: levelData.objectives ?? ['Reach the goal'],
