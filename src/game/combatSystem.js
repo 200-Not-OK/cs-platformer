@@ -6,7 +6,7 @@ export class CombatSystem {
     this.physicsWorld = physicsWorld;
     
     // Combat settings
-    this.attackRange = 5.0; // Increased attack range for easier combat
+    this.attackRange = 6; // Extended attack range for easier combat
     this.attackDamage = 25; // Damage per attack
     this.attackCooldown = 1000; // 1 second cooldown between attacks (in ms)
     this.lastAttackTime = 0;

@@ -60,6 +60,10 @@ export class Player {
     this.isInteracting = false;
     this.lastInteractionTime = 0;
     
+    // Movement lock system for animations
+    this.movementLocked = false;
+    this.movementLockReason = '';
+    
     // Movement state
     this.isGrounded = false;
     this.isSprinting = false;
@@ -554,6 +558,31 @@ export class Player {
     this.currentAction = action;
   }
 
+  /**
+   * Lock player movement (e.g., during chest animations)
+   */
+  lockMovement(reason = 'Animation') {
+    this.movementLocked = true;
+    this.movementLockReason = reason;
+    console.log(`🔒 Player movement locked: ${reason}`);
+  }
+
+  /**
+   * Unlock player movement
+   */
+  unlockMovement() {
+    this.movementLocked = false;
+    console.log(`🔓 Player movement unlocked (was locked for: ${this.movementLockReason})`);
+    this.movementLockReason = '';
+  }
+
+  /**
+   * Check if player movement is currently locked
+   */
+  isMovementLocked() {
+    return this.movementLocked;
+  }
+
   update(delta, input, camOrientation = null, platforms = [], playerActive = true) {
     // Clear wall normals from previous frame
     this.wallNormals = [];
@@ -605,6 +634,14 @@ export class Player {
     }
     
     if (!this.body) {
+      return;
+    }
+
+    // Check if movement is locked (e.g., during chest animations)
+    if (this.movementLocked) {
+      // Stop any existing movement when locked
+      this.body.velocity.x = 0;
+      this.body.velocity.z = 0;
       return;
     }
     
@@ -753,6 +790,11 @@ export class Player {
 
   handleJumpInput(input) {
     if (!input || !input.isKey) return;
+    
+    // Check if movement is locked (prevent jumping during animations)
+    if (this.movementLocked) {
+      return;
+    }
     
     if (input.isKey('Space')) {
       if (this.isGrounded && !this.isJumping) {
