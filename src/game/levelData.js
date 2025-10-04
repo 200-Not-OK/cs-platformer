@@ -210,7 +210,12 @@ export const levels = [
     ],
     "ui": [
       "hud",
-      "minimap",
+      {
+        "type": "minimap",
+        "config": {
+          "zoom": 1.6
+        }
+      },
       {
         "type": "collectibles",
         "config": {
