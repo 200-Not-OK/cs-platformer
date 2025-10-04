@@ -4545,6 +4545,662 @@ export const levels = [
         ],
         "materialType": "wall",
         "meshName": null
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          188.82,
+          2.93,
+          -92.23
+        ],
+        "size": [
+          5.7,
+          7,
+          6.4
+        ],
+        "materialType": "platform",
+        "meshName": null
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          204,
+          1.45,
+          -82.54
+        ],
+        "size": [
+          5.7,
+          2.5,
+          8.1
+        ],
+        "materialType": "platform",
+        "meshName": null
+      },
+      {
+        "id": "collider_16",
+        "type": "box",
+        "position": [
+          186.31,
+          0.75,
+          -74.02
+        ],
+        "size": [
+          2.4,
+          1.4,
+          3.3
+        ],
+        "materialType": "platform",
+        "meshName": null
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          204.59,
+          1.44,
+          -87.89
+        ],
+        "size": [
+          1.757465370328589,
+          2.5572642381467574,
+          1.7574413663201511
+        ],
+        "materialType": "platform",
+        "meshName": "chair002"
+      },
+      {
+        "id": "collider_16",
+        "type": "box",
+        "position": [
+          204.83734031511568,
+          1.4399976604421028,
+          -77.07870054224078
+        ],
+        "size": [
+          2.152840001657381,
+          2.5572642381467574,
+          2.152830954113398
+        ],
+        "materialType": "ground",
+        "meshName": "chair003"
+      },
+      {
+        "id": "collider_17",
+        "type": "box",
+        "position": [
+          124.61865616997696,
+          2.35789655209575,
+          -45.85091902946414
+        ],
+        "size": [
+          4.35594794524178,
+          4.466686896193157,
+          4.690001612282799
+        ],
+        "materialType": "ground",
+        "meshName": "crates_stacked"
+      },
+      {
+        "id": "collider_18",
+        "type": "box",
+        "position": [
+          137.08200073242188,
+          4.294557571411133,
+          -49.600777879349465
+        ],
+        "size": [
+          7.072999954223633,
+          8.34000015258789,
+          2.85144659878398
+        ],
+        "materialType": "ground",
+        "meshName": "wall_shelves"
+      },
+      {
+        "id": "collider_19",
+        "type": "box",
+        "position": [
+          144.7830047607422,
+          4.294565074145794,
+          -49.600777879349465
+        ],
+        "size": [
+          8.34000015258789,
+          8.34000015258789,
+          2.85144659878398
+        ],
+        "materialType": "ground",
+        "meshName": "wall_shelves001"
+      },
+      {
+        "id": "collider_20",
+        "type": "box",
+        "position": [
+          157.43726494028886,
+          2.2624492797058444,
+          -44.426582461619056
+        ],
+        "size": [
+          5.124869306974489,
+          4.275760503148355,
+          7.8348425867092
+        ],
+        "materialType": "ground",
+        "meshName": "keg_decorated"
+      },
+      {
+        "id": "collider_21",
+        "type": "box",
+        "position": [
+          157.93923794102022,
+          1.9699388881434396,
+          -14.848899734239431
+        ],
+        "size": [
+          4.052922466748356,
+          3.690738274420097,
+          4.30761308253085
+        ],
+        "materialType": "ground",
+        "meshName": "barrel_small_stack"
+      },
+      {
+        "id": "collider_22",
+        "type": "box",
+        "position": [
+          155.39108120273897,
+          1.9699388881434396,
+          -11.73026646397576
+        ],
+        "size": [
+          4.052922466748356,
+          3.690738274420097,
+          4.30761308253085
+        ],
+        "materialType": "ground",
+        "meshName": "barrel_small_stack001"
+      },
+      {
+        "id": "collider_23",
+        "type": "box",
+        "position": [
+          124.47098516404628,
+          3.0097585030829457,
+          -17.63884563255442
+        ],
+        "size": [
+          4.170001070499438,
+          5.7703789499025575,
+          8.392271500590141
+        ],
+        "materialType": "ground",
+        "meshName": "table_long_decorated_C"
+      },
+      {
+        "id": "collider_24",
+        "type": "box",
+        "position": [
+          124.58648217176363,
+          0.6458189500123268,
+          -11.65420229911797
+        ],
+        "size": [
+          1.5637501528859161,
+          1.042499956935643,
+          1.5637740138177492
+        ],
+        "materialType": "ground",
+        "meshName": "stool"
+      },
+      {
+        "id": "collider_25",
+        "type": "box",
+        "position": [
+          164.3546291437745,
+          1.1670689617656187,
+          21.1559338772297
+        ],
+        "size": [
+          4.170000821948065,
+          2.0849998672679035,
+          8.340001146793384
+        ],
+        "materialType": "ground",
+        "meshName": "table_long"
+      },
+      {
+        "id": "collider_26",
+        "type": "box",
+        "position": [
+          162.77,
+          3.57,
+          46.61
+        ],
+        "size": [
+          8.7,
+          6.8990676468725525,
+          6.7
+        ],
+        "materialType": "ground",
+        "meshName": "box_stacked001"
+      },
+      {
+        "id": "collider_27",
+        "type": "box",
+        "position": [
+          154.06177621154166,
+          1.6704207580987145,
+          48.98871463673633
+        ],
+        "size": [
+          3.1848668356683163,
+          3.0917049312002973,
+          3.1795514938651124
+        ],
+        "materialType": "ground",
+        "meshName": "box_small_decorated"
+      },
+      {
+        "id": "collider_28",
+        "type": "box",
+        "position": [
+          131.42878728557588,
+          1.6883189703524124,
+          13.76034447479784
+        ],
+        "size": [
+          4.260210182779048,
+          3.1274999329447724,
+          4.2602102300157
+        ],
+        "materialType": "ground",
+        "meshName": "box_large"
+      },
+      {
+        "id": "collider_29",
+        "type": "box",
+        "position": [
+          118.23579885737476,
+          1.6704207580987145,
+          66.1735187843158
+        ],
+        "size": [
+          3.1465359855462083,
+          3.0917049312002973,
+          3.1519117178215623
+        ],
+        "materialType": "ground",
+        "meshName": "box_small_decorated001"
+      },
+      {
+        "id": "collider_30",
+        "type": "box",
+        "position": [
+          101.78,
+          3.57,
+          68.04
+        ],
+        "size": [
+          7.7,
+          6.1,
+          7.5
+        ],
+        "materialType": "ground",
+        "meshName": "box_stacked002"
+      },
+      {
+        "id": "collider_31",
+        "type": "box",
+        "position": [
+          49.01569593894641,
+          1.2094698240169919,
+          133.02067225554947
+        ],
+        "size": [
+          3.349154446603606,
+          2.16980228698435,
+          2.614415169395528
+        ],
+        "materialType": "ground",
+        "meshName": "chest_gold"
+      },
+      {
+        "id": "collider_32",
+        "type": "box",
+        "position": [
+          36.785631402264926,
+          2.787511465991493,
+          114.42733177979457
+        ],
+        "size": [
+          4.040640519874842,
+          5.330205046825412,
+          3.868601585774684
+        ],
+        "materialType": "ground",
+        "meshName": "barrel_large_decorated"
+      },
+      {
+        "id": "collider_33",
+        "type": "box",
+        "position": [
+          89.57170359729886,
+          1.9699388881434396,
+          135.19853203618834
+        ],
+        "size": [
+          3.8625783454449305,
+          3.690738274420097,
+          2.0943309827061967
+        ],
+        "materialType": "ground",
+        "meshName": "barrel_small_stack002"
+      },
+      {
+        "id": "collider_34",
+        "type": "box",
+        "position": [
+          81.71094112420333,
+          3.0097585030829457,
+          134.10813024415836
+        ],
+        "size": [
+          8.393263917184925,
+          5.7703789499025575,
+          4.171997504070561
+        ],
+        "materialType": "ground",
+        "meshName": "table_long_decorated_C001"
+      },
+      {
+        "id": "collider_35",
+        "type": "box",
+        "position": [
+          71.09937707881903,
+          2.2624492797058444,
+          134.35025028798646
+        ],
+        "size": [
+          7.337932731056867,
+          4.275760503148355,
+          4.170000076293945
+        ],
+        "materialType": "ground",
+        "meshName": "keg_decorated001"
+      },
+      {
+        "id": "collider_36",
+        "type": "box",
+        "position": [
+          93.67917124866605,
+          1.9699388881434396,
+          135.04640190923521
+        ],
+        "size": [
+          3.8625783454449305,
+          3.690738274420097,
+          2.0943309827061967
+        ],
+        "materialType": "ground",
+        "meshName": "barrel_small_stack003"
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          120.71377499297856,
+          1.2094698240169919,
+          134.96299147340878
+        ],
+        "size": [
+          3.396459982979863,
+          2.16980228698435,
+          2.67561891825045
+        ],
+        "materialType": "ground",
+        "meshName": "chest_gold001"
+      },
+      {
+        "id": "collider_16",
+        "type": "box",
+        "position": [
+          100.57344698946662,
+          3.574102590835274,
+          132.57746476221632
+        ],
+        "size": [
+          7.245948341737744,
+          6.8990676468725525,
+          7.578448686971569
+        ],
+        "materialType": "ground",
+        "meshName": "box_stacked003"
+      },
+      {
+        "id": "collider_17",
+        "type": "box",
+        "position": [
+          135.1444230523371,
+          2.373125225913782,
+          120.40270376055668
+        ],
+        "size": [
+          2.1111022819883942,
+          4.497112573409595,
+          2.0850000381469727
+        ],
+        "materialType": "ground",
+        "meshName": "table_small_decorated_B"
+      },
+      {
+        "id": "collider_18",
+        "type": "box",
+        "position": [
+          78.93668402608654,
+          1.44465374172961,
+          153.6492716788147
+        ],
+        "size": [
+          9.687037760079306,
+          2.640169605041251,
+          6.017541128824746
+        ],
+        "materialType": "ground",
+        "meshName": "table_long_broken"
+      },
+      {
+        "id": "collider_19",
+        "type": "box",
+        "position": [
+          107.0706477166656,
+          1.44465374172961,
+          153.63816443804922
+        ],
+        "size": [
+          9.466253568379997,
+          2.640169605041251,
+          5.561150127080623
+        ],
+        "materialType": "ground",
+        "meshName": "table_long_broken001"
+      },
+      {
+        "id": "collider_20",
+        "type": "box",
+        "position": [
+          109.13315283483297,
+          1.1356509486152608,
+          171.18817271052498
+        ],
+        "size": [
+          4.746952188438058,
+          2.026126515893545,
+          5.063198392341803
+        ],
+        "materialType": "ground",
+        "meshName": "table_medium_broken"
+      },
+      {
+        "id": "collider_21",
+        "type": "box",
+        "position": [
+          -15.774879458473844,
+          1.1356509486152608,
+          185.58269214813356
+        ],
+        "size": [
+          6.501108033266455,
+          2.026126515893545,
+          6.644120551591669
+        ],
+        "materialType": "ground",
+        "meshName": "table_medium_broken001"
+      },
+      {
+        "id": "collider_22",
+        "type": "box",
+        "position": [
+          -9.031432040926523,
+          1.44465374172961,
+          185.922779473471
+        ],
+        "size": [
+          9.570408109219692,
+          2.640169605041251,
+          5.771688765302258
+        ],
+        "materialType": "ground",
+        "meshName": "table_long_broken002"
+      },
+      {
+        "id": "collider_23",
+        "type": "box",
+        "position": [
+          -14.814722717412204,
+          3.773319007103103,
+          168.24818778184448
+        ],
+        "size": [
+          8.339277862299657,
+          7.297500146141733,
+          6.255000362992291
+        ],
+        "materialType": "ground",
+        "meshName": "rubble_half001"
+      },
+      {
+        "id": "collider_24",
+        "type": "box",
+        "position": [
+          8.014030456542969,
+          0.7500687789618894,
+          186.51884862286786
+        ],
+        "size": [
+          3.336000110745431,
+          1.2510001968741449,
+          2.5974991752096344
+        ],
+        "materialType": "ground",
+        "meshName": "chest001"
+      },
+      {
+        "id": "collider_25",
+        "type": "box",
+        "position": [
+          18.026123602434424,
+          1.8147739528903912,
+          186.61600934803732
+        ],
+        "size": [
+          2.16635034337466,
+          3.3804100273628137,
+          2.5254335686679497
+        ],
+        "materialType": "ground",
+        "meshName": "table_small_decorated_A"
+      },
+      {
+        "id": "collider_26",
+        "type": "box",
+        "position": [
+          90.08,
+          3.57,
+          153.81
+        ],
+        "size": [
+          6.6,
+          6.2,
+          7.9
+        ],
+        "materialType": "ground",
+        "meshName": "box_stacked004"
+      },
+      {
+        "id": "collider_27",
+        "type": "box",
+        "position": [
+          92.77608092308037,
+          4.331363677978516,
+          10.492928828015778
+        ],
+        "size": [
+          4.6537252908040045,
+          8.34000015258789,
+          3.5656915300789365
+        ],
+        "materialType": "ground",
+        "meshName": "pillar_decorated003"
+      },
+      {
+        "id": "collider_28",
+        "type": "box",
+        "position": [
+          116.05670046847052,
+          3.5740987761380083,
+          83.54460495997023
+        ],
+        "size": [
+          7.245948341737744,
+          6.8990676468725525,
+          7.578448686971569
+        ],
+        "materialType": "ground",
+        "meshName": "box_stacked005"
+      },
+      {
+        "id": "collider_29",
+        "type": "box",
+        "position": [
+          115.14885163728454,
+          1.7633132431736558,
+          128.84415030418415
+        ],
+        "size": [
+          1.9397143695487529,
+          3.4966749854724894,
+          4.655946352112522
+        ],
+        "materialType": "ground",
+        "meshName": "sword_shield_gold"
+      },
+      {
+        "id": "collider_30",
+        "type": "box",
+        "position": [
+          115.14885163728454,
+          1.7633132431736558,
+          124.05161642967244
+        ],
+        "size": [
+          1.9397143695487529,
+          3.4966749854724894,
+          4.655946352112508
+        ],
+        "materialType": "ground",
+        "meshName": "sword_shield_gold001"
       }
     ],
     "fallbackObjects": [
