@@ -28,4 +28,8 @@ export class LevelManager {
   getCurrentLevel() {
     return this.current;
   }
+
+  getCurrentLevelIndex() {
+    return this.currentIndex;
+  }
 }

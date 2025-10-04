@@ -13,11 +13,15 @@ import { SmallMenu } from './components/menu.js';
 import { FPS } from './components/fps.js';
 import { Crosshair } from './components/crosshair.js';
 import { Collectibles } from './components/collectibles.js';
+import { InteractionPrompt } from './components/interactionPrompt.js';
+import { DeathMenu } from './components/deathMenu.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
 import { PhysicsWorld } from './physics/PhysicsWorld.js';
 import { CombatSystem } from './combatSystem.js';
+import { DoorManager } from '../assets/doors/DoorManager.js';
+import { CollectiblesManager } from './CollectiblesManager.js';
 
 export class Game {
   constructor() {
@@ -34,32 +38,33 @@ export class Game {
     // Input
     this.input = new InputManager(window);
 
-  // Level system
-  this.levelManager = new LevelManager(this.scene, this.physicsWorld);
-  this.level = null;
+    // Level system
+    this.levelManager = new LevelManager(this.scene, this.physicsWorld);
+    this.level = null;
 
-  // Player
-  this.player = new Player(this.scene, this.physicsWorld, { 
-    speed: 17, 
-    jumpStrength: 12, 
-    size: [1, 1.5, 1],
-    // Collider size scaling factors (optional)
-    colliderWidthScale: 0.5,   // 40% of model width (default: 0.4)
-    colliderHeightScale: 1,  // 90% of model height (default: 0.9)  
-    colliderDepthScale: 0.5    // 40% of model depth (default: 0.4)
-  });
-  // Player position will be set by loadLevel() call
+    // Player
+    this.player = new Player(this.scene, this.physicsWorld, {
+      speed: 17,
+      jumpStrength: 12,
+      size: [1, 1.5, 1],
+      // Collider size scaling factors (optional)
+      colliderWidthScale: 0.5,   // 40% of model width (default: 0.4)
+      colliderHeightScale: 1,  // 90% of model height (default: 0.9)
+      colliderDepthScale: 0.5,    // 40% of model depth (default: 0.4)
+      game: this // Pass game reference for death handling
+    });
+    // Player position will be set by loadLevel() call
 
     // Cameras
-  this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
-  this.firstCam = new FirstPersonCamera(this.player, this.input, window);
-  this.freeCam = new FreeCamera(this.input, window);
-  // Cache the underlying three.js camera objects so identity checks are reliable
-  this.thirdCameraObject = this.thirdCam.getCamera();
-  this.firstCameraObject = this.firstCam.getCamera();
-  this.freeCameraObject = this.freeCam.getCamera();
-  this.activeCamera = this.thirdCameraObject;
-  //this.activeCamera = this.freeCameraObject;
+    this.thirdCam = new ThirdPersonCamera(this.player, this.input, window);
+    this.firstCam = new FirstPersonCamera(this.player, this.input, window);
+    this.freeCam = new FreeCamera(this.input, window);
+    // Cache the underlying three.js camera objects so identity checks are reliable
+    this.thirdCameraObject = this.thirdCam.getCamera();
+    this.firstCameraObject = this.firstCam.getCamera();
+    this.freeCameraObject = this.freeCam.getCamera();
+    this.activeCamera = this.thirdCameraObject;
+    //this.activeCamera = this.freeCameraObject;
     // Enable alwaysTrackMouse for third-person camera
     this.input.alwaysTrackMouse = true;
     // Request pointer lock for third-person/first-person camera when the user clicks
@@ -91,6 +96,10 @@ export class Game {
         this._suppressPointerLockPause = false;
         return;
       }
+      // Don't show pause menu if player is dead
+      if (this.playerDead) {
+        return;
+      }
       // If we were in first/third person, interpret the pointerlock exit as Esc -> pause
       if (this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) {
         this.setPaused(true);
@@ -100,28 +109,40 @@ export class Game {
     // When switching to free camera, move it near player
     this._bindKeys();
 
-  // UI manager (modular UI per-level)
-  this.ui = new UIManager(document.getElementById('app'));
-  // register a default HUD — actual per-level UI will be loaded by loadLevel
-  this.ui.add('hud', HUD, { health: 100 });
-  // Add FPS counter
-  this.ui.add('fps', FPS, { showFrameTime: true });
-  // Add crosshair for combat
-  this.ui.add('crosshair', Crosshair, { visible: true });
+    // UI manager (modular UI per-level)
+    this.ui = new UIManager(document.getElementById('app'));
+    // register a default HUD — actual per-level UI will be loaded by loadLevel
+    this.ui.add('hud', HUD, { health: 100 });
+    // Add FPS counter
+    this.ui.add('fps', FPS, { showFrameTime: true });
+    console.log('📊 FPS counter enabled. Press F to toggle visibility.');
+    // Add crosshair for combat
+    this.ui.add('crosshair', Crosshair, { visible: true });
+    // Add interaction prompt for chests
+    this.ui.add('interactionPrompt', InteractionPrompt, { message: 'to interact' });
 
-  // Combat system
-  this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
+    // Combat system
+    this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
 
-  // Lighting manager (modular per-level lights)
-  this.lights = new LightManager(this.scene);
+    // Collectibles system
+    this.collectiblesManager = new CollectiblesManager(this.scene, this.physicsWorld);
+
+    // Door system
+    this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
+    this.doorHelpersVisible = false; // Track door collision helper visibility (invisible by default)
+
+    // Lighting manager (modular per-level lights)
+    this.lights = new LightManager(this.scene);
 
     // Load the initial level early so subsequent code can reference `this.level`
     this._initializeLevel();
 
     // small world grid
     const grid = new THREE.GridHelper(200, 200, 0x444444, 0x222222);
-    this.scene.add(grid);    // Pause state
+    this.scene.add(grid);
+    // Pause state
     this.paused = false;
+    this.playerDead = false; // Flag to track if player is dead
     this.pauseMenu = document.getElementById('pauseMenu');
     const resumeBtn = document.getElementById('resumeBtn');
     if (resumeBtn) resumeBtn.addEventListener('click', (e) => {
@@ -142,10 +163,25 @@ export class Game {
       }
     });
 
-  // loop
-  this.last = performance.now();
-  this._loop = this._loop.bind(this);
-  requestAnimationFrame(this._loop);
+    // loop
+    this.last = performance.now();
+    this._loop = this._loop.bind(this);
+    requestAnimationFrame(this._loop);
+    
+    // Log available key bindings for user reference
+    setTimeout(() => {
+      console.log(`
+🎮 === GAME CONTROLS ===
+🎥 C - Cycle cameras (Free → Third → First)
+🔄 N - Next level
+🔍 M - Toggle physics debug visualization  
+🚪 H - Toggle door collision helpers
+⚔️  B - Toggle combat debug visuals
+� E - Interact with chests and doors
+📊 F - Toggle FPS counter
+⏸️  ESC - Pause/Resume game
+========================`);
+    }, 1000); // Delay to ensure other startup messages are shown first
   }
 
   // Initialize the first level asynchronously
@@ -158,8 +194,8 @@ export class Game {
   _bindKeys() {
     window.addEventListener('keydown', (e) => {
       const code = e.code;
-      // Always allow toggling pause via Escape
-      if (code === 'Escape') {
+      // Always allow toggling pause via Escape, but not when player is dead
+      if (code === 'Escape' && !this.playerDead) {
         this.setPaused(!this.paused);
         return;
       }
@@ -194,16 +230,176 @@ export class Game {
         // next level — use loadLevel so per-level UI is applied
         const nextIndex = this.levelManager.currentIndex + 1;
         this.loadLevel(nextIndex).catch(err => console.error('Failed to load level:', err));
-      } else if (code === 'KeyL') {
+      } else if (code === 'KeyM') {
         // toggle physics debug visualization
         const debugEnabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
+      } else if (code === 'KeyH') {
+        // toggle door collision helpers (green boxes around doors)
+        if (this.doorManager) {
+          this.doorHelpersVisible = !this.doorHelpersVisible;
+          this.doorManager.toggleColliders(this.doorHelpersVisible);
+        }
       } else if (code === 'KeyB') {
         // toggle combat debug visuals
         if (this.combatSystem) {
           this.combatSystem.toggleDebug();
         }
+      } else if (code === 'KeyE') {
+        // interact with doors or chests
+        let interacted = false;
+        
+        // First try chest interaction
+        if (this.collectiblesManager && this.collectiblesManager.handleInteraction) {
+          interacted = this.collectiblesManager.handleInteraction();
+        }
+        
+        // If no chest interaction, try door interaction
+        if (!interacted && this.doorManager) {
+          const playerPos = this.player.getPosition();
+          this.doorManager.interactWithClosestDoor(playerPos);
+        }
+      } else if (code === 'KeyF') {
+        // toggle FPS counter visibility
+        this.toggleFPSCounter();
+      } else if (code === 'KeyQ') {
+        // use health potion
+        this.useHealthPotion();
+      } else if (code === 'KeyJ') {
+        // Debug: damage player for testing death system
+        if (this.player && this.player.takeDamage) {
+          this.player.takeDamage(50);
+          console.log('🩸 Debug: Player damaged for testing');
+        }
       }
     });
+  }
+
+  toggleFPSCounter() {
+    const fpsComponent = this.ui.get('fps');
+    if (fpsComponent) {
+      // Toggle visibility by modifying the display style
+      const currentDisplay = fpsComponent.root.style.display;
+      const isCurrentlyVisible = currentDisplay !== 'none';
+      
+      fpsComponent.root.style.display = isCurrentlyVisible ? 'none' : 'block';
+      
+      const newState = isCurrentlyVisible ? 'hidden' : 'visible';
+      console.log(`📊 FPS counter is now ${newState} (Press F to toggle)`);
+      
+      // Store the state for consistency
+      fpsComponent.isVisible = !isCurrentlyVisible;
+    } else {
+      console.warn('⚠️ FPS component not found. Cannot toggle visibility.');
+    }
+  }
+
+  useHealthPotion() {
+    // Get the UI component that manages potions
+    const collectiblesUI = this.ui.get('collectibles');
+    const hudUI = this.ui.get('hud');
+    
+    let potionUsed = false;
+    let potionAvailable = false;
+    
+    // Try collectibles UI first (for levels that use collectibles component)
+    if (collectiblesUI && collectiblesUI.useHealthPotion) {
+      potionAvailable = collectiblesUI.collectibles.potions.count > 0;
+      if (potionAvailable) {
+        potionUsed = collectiblesUI.useHealthPotion();
+      }
+    }
+    // Fall back to HUD UI (for levels that use HUD component)
+    else if (hudUI && hudUI.useHealthPotion) {
+      potionAvailable = hudUI.healthPotions > 0;
+      if (potionAvailable) {
+        potionUsed = hudUI.useHealthPotion();
+      }
+    }
+    
+    if (potionUsed) {
+      // Heal the player
+      if (this.player && this.player.heal) {
+        this.player.heal(25); // Heal 25 HP
+      }
+      console.log('🧪 Used health potion! +25 HP');
+    } else if (!potionAvailable) {
+      console.log('❌ No health potions available!');
+    } else {
+      console.log('⚠️ Could not use health potion');
+    }
+  }
+
+  showDeathMenu() {
+    console.log('💀 Showing death menu');
+    
+    // Set death state flag
+    this.playerDead = true;
+    
+    // Create death menu if it doesn't exist
+    if (!this.ui.get('deathMenu')) {
+      this.ui.add('deathMenu', DeathMenu, {
+        onRespawn: () => this.respawnPlayer()
+      });
+    }
+    
+    // Show the death menu
+    const deathMenu = this.ui.get('deathMenu');
+    if (deathMenu && deathMenu.show) {
+      deathMenu.show();
+    }
+    
+    // Pause the game without showing pause menu
+    this.paused = true;
+    
+    // Disable input handling when paused
+    if (this.input && this.input.setEnabled) {
+      this.input.setEnabled(false);
+    }
+    
+    // Exit pointer lock if active
+    if (document.pointerLockElement) {
+      this._suppressPointerLockPause = true;
+      document.exitPointerLock();
+    }
+  }
+
+  respawnPlayer() {
+    console.log('🔄 Respawning player');
+    
+    // Clear death state flag
+    this.playerDead = false;
+    
+    // Hide death menu
+    const deathMenu = this.ui.get('deathMenu');
+    if (deathMenu && deathMenu.hide) {
+      deathMenu.hide();
+    }
+    
+    // Reload the current level
+    if (this.levelManager && this.levelManager.getCurrentLevelIndex !== undefined) {
+      const currentIndex = this.levelManager.getCurrentLevelIndex();
+      this.loadLevel(currentIndex);
+    }
+    
+    // Reset player health
+    this.player.health = this.player.maxHealth;
+    
+    // Update HUD
+    const hudUI = this.ui.get('hud');
+    if (hudUI && hudUI.setProps) {
+      hudUI.setProps({ 
+        health: this.player.health,
+        maxHealth: this.player.maxHealth 
+      });
+    }
+    
+    // Unpause the game
+    this.paused = false;
+    
+    // Re-enable input handling
+    if (this.input && this.input.setEnabled) {
+      this.input.setEnabled(true);
+    }
   }
 
   _loop() {
@@ -281,6 +477,12 @@ export class Game {
     // Update combat system
     this.combatSystem.update(delta);
 
+    // Update door system
+    this.doorManager.update(delta, this.player.getPosition());
+
+    // Update collectibles system
+    this.collectiblesManager.update(delta);
+
   // update lights (allow dynamic lights to animate)
   if (this.lights) this.lights.update(delta);
 
@@ -308,6 +510,16 @@ export class Game {
     // Update combat system's physics world reference
     this.combatSystem.physicsWorld = this.physicsWorld;
     
+    // Update door manager's physics world reference
+    this.doorManager.physicsWorld = this.physicsWorld;
+    
+    // Update collectibles manager's physics world reference
+    this.collectiblesManager.updatePhysicsWorld(this.physicsWorld);
+    
+    // Clear existing doors when loading a new level
+    this.doorManager.dispose();
+    this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
+    
     // Recreate player's physics body in the new physics world
     if (this.player.originalModelSize) {
       this.player.createPhysicsBody(this.player.originalModelSize);
@@ -318,17 +530,61 @@ export class Game {
     
     this.level = await this.levelManager.loadIndex(index);
 
-    // Position player at start position
+    // Position player at start position from level data
     const start = this.level.data.startPosition;
     this.player.setPosition(new THREE.Vector3(...start));
+    console.log(`🏃 Player spawned at position: [${start.join(', ')}] for level: ${this.level.data.name}`);
     
     // Trigger level start cinematic
     this.level.triggerLevelStartCinematic(this.activeCamera, this.player);
+
+    // spawn doors at specific positions only on level 2
+    if (index === 1) { // level2
+      // Boss door
+      this.doorManager.spawn('model', { 
+        position: [25.9, 0, -4.5],
+        preset: 'wooden',
+        width: 6,
+        height: 6.5,
+        depth: 0.5,
+        type: 'model',
+        modelUrl: 'src/assets/doors/level2_boss_door.glb',
+        swingDirection: 'forward left',
+        interactionDistance: 10,
+        autoOpenOnApproach: true
+      //  passcode: '123'
+      });
+      console.log('Spawned boss door model at position [25.9, 0, -4.5] on level 2');
+      
+      // Second door
+      this.doorManager.spawn('basic', { 
+        position: [56.5, 0, -9.4],
+        preset: 'wooden',
+        width: 4.7,
+        height: 6.5,
+        depth: 0.5,
+        type: 'model',
+        modelUrl: 'src/assets/doors/level2_boss_door.glb',
+        swingDirection: 'forward left',
+        initialRotation: 90,
+        interactionDistance: 10,
+        autoOpenOnApproach: true
+      });
+      console.log('Spawned basic door at position [55, 0, -4.5] on level 2');
+      
+      // Apply current door helper visibility state
+      this.doorManager.toggleColliders(this.doorHelpersVisible);
+    }
 
     // swap UI components according to level.data.ui (array of strings)
     this.applyLevelUI(this.level.data);
     // swap lighting according to level.data.lights (array of descriptors)
     this.applyLevelLights(this.level.data);
+    
+    // Spawn collectibles after all systems are initialized
+    this.collectiblesManager.cleanup();
+    await this.collectiblesManager.spawnCollectiblesForLevel(this.level.data);
+    
     return this.level;
   }
 
@@ -363,6 +619,9 @@ export class Game {
     }
     if (this.ui.get('crosshair')) {
       globalComponents.set('crosshair', this.ui.get('crosshair'));
+    }
+    if (this.ui.get('interactionPrompt')) {
+      globalComponents.set('interactionPrompt', this.ui.get('interactionPrompt'));
     }
     
     this.ui.clear();
@@ -414,6 +673,16 @@ export class Game {
       } else {
         console.warn('Unknown UI component type in level data:', key);
       }
+    }
+    
+    // Set up collectibles manager references after UI is loaded
+    const collectiblesUI = this.ui.get('collectibles');
+    const interactionPrompt = this.ui.get('interactionPrompt');
+    if (collectiblesUI) {
+      this.collectiblesManager.setReferences(this.player, collectiblesUI);
+    }
+    if (interactionPrompt) {
+      this.collectiblesManager.setInteractionPrompt(interactionPrompt);
     }
   }
 

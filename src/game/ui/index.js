@@ -5,3 +5,5 @@ export { SmallMenu } from '../components/menu.js';
 export { FPS } from '../components/fps.js';
 export { Crosshair } from '../components/crosshair.js';
 export { Collectibles } from '../components/collectibles.js';
+export { InteractionPrompt } from '../components/interactionPrompt.js';
+export { DeathMenu } from '../components/deathMenu.js';
