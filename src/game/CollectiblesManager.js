@@ -577,7 +577,9 @@ export class CollectiblesManager {
   openChest(chestCollectible) {
     console.log(`📦 Opening chest containing: ${chestCollectible.contents}`);
     
-    // Mark chest as animating to prevent further interaction
+    // Mark chest as collected and animating
+    chestCollectible.collected = true;
+    chestCollectible.isOpen = true;
     chestCollectible.mesh.userData.isAnimating = true;
     
     // Start the interaction animation (raise and spin)
@@ -595,7 +597,7 @@ export class CollectiblesManager {
       if (this.uiRef) {
         this.uiRef.collectApple();
       }
-      console.log('🍎 Found an apple in the chest!');
+      console.log('🍎 Found an apple in the chest! Marked as collected.');
     } else if (chestCollectible.contents === 'potion') {
       this.triggerEvent('onPotionCollected', chestCollectible);
       if (this.uiRef) {
@@ -890,10 +892,19 @@ export class CollectiblesManager {
     
     for (const [id, collectible] of this.collectibles) {
       stats.total++;
-      if (collectible.type === 'apple') {
+      
+      // Check if this is an apple collectible (direct apple or chest containing apple)
+      const isApple = collectible.type === 'apple' || 
+                     (collectible.type === 'chest' && collectible.contents === 'apple');
+      
+      // Check if this is a potion collectible (direct potion or chest containing potion)
+      const isPotion = collectible.type === 'potion' || 
+                      (collectible.type === 'chest' && collectible.contents === 'potion');
+      
+      if (isApple) {
         stats.apples.total++;
         if (collectible.collected) stats.apples.collected++;
-      } else if (collectible.type === 'potion') {
+      } else if (isPotion) {
         stats.potions.total++;
         if (collectible.collected) stats.potions.collected++;
       }
