@@ -901,4 +901,17 @@ export class CollectiblesManager {
     
     return stats;
   }
+
+  /**
+   * Get all collectibles (for minimap display)
+   */
+  getAllCollectibles() {
+    const collectibles = [];
+    for (const [id, collectible] of this.collectibles) {
+      if (!collectible.collected) {
+        collectibles.push(collectible);
+      }
+    }
+    return collectibles;
+  }
 }
