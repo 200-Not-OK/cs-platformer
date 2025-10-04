@@ -10,7 +10,7 @@ export class SnakeEnemy extends EnemyBase {
       speed: options.speed ?? 1.5, // Slower than other enemies
       health: options.health ?? 35, // Moderate health
       size: [0.8, 0.4, 2.0], // Long and low profile
-      colliderSize: [0.8, 0.4, 1.8], // Slightly larger collider for better hit detection
+      colliderSize: [2.5, 0.6, 2.5], // Reasonably bigger square collider for reliable collision
       ...options
     };
 
@@ -32,6 +32,11 @@ export class SnakeEnemy extends EnemyBase {
     this.patrolDirection = 1;
     this.stateTimer = 0;
     
+    // Store initial spawn position for reset purposes
+    this.initialPosition = options.position ? 
+      new THREE.Vector3(options.position[0], options.position[1], options.position[2]) :
+      new THREE.Vector3(0, 2, 0);
+    
     // Snake-specific animations
     this.snakeAnimations = {
       slither: null,    // Normal movement (walk equivalent)
@@ -52,7 +57,7 @@ export class SnakeEnemy extends EnemyBase {
     
     // Create snake physics body that can rotate
     this.body = this.physicsWorld.createDynamicBody({
-      mass: 1.0,
+      mass: 2.0, // Increased mass for larger collider to prevent falling through
       shape: 'box',
       size: this.colliderSize,
       position: [this.mesh.position.x, this.mesh.position.y, this.mesh.position.z],
@@ -60,16 +65,19 @@ export class SnakeEnemy extends EnemyBase {
     });
     
     // Configure snake-specific physics properties
-    this.body.linearDamping = 0.05;
-    this.body.angularDamping = 0.8; // Allow some rotation but with damping
+    this.body.linearDamping = 0.6; // Higher damping for more stability with larger collider
+    this.body.angularDamping = 0.95; // Very high angular damping to prevent spinning
     this.body.allowSleep = false;
     
-    // Allow rotation for the snake (unlike other enemies)
-    this.body.fixedRotation = false; // Enable rotation
+    // Disable rotation completely for stability
+    this.body.fixedRotation = true; // Keep rotation locked
     this.body.updateMassProperties();
     
-    // Physics material settings
-    this.body.material.friction = 0.1;
+    // Lock X and Z axis rotation to prevent tipping, allow Y rotation
+    // We'll manually constrain X and Z angular velocity in the update loop
+    
+    // Physics material settings for stability
+    this.body.material.friction = 0.5; // Higher friction for better stability
     this.body.material.restitution = 0.0;
     
     // Set proper userData
@@ -79,7 +87,49 @@ export class SnakeEnemy extends EnemyBase {
       enemyType: this.enemyType || 'snake'
     };
     
-    console.log(`🐍 Created snake physics body with rotation enabled at [${this.mesh.position.x}, ${this.mesh.position.y}, ${this.mesh.position.z}]`);
+    console.log(`🐍 Created snake physics body with Y-axis rotation at [${this.mesh.position.x}, ${this.mesh.position.y}, ${this.mesh.position.z}]`);
+  }
+
+  // Smooth rotation method to prevent physics instability
+  _setPhysicsRotation(targetAngle, smoothing = 0.1) {
+    if (!this.body || !this.body.quaternion) return;
+    
+    try {
+      // Get current Y rotation
+      const currentQuaternion = this.body.quaternion.clone();
+      const currentEuler = new THREE.Euler().setFromQuaternion(currentQuaternion);
+      let currentAngle = currentEuler.y;
+      
+      // Normalize angles to -π to π range
+      while (targetAngle > Math.PI) targetAngle -= 2 * Math.PI;
+      while (targetAngle < -Math.PI) targetAngle += 2 * Math.PI;
+      while (currentAngle > Math.PI) currentAngle -= 2 * Math.PI;
+      while (currentAngle < -Math.PI) currentAngle += 2 * Math.PI;
+      
+      // Calculate the shortest angular distance
+      let angleDiff = targetAngle - currentAngle;
+      if (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+      if (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+      
+      // Apply smoothing
+      const newAngle = currentAngle + angleDiff * smoothing;
+      
+      // Set the smoothed rotation
+      this.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), newAngle);
+    } catch (error) {
+      console.warn('Snake rotation error:', error);
+      // Fallback to direct rotation
+      if (this.body) {
+        this.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), targetAngle);
+      }
+    }
+  }
+
+  // Update horizontal rotation to keep collider aligned with mesh direction
+  _updateHorizontalRotation(deltaTime) {
+    // Completely disabled - rotation causes mesh to disappear
+    // Will implement alternative approach later
+    return;
   }
 
   // Override model loading to handle snake-specific animations
@@ -95,7 +145,11 @@ export class SnakeEnemy extends EnemyBase {
         const sizeVec = new THREE.Vector3();
         bbox.getSize(sizeVec);
         this.size = [sizeVec.x, sizeVec.y, sizeVec.z];
-        this.colliderSize = [sizeVec.x * 0.5, sizeVec.y, sizeVec.z * 0.5];
+        
+        // Keep the custom collider size instead of calculating from bbox
+        // this.colliderSize = [sizeVec.x * 0.5, sizeVec.y, sizeVec.z * 0.5];
+        console.log(`🐍 Snake model size: [${sizeVec.x.toFixed(2)}, ${sizeVec.y.toFixed(2)}, ${sizeVec.z.toFixed(2)}]`);
+        console.log(`🐍 Snake collider size: [${this.colliderSize[0]}, ${this.colliderSize[1]}, ${this.colliderSize[2]}]`);
 
         const centerX = (bbox.max.x + bbox.min.x) / 2;
         const centerZ = (bbox.max.z + bbox.min.z) / 2;
@@ -221,14 +275,60 @@ export class SnakeEnemy extends EnemyBase {
   }
 
   update(delta, player, platforms = []) {
-    if (!this.alive) return;
+    if (!this.alive || !this.body) return;
     
     // Call base update for physics and health bar
     super.update(delta, player, platforms);
     
-    // Sync mesh rotation with physics body rotation (for snake collider alignment)
-    if (this.body && this.mesh) {
-      this.mesh.quaternion.copy(this.body.quaternion);
+    // Enhanced physics stability for snake
+    if (this.body && this.body.velocity && this.body.angularVelocity) {
+      // Constrain X and Z angular velocity to prevent tipping
+      this.body.angularVelocity.x = 0;
+      this.body.angularVelocity.z = 0;
+      
+      // Limit Y angular velocity to prevent spinning
+      if (Math.abs(this.body.angularVelocity.y) > 5) {
+        this.body.angularVelocity.y = Math.sign(this.body.angularVelocity.y) * 5;
+      }
+      
+      // Update horizontal rotation to face movement direction
+      this._updateHorizontalRotation(delta);
+      
+      // Prevent excessive upward velocity
+      if (this.body.velocity.y > 3) {
+        this.body.velocity.y = 3;
+      }
+      
+      // Apply downward force if snake is too high above ground
+      if (this.mesh.position.y > 5) {
+        this.body.velocity.y = Math.min(this.body.velocity.y, -2);
+        console.log('🐍 Snake too high, applying downward force');
+      }
+      
+      // Reset snake position if it goes too far from patrol area
+      const distanceFromStart = this.mesh.position.distanceTo(this.initialPosition);
+      if (distanceFromStart > 50) {
+        console.log(`🐍 Snake too far from patrol area (${distanceFromStart.toFixed(2)}), resetting to initial position`);
+        this.setPosition(this.initialPosition.clone());
+        this.body.velocity.set(0, 0, 0);
+        this.body.angularVelocity.set(0, 0, 0);
+        this.behaviorState = 'patrol';
+        this.currentPatrolIndex = 0;
+        this.stateTimer = 0;
+      }
+      
+      // Rotation completely disabled for stability
+      // TODO: Implement mesh-only rotation (not physics body rotation)
+      /*
+      if (this.mesh && this.body.quaternion) {
+        // Extract only Y-axis rotation from physics body
+        const bodyEuler = new THREE.Euler().setFromQuaternion(this.body.quaternion);
+        const yRotation = bodyEuler.y;
+        
+        // Apply only Y-axis rotation to mesh, keeping X and Z at 0
+        this.mesh.rotation.set(0, yRotation, 0);
+      }
+      */
     }
     
     // Update snake-specific behavior
@@ -293,11 +393,19 @@ export class SnakeEnemy extends EnemyBase {
       const direction = new THREE.Vector3().subVectors(targetPos, currentPos);
       const distanceToTarget = direction.length();
 
-      if (distanceToTarget < 1.0) {
+      // Debug patrol movement every few seconds
+      if (Math.floor(this.stateTimer) % 3 === 0 && this.stateTimer % 1 < delta) {
+        console.log(`🐍 Patrol: moving to point ${this.currentPatrolIndex}, distance: ${distanceToTarget.toFixed(2)}, grounded: ${this.onGround}`);
+        console.log(`🐍 Snake position: ${this.mesh.position.x.toFixed(2)}, ${this.mesh.position.y.toFixed(2)}, ${this.mesh.position.z.toFixed(2)}`);
+        console.log(`🐍 Snake velocity: ${this.body.velocity.x.toFixed(2)}, ${this.body.velocity.y.toFixed(2)}, ${this.body.velocity.z.toFixed(2)}`);
+        console.log(`🐍 Snake mesh visible: ${this.mesh.visible}, children: ${this.mesh.children.length}`);
+        console.log(`🐍 Snake in scene: ${this.mesh.parent !== null}`);
+      }
+
+      if (distanceToTarget < 1.5) { // Increased threshold for better patrol point reaching
         // Reached patrol point - play search animation (idle state)
         if (this.snakeAnimations.coil && this.currentAction !== this.snakeAnimations.coil) {
           this._playSnakeAction(this.snakeAnimations.coil);
-          //console.log('🐍 Snake reached patrol point, playing search animation...');
         }
         
         // Stop movement while searching
@@ -307,27 +415,27 @@ export class SnakeEnemy extends EnemyBase {
         if (this.stateTimer > 2.0) {
           this.currentPatrolIndex = (this.currentPatrolIndex + 1) % this.patrolPoints.length;
           this.stateTimer = 0;
-          //console.log('🐍 Moving to next patrol point...');
+          console.log(`🐍 Moving to next patrol point: ${this.currentPatrolIndex}`);
         }
       } else {
         // Move towards patrol point using base class movement system
         direction.normalize();
+        // Only move on X and Z axes, let physics handle Y
         const moveDirection = new THREE.Vector3(direction.x, 0, direction.z);
         
-        // Use base class movement system instead of direct physics manipulation
-        this.setDesiredMovement(moveDirection.multiplyScalar(this.patrolSpeed));
-        
-        // Update physics body rotation so collider rotates with the snake
-        const angle = Math.atan2(direction.x, direction.z);
-        if (this.body) {
-          this.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), angle);
-        }
+        // Use base class movement system with slower patrol speed for stability
+        this.setDesiredMovement(moveDirection.multiplyScalar(this.patrolSpeed * 0.8));
         
         // Play movement animation when actually moving
         if (this.snakeAnimations.slither && this.currentAction !== this.snakeAnimations.slither) {
           this._playSnakeAction(this.snakeAnimations.slither);
-          //console.log('🐍 Playing slither animation while moving...');
         }
+      }
+    } else {
+      // No patrol points - just idle
+      this.setDesiredMovement(new THREE.Vector3(0, 0, 0));
+      if (this.snakeAnimations.coil && this.currentAction !== this.snakeAnimations.coil) {
+        this._playSnakeAction(this.snakeAnimations.coil);
       }
     }
   }
@@ -371,12 +479,6 @@ export class SnakeEnemy extends EnemyBase {
 
     // Use base class movement system
     this.setDesiredMovement(direction.multiplyScalar(this.chaseSpeed));
-    
-    // Update physics body rotation so collider rotates with the snake
-    const angle = Math.atan2(direction.x, direction.z);
-    if (this.body) {
-      this.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), angle);
-    }
 
     // Play chase animation (fast movement)
     if (this.snakeAnimations.slitherFast && this.currentAction !== this.snakeAnimations.slitherFast) {
@@ -386,6 +488,14 @@ export class SnakeEnemy extends EnemyBase {
   }
 
   handleAttackState(delta, player, distanceToPlayer) {
+    // Ensure snake stays grounded during attack
+    if (this.body) {
+      this.body.velocity.y = Math.min(this.body.velocity.y, 1); // Limit upward velocity
+      
+      // Stop horizontal movement during attack
+      this.setDesiredMovement(new THREE.Vector3(0, 0, 0));
+    }
+    
     // Stay in attack state for animation duration
     if (this.stateTimer > 1.0) { // Attack animation duration
       // Deal damage to player if still in range
@@ -439,12 +549,6 @@ export class SnakeEnemy extends EnemyBase {
 
     // Use base class movement system
     this.setDesiredMovement(direction.multiplyScalar(this.patrolSpeed));
-    
-    // Update physics body rotation so collider rotates with the snake
-    const angle = Math.atan2(direction.x, direction.z);
-    if (this.body) {
-      this.body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), angle);
-    }
 
     // Play retreat animation (normal movement)
     if (this.snakeAnimations.slither && this.currentAction !== this.snakeAnimations.slither) {
