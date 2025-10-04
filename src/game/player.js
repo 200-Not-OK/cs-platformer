@@ -66,6 +66,7 @@ export class Player {
     
     // Movement state
     this.isGrounded = false;
+    this.isOnSlope = false; // Track if player is on a sloped surface
     this.isSprinting = false;
     this.isJumping = false;
     
@@ -610,6 +611,18 @@ export class Player {
     // Apply wall sliding physics (works even without input)
     this.applyWallSlidingPhysics(delta);
     
+    // Clamp Y velocity when on slopes to prevent bouncing
+    if (this.isGrounded && this.isOnSlope) {
+      // Limit upward velocity when on slopes to prevent being shot into the air
+      if (this.body.velocity.y > 2.0) {
+        this.body.velocity.y = Math.min(this.body.velocity.y, 2.0);
+      }
+      // Also prevent excessive downward velocity that might cause jitter
+      if (this.body.velocity.y < -5.0) {
+        this.body.velocity.y = Math.max(this.body.velocity.y, -5.0);
+      }
+    }
+    
     // Sync visual mesh with physics body
     this.syncMeshWithBody();
     
@@ -622,10 +635,41 @@ export class Player {
     const wasGrounded = this.isGrounded;
     this.isGrounded = this.physicsWorld.isBodyGrounded(this.body, this.groundNormalThreshold);
     
+    // Check if we're on a slope (for better physics handling)
+    this.isOnSlope = this.checkIfOnSlope();
+    
     // Reset jumping flag when player lands
     if (this.isGrounded && this.isJumping && this.body.velocity.y <= 0.1) {
       this.isJumping = false;
     }
+  }
+
+  /**
+   * Check if the player is standing on a sloped surface
+   */
+  checkIfOnSlope() {
+    const contacts = this.physicsWorld.getContactsForBody(this.body);
+    
+    for (const contact of contacts) {
+      // Get the contact normal
+      let normalY;
+      if (contact.bi === this.body) {
+        normalY = -contact.ni.y;
+      } else {
+        normalY = contact.ni.y;
+      }
+      
+      // If normal Y is between slope threshold and grounded threshold, we're on a slope
+      if (normalY > this.groundNormalThreshold && normalY < 0.9) {
+        // Debug logging for slope detection
+        if (Math.random() < 0.01) { // Log occasionally to avoid spam
+          console.log(`🏔️ Player on slope - Normal Y: ${normalY.toFixed(3)}`);
+        }
+        return true;
+      }
+    }
+    
+    return false;
   }
 
   handleMovementInput(input, camOrientation, delta) {
@@ -689,9 +733,28 @@ export class Player {
       
       // Apply movement based on grounded state
       if (this.isGrounded) {
-        // When grounded, use direct velocity for stable movement
-        this.body.velocity.x = targetVelX;
-        this.body.velocity.z = targetVelZ;
+        if (this.isOnSlope) {
+          // On slopes, use force-based movement to work better with contact resolution
+          const forceMultiplier = 75; // Increased force for better responsiveness
+          const maxSpeed = targetSpeed * 1.1; // Slightly faster on slopes to compensate for force-based movement
+          
+          // Apply forces instead of direct velocity to let physics handle slope interaction
+          const currentSpeed = Math.sqrt(this.body.velocity.x * this.body.velocity.x + this.body.velocity.z * this.body.velocity.z);
+          if (currentSpeed < maxSpeed) {
+            this.body.applyForce(
+              new CANNON.Vec3(targetVelX * forceMultiplier, 0, targetVelZ * forceMultiplier),
+              this.body.position
+            );
+          }
+          
+          // Apply gentle damping to prevent excessive speed buildup
+          this.body.velocity.x *= 0.95; // Reduced damping for better speed retention
+          this.body.velocity.z *= 0.95;
+        } else {
+          // On flat ground, use direct velocity for stable movement
+          this.body.velocity.x = targetVelX;
+          this.body.velocity.z = targetVelZ;
+        }
       } else {
         // When airborne, use blended velocity for responsive but realistic movement
         const airControl = 0.3; // Reduce air control compared to ground movement
