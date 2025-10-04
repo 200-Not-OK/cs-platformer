@@ -232,7 +232,7 @@ export const levels = [
             },
             "potions": {
               "icon": "🧪",
-              "name": "Mana Potions",
+              "name": "Health Potions",
               "color": "#9775fa",
               "lowColor": "#ffd43b",
               "emptyColor": "#ff6b6b",
@@ -259,6 +259,20 @@ export const levels = [
         speed: 10,
         chaseRange: 6.0,
         modelUrl: "src/assets/enemies/snake/scene.gltf"
+      },
+      {
+        type: "snake_boss",
+        position: [30, 2, -25],
+        patrolPoints: [
+          [30, 2, -25],
+          [25, 2, -20],
+          [35, 2, -30],
+          [40, 2, -20],
+          [25, 2, -35]
+        ],
+        health: 300,
+        speed: 5,
+        chaseRange: 12.0
       }
     ],
     collectibles: {
