@@ -42,6 +42,10 @@ export class EnemyBase {
 
     this._desiredMovement = new THREE.Vector3();
 
+    // Store scale for model loading
+    this.modelScale = options.scale ?? 1.0;
+    this.isBoss = options.isBoss ?? false;
+
     if (options.modelUrl) this._loadModel(options.modelUrl);
   }
 
@@ -127,6 +131,12 @@ export class EnemyBase {
     loader.load(url, (gltf) => {
       while (this.mesh.children.length > 0) this.mesh.remove(this.mesh.children[0]);
 
+      // Apply scale if specified
+      if (this.modelScale !== 1.0) {
+        gltf.scene.scale.set(this.modelScale, this.modelScale, this.modelScale);
+        console.log(`🔍 Applied scale ${this.modelScale} to ${this.isBoss ? 'BOSS' : 'enemy'} model`);
+      }
+
       // compute bbox and center like Player
       try {
         const bbox = new THREE.Box3().setFromObject(gltf.scene);
@@ -144,6 +154,10 @@ export class EnemyBase {
         
         // Recreate physics body with new size
         this._createPhysicsBody();
+        
+        if (this.isBoss) {
+          console.log(`👑 BOSS enemy loaded with size: ${this.size}, collider: ${this.colliderSize}`);
+        }
       } catch (e) {
         console.warn('Enemy bbox calculation failed:', e);
       }
