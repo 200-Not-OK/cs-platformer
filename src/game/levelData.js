@@ -219,7 +219,7 @@ export const levels = [
       {
         "type": "collectibles",
         "config": {
-          "applesTotal": 8,
+          "applesTotal": 5,
           "potionsStart": 5,
           "pointsPerApple": 200,
           "collectibleTypes": {
