@@ -408,8 +408,13 @@ export class Player {
 
     this.isAttacking = true;
     this.lastAttackTime = Date.now();
-    
+
     console.log('🗡️ Player starting attack animation');
+
+    // Play sword sound
+    if (this.game && this.game.soundManager) {
+      this.game.soundManager.playSFX('sword', 0.6);
+    }
 
     // Play attack animation if available
     if (this.actions.attack) {
