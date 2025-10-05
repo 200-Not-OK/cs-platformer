@@ -202,17 +202,25 @@ export const levels = [
     sounds: {
       music: {
         'intro-theme': {
-          url: 'src/assets/audio/ambient/whispers_beneath_the_canopy.mp3',
+          url: 'src/assets/audio/music/whispers_beneath_the_canopy.mp3',
           loop: true
         }
       },
       sfx: {
-        'walk': {
-          url: 'src/assets/audio/sfx/walking.mp3',
+        'sword': {
+          url: 'src/assets/audio/sfx/sword.mp3',
           loop: false
         },
-        'running': {
-          url: 'src/assets/audio/sfx/running.mp3',
+        'chest': {
+          url: 'src/assets/audio/sfx/chest_open.MP3',
+          loop: false
+        },
+        'snake': {
+          url: 'src/assets/audio/sfx/snake.wav',
+          loop: false
+        },
+        'walk': {
+          url: 'src/assets/audio/sfx/walking.mp3',
           loop: false
         },
         'jump': {
@@ -220,15 +228,8 @@ export const levels = [
           loop: false
         }
       },
-      ambient: {
-        'training-grounds': {
-          url: 'src/assets/audio/ambient/whispers_beneath_the_canoy.mp3',
-          loop: true
-        }
-      },
-      // Auto-play on level start (commented out until audio files are added)
-      playMusic: 'intro-theme',
-      playAmbient: 'training-grounds'
+      // Auto-play on level start
+      playMusic: 'intro-theme'
     }
   },
   {
@@ -270,6 +271,65 @@ export const levels = [
       }
     ],
     lights: ["BasicLights"],
+    sounds: {
+      music: {
+        'level2-theme': {
+          url: 'src/assets/audio/music/whispers_beneath_the_canopy.mp3',
+          loop: true
+        }
+      },
+      sfx: {
+        'door': {
+          url: 'src/assets/audio/sfx/door.mp3',
+          loop: false
+        },
+        'torch': {
+          url: 'src/assets/audio/ambient/torch.mp3',
+          loop: false
+        },
+        'chest': {
+          url: 'src/assets/audio/sfx/chest_open.mp3',
+          loop: false
+        },
+        'snake': {
+          url: 'src/assets/audio/sfx/snake.wav',
+          loop: false
+        }
+      },
+      ambient: {
+        'torch-ambient': {
+          url: 'src/assets/audio/ambient/torch.mp3',
+          loop: true
+        }
+      },
+      playMusic: 'level2-theme'
+    },
+    proximitySounds: [
+      {
+        position: [203, 3.7, -66.7],
+        sound: 'torch-ambient',
+        radius: 10,
+        volume: 0.7
+      },
+      {
+        position: [187.9, 3.7, -66.7],
+        sound: 'torch-ambient',
+        radius: 10,
+        volume: 0.7
+      },
+      {
+        position: [160.3, 4.6, -36.1],
+        sound: 'torch-ambient',
+        radius: 10,
+        volume: 0.7
+      },
+      {
+        position: [160.3, 4.6, -25.7],
+        sound: 'torch-ambient',
+        radius: 10,
+        volume: 0.7
+      }
+    ],
     enemies: [
       {
         type: "snake",

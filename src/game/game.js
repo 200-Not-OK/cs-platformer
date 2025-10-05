@@ -23,6 +23,7 @@ import { CombatSystem } from './combatSystem.js';
 import { DoorManager } from '../assets/doors/DoorManager.js';
 import { CollectiblesManager } from './CollectiblesManager.js';
 import { SoundManager } from './soundManager.js';
+import { ProximitySoundManager } from './proximitySoundManager.js';
 
 export class Game {
   constructor() {
@@ -40,7 +41,7 @@ export class Game {
     this.input = new InputManager(window);
 
     // Level system
-    this.levelManager = new LevelManager(this.scene, this.physicsWorld);
+    this.levelManager = new LevelManager(this.scene, this.physicsWorld, this);
     this.level = null;
 
     // Player
@@ -73,6 +74,28 @@ export class Game {
     // doesn't accidentally trigger a second request or race with the resume flow.
     window.addEventListener('click', (e) => {
       if (this.pauseMenu && this.pauseMenu.contains && this.pauseMenu.contains(e.target)) return;
+
+      // Resume AudioContext on first user interaction (required by browsers)
+      if (this.soundManager && this.soundManager.listener && this.soundManager.listener.context) {
+        if (this.soundManager.listener.context.state === 'suspended') {
+          this.soundManager.listener.context.resume().then(() => {
+            console.log('🔊 AudioContext resumed - now playing pending audio');
+
+            // Play any pending music/ambient after AudioContext is resumed
+            if (this._pendingMusic) {
+              console.log('🔊 Playing pending music:', this._pendingMusic);
+              this.soundManager.playMusic(this._pendingMusic);
+              this._pendingMusic = null;
+            }
+            if (this._pendingAmbient) {
+              console.log('🔊 Playing pending ambient:', this._pendingAmbient);
+              this.soundManager.playAmbient(this._pendingAmbient);
+              this._pendingAmbient = null;
+            }
+          });
+        }
+      }
+
       // request pointer lock when clicking while in first or third person
       if ((this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) && document.pointerLockElement !== document.body) {
         try {
@@ -126,7 +149,7 @@ export class Game {
     this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
 
     // Collectibles system
-    this.collectiblesManager = new CollectiblesManager(this.scene, this.physicsWorld);
+    this.collectiblesManager = new CollectiblesManager(this.scene, this.physicsWorld, this);
 
     // Door system
     this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
@@ -137,6 +160,9 @@ export class Game {
 
     // Sound manager (initialize with camera for 3D audio)
     this.soundManager = new SoundManager(this.thirdCameraObject);
+
+    // Proximity sound manager (for location-based sounds like torches)
+    this.proximitySoundManager = null; // Will be initialized after player is ready
 
     // Load the initial level early so subsequent code can reference `this.level`
     this._initializeLevel();
@@ -278,6 +304,32 @@ export class Game {
         if (this.player && this.player.takeDamage) {
           this.player.takeDamage(50);
           console.log('🩸 Debug: Player damaged for testing');
+        }
+      } else if (code === 'KeyP') {
+        // Debug: manually play music
+        console.log('🔊 DEBUG: Manual music trigger (P key pressed)');
+        console.log('🔊 AudioContext state:', this.soundManager.listener.context.state);
+        console.log('🔊 Pending music:', this._pendingMusic);
+        console.log('🔊 Current music:', this.soundManager.currentMusic);
+        console.log('🔊 Available music tracks:', Object.keys(this.soundManager.music));
+
+        // Try to resume AudioContext
+        if (this.soundManager.listener.context.state === 'suspended') {
+          this.soundManager.listener.context.resume().then(() => {
+            console.log('🔊 AudioContext resumed via P key');
+          });
+        }
+
+        // Try to play pending or intro music
+        if (this._pendingMusic) {
+          console.log('🔊 Playing pending music:', this._pendingMusic);
+          this.soundManager.playMusic(this._pendingMusic, 0); // No fade for debugging
+        } else if (this.soundManager.music['intro-theme']) {
+          console.log('🔊 Playing intro-theme directly');
+          this.soundManager.playMusic('intro-theme', 0); // No fade for debugging
+        } else if (this.soundManager.music['level2-theme']) {
+          console.log('🔊 Playing level2-theme directly');
+          this.soundManager.playMusic('level2-theme', 0); // No fade for debugging
         }
       }
     });
@@ -492,6 +544,19 @@ export class Game {
     // Update collectibles system
     this.collectiblesManager.update(delta);
 
+    // Update proximity sounds
+    if (this.proximitySoundManager) {
+      this.proximitySoundManager.update();
+    } else {
+      // Debug: Log once per second if proximity sound manager doesn't exist
+      if (!this._proximityDebugTime) this._proximityDebugTime = 0;
+      this._proximityDebugTime += delta;
+      if (this._proximityDebugTime > 1000) {
+        console.log('⚠️ No proximitySoundManager in update loop');
+        this._proximityDebugTime = 0;
+      }
+    }
+
   // update lights (allow dynamic lights to animate)
   if (this.lights) this.lights.update(delta);
 
@@ -698,6 +763,7 @@ export class Game {
   }
 
   async applyLevelSounds(levelData) {
+    console.log('🔊🔊🔊 applyLevelSounds CALLED! 🔊🔊🔊');
     console.log('🔊 applyLevelSounds called for level:', levelData.name);
     console.log('🔊 Sound manager exists?', !!this.soundManager);
     console.log('🔊 Level sounds config:', levelData.sounds);
@@ -709,6 +775,11 @@ export class Game {
 
     if (!levelData.sounds) {
       console.warn('⚠️ No sounds config in level data!');
+      console.log('🔍 Skipping to proximity sounds check...');
+      // Even if no sounds, still check for proximity sounds
+      console.log(`🔍 Checking for proximity sounds in level data...`);
+      console.log(`🔍 levelData.proximitySounds exists?`, !!levelData.proximitySounds);
+      console.log(`🔍 levelData.proximitySounds value:`, levelData.proximitySounds);
       return;
     }
 
@@ -718,20 +789,51 @@ export class Game {
       await this.soundManager.loadSounds(levelData.sounds);
       console.log('🔊 Sounds loaded successfully!');
 
-      // Play music if specified
-      if (levelData.sounds.playMusic) {
-        console.log('🔊 Attempting to play music:', levelData.sounds.playMusic);
-        this.soundManager.playMusic(levelData.sounds.playMusic);
+      // Store what music/ambient to play for this level
+      this._pendingMusic = levelData.sounds.playMusic;
+      this._pendingAmbient = levelData.sounds.playAmbient;
+
+      // Check if AudioContext is already running (user has interacted)
+      const audioContext = this.soundManager.listener.context;
+      console.log('🔊 AudioContext state:', audioContext.state);
+
+      if (audioContext.state === 'running') {
+        // AudioContext is ready, play immediately
+        if (this._pendingMusic) {
+          console.log('🔊 AudioContext running, playing music:', this._pendingMusic);
+          this.soundManager.playMusic(this._pendingMusic);
+          this._pendingMusic = null;
+        }
+        if (this._pendingAmbient) {
+          console.log('🔊 AudioContext running, playing ambient:', this._pendingAmbient);
+          this.soundManager.playAmbient(this._pendingAmbient);
+          this._pendingAmbient = null;
+        }
       } else {
-        console.log('🔊 No playMusic specified in level data');
+        console.log('🔊 AudioContext suspended. Music will play after user interaction (click).');
+        console.log('🔊 Pending music:', this._pendingMusic);
+        console.log('🔊 Pending ambient:', this._pendingAmbient);
       }
 
-      // Play ambient if specified
-      if (levelData.sounds.playAmbient) {
-        console.log('🔊 Attempting to play ambient:', levelData.sounds.playAmbient);
-        this.soundManager.playAmbient(levelData.sounds.playAmbient);
+      // Load proximity sounds if specified
+      console.log(`🔍 Checking for proximity sounds in level data...`);
+      console.log(`🔍 levelData.proximitySounds exists?`, !!levelData.proximitySounds);
+      console.log(`🔍 levelData.proximitySounds value:`, levelData.proximitySounds);
+
+      if (levelData.proximitySounds) {
+        console.log(`🎵 Level has ${levelData.proximitySounds.length} proximity sound zones`);
+        // Create proximity sound manager if not exists
+        if (!this.proximitySoundManager) {
+          console.log(`🎵 Creating new ProximitySoundManager`);
+          this.proximitySoundManager = new ProximitySoundManager(this.soundManager, this.player);
+        }
+        this.proximitySoundManager.loadProximitySounds(levelData.proximitySounds);
       } else {
-        console.log('🔊 No playAmbient specified in level data');
+        console.warn(`⚠️⚠️⚠️ NO PROXIMITY SOUNDS FOUND IN LEVEL DATA! ⚠️⚠️⚠️`);
+        if (this.proximitySoundManager) {
+          // Clean up proximity sounds if no proximity sounds in new level
+          this.proximitySoundManager.dispose();
+        }
       }
 
       console.log(`🔊 Loaded sounds for level: ${levelData.name}`);

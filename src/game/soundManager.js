@@ -17,7 +17,7 @@ export class SoundManager {
     // Volume controls
     this.volumes = {
       master: 1.0,
-      music: 0.5,
+      music: 0.2,
       sfx: 0.9,
       ambient: 0.2
     };
@@ -118,11 +118,28 @@ export class SoundManager {
     }
 
     console.log(`🎵 Playing music: ${name}, volume: ${this._getCategoryVolume('music')}`);
-    track.play();
 
-    // Fade in
+    // Set volume BEFORE playing
     if (fadeInTime > 0) {
       track.setVolume(0);
+    } else {
+      track.setVolume(this._getCategoryVolume('music'));
+    }
+
+    track.play();
+
+    // Debug: Check if music is actually playing
+    setTimeout(() => {
+      console.log(`🎵 Music playback status:`, {
+        isPlaying: track.isPlaying,
+        hasBuffer: !!track.buffer,
+        volume: track.getVolume(),
+        duration: track.buffer ? track.buffer.duration : 'no buffer'
+      });
+    }, 100);
+
+    // Fade in after starting playback
+    if (fadeInTime > 0) {
       this._fadeVolume(track, this._getCategoryVolume('music'), fadeInTime);
     }
   }
@@ -194,11 +211,17 @@ export class SoundManager {
 
     if (this.muted) return;
 
-    track.play();
-
-    // Fade in
+    // Set volume BEFORE playing
     if (fadeInTime > 0) {
       track.setVolume(0);
+    } else {
+      track.setVolume(this._getCategoryVolume('ambient'));
+    }
+
+    track.play();
+
+    // Fade in after starting playback
+    if (fadeInTime > 0) {
       this._fadeVolume(track, this._getCategoryVolume('ambient'), fadeInTime);
     }
   }
