@@ -583,6 +583,17 @@ export class CollectiblesManager {
       this.game.soundManager.playSFX('chest', 0.8);
     }
 
+    // Play voiceover on first chest opened (Level 2 only)
+    if (!this._firstChestOpened && this.game.levelManager && this.game.levelManager.currentIndex === 1) {
+      console.log('🎤 First chest opened! Playing chest voiceover');
+      this._firstChestOpened = true;
+      setTimeout(() => {
+        if (this.game && this.game.playVoiceover) {
+          this.game.playVoiceover('vo-chest', 10000);
+        }
+      }, 1000); // Play VO 1 second after chest sound
+    }
+
     // Mark chest as animating to prevent further interaction
     chestCollectible.mesh.userData.isAnimating = true;
 

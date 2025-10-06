@@ -459,13 +459,27 @@ export class Player {
   }
 
   takeDamage(amount) {
+    const previousHealth = this.health;
     this.health = Math.max(0, this.health - amount);
     console.log(`💔 Player took ${amount} damage, health: ${this.health}/${this.maxHealth}`);
-    
+
+    // Play low health warning sound when health drops below 30%
+    const lowHealthThreshold = this.maxHealth * 0.3;
+    const wasAboveThreshold = previousHealth > lowHealthThreshold;
+    const isNowBelowThreshold = this.health <= lowHealthThreshold && this.health > 0;
+
+    if (wasAboveThreshold && isNowBelowThreshold) {
+      // First time crossing low health threshold
+      if (this.game && this.game.soundManager && this.game.soundManager.sfx['low-health']) {
+        console.log('⚠️ Playing low health warning sound');
+        this.game.soundManager.playSFX('low-health', 0.8);
+      }
+    }
+
     if (this.health <= 0) {
       this.onDeath();
     }
-    
+
     return this.health;
   }
 
