@@ -294,6 +294,18 @@ export const levels = [
         'snake': {
           url: 'src/assets/audio/sfx/snake.wav',
           loop: false
+        },
+        'vo-levelstart': {
+          url: 'src/assets/audio/ambient/pravesh_levelstart_vo.mp3',
+          loop: false
+        },
+        'vo-fail': {
+          url: 'src/assets/audio/ambient/pravesh_fail_vo.mp3',
+          loop: false
+        },
+        'vo-success': {
+          url: 'src/assets/audio/ambient/pravesh_success_vo.mp3',
+          loop: false
         }
       },
       ambient: {
@@ -302,7 +314,8 @@ export const levels = [
           loop: true
         }
       },
-      playMusic: 'level2-theme'
+      playMusic: 'level2-theme',
+      playVoiceover: 'vo-levelstart'
     },
     proximitySounds: [
       {

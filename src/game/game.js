@@ -15,6 +15,7 @@ import { Crosshair } from './components/crosshair.js';
 import { Collectibles } from './components/collectibles.js';
 import { InteractionPrompt } from './components/interactionPrompt.js';
 import { DeathMenu } from './components/deathMenu.js';
+import { VoiceoverCard } from './components/voiceoverCard.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
@@ -81,7 +82,7 @@ export class Game {
           this.soundManager.listener.context.resume().then(() => {
             console.log('🔊 AudioContext resumed - now playing pending audio');
 
-            // Play any pending music/ambient after AudioContext is resumed
+            // Play any pending music/ambient/voiceover after AudioContext is resumed
             if (this._pendingMusic) {
               console.log('🔊 Playing pending music:', this._pendingMusic);
               this.soundManager.playMusic(this._pendingMusic);
@@ -91,6 +92,14 @@ export class Game {
               console.log('🔊 Playing pending ambient:', this._pendingAmbient);
               this.soundManager.playAmbient(this._pendingAmbient);
               this._pendingAmbient = null;
+            }
+            if (this._pendingVoiceover) {
+              console.log('🔊 Playing pending voiceover:', this._pendingVoiceover);
+              const voToPlay = this._pendingVoiceover;
+              this._pendingVoiceover = null;
+              setTimeout(() => {
+                this.playVoiceover(voToPlay, 15000); // 15 seconds for voiceover
+              }, 500); // Small delay so VO plays after music starts
             }
           });
         }
@@ -144,6 +153,11 @@ export class Game {
     this.ui.add('crosshair', Crosshair, { visible: true });
     // Add interaction prompt for chests
     this.ui.add('interactionPrompt', InteractionPrompt, { message: 'to interact' });
+    // Add voiceover card for character dialogues
+    this.ui.add('voiceoverCard', VoiceoverCard, {
+      characterName: 'Praveen',
+      position: 'right'
+    });
 
     // Combat system
     this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
@@ -390,33 +404,80 @@ export class Game {
     }
   }
 
+  playVoiceover(voName, duration = 5000) {
+    console.log(`🎤 playVoiceover called with: ${voName}`);
+    console.log(`🎤 soundManager exists?`, !!this.soundManager);
+    console.log(`🎤 soundManager.sfx exists?`, !!this.soundManager?.sfx);
+    console.log(`🎤 soundManager.sfx[${voName}] exists?`, !!this.soundManager?.sfx?.[voName]);
+
+    // Play voiceover and show the card
+    if (this.soundManager && this.soundManager.sfx[voName]) {
+      console.log(`🎤 Playing voiceover: ${voName}`);
+      this.soundManager.playSFX(voName, 1.0);
+
+      // Show voiceover card
+      const voCard = this.ui.get('voiceoverCard');
+      console.log(`🎤 voCard exists?`, !!voCard);
+      if (voCard) {
+        console.log(`🎤 Showing voiceover card for Pravesh`);
+        voCard.show('Praveen');
+        voCard.startSpeaking();
+
+        // Hide after duration
+        setTimeout(() => {
+          console.log(`🎤 Stopping voiceover card speaking animation`);
+          voCard.stopSpeaking();
+          setTimeout(() => {
+            console.log(`🎤 Hiding voiceover card`);
+            voCard.hide();
+          }, 500);
+        }, duration);
+      } else {
+        console.error(`🎤 ERROR: voiceoverCard component not found!`);
+      }
+    } else {
+      console.error(`🎤 ERROR: Voiceover ${voName} not found in soundManager.sfx`);
+      console.log(`🎤 Available SFX:`, Object.keys(this.soundManager?.sfx || {}));
+    }
+  }
+
   showDeathMenu() {
     console.log('💀 Showing death menu');
-    
+
+    // Play fail voiceover if available
+    if (this.soundManager && this.soundManager.sfx['vo-fail']) {
+      console.log('🎤 Playing fail voiceover');
+      // Stop music and play fail VO
+      if (this.soundManager.currentMusic) {
+        this.soundManager.stopMusic();
+      }
+      this.playVoiceover('vo-fail', 10000); // 10 seconds for fail voiceover
+    }
+
     // Set death state flag
     this.playerDead = true;
-    
+
     // Create death menu if it doesn't exist
     if (!this.ui.get('deathMenu')) {
       this.ui.add('deathMenu', DeathMenu, {
         onRespawn: () => this.respawnPlayer()
       });
     }
-    
+
     // Show the death menu
     const deathMenu = this.ui.get('deathMenu');
     if (deathMenu && deathMenu.show) {
       deathMenu.show();
     }
-    
+
     // Pause the game without showing pause menu
     this.paused = true;
-    
+
     // Disable input handling when paused
     if (this.input && this.input.setEnabled) {
       this.input.setEnabled(false);
     }
-    
+
     // Exit pointer lock if active
     if (document.pointerLockElement) {
       this._suppressPointerLockPause = true;
@@ -699,6 +760,9 @@ export class Game {
     if (this.ui.get('interactionPrompt')) {
       globalComponents.set('interactionPrompt', this.ui.get('interactionPrompt'));
     }
+    if (this.ui.get('voiceoverCard')) {
+      globalComponents.set('voiceoverCard', this.ui.get('voiceoverCard'));
+    }
     
     this.ui.clear();
     
@@ -789,9 +853,15 @@ export class Game {
       await this.soundManager.loadSounds(levelData.sounds);
       console.log('🔊 Sounds loaded successfully!');
 
-      // Store what music/ambient to play for this level
+      // Store what music/ambient/voiceover to play for this level
+      console.log('🔊 DEBUG: levelData.sounds object:', levelData.sounds);
+      console.log('🔊 DEBUG: levelData.sounds.playMusic =', levelData.sounds.playMusic);
+      console.log('🔊 DEBUG: levelData.sounds.playAmbient =', levelData.sounds.playAmbient);
+      console.log('🔊 DEBUG: levelData.sounds.playVoiceover =', levelData.sounds.playVoiceover);
+
       this._pendingMusic = levelData.sounds.playMusic;
       this._pendingAmbient = levelData.sounds.playAmbient;
+      this._pendingVoiceover = levelData.sounds.playVoiceover;
 
       // Check if AudioContext is already running (user has interacted)
       const audioContext = this.soundManager.listener.context;
@@ -809,10 +879,19 @@ export class Game {
           this.soundManager.playAmbient(this._pendingAmbient);
           this._pendingAmbient = null;
         }
+        if (this._pendingVoiceover) {
+          console.log('🔊 AudioContext running, playing voiceover:', this._pendingVoiceover);
+          const voToPlay = this._pendingVoiceover;
+          this._pendingVoiceover = null;
+          setTimeout(() => {
+            this.playVoiceover(voToPlay, 15000); // 15 seconds for voiceover
+          }, 500); // Small delay so VO plays after music starts
+        }
       } else {
         console.log('🔊 AudioContext suspended. Music will play after user interaction (click).');
         console.log('🔊 Pending music:', this._pendingMusic);
         console.log('🔊 Pending ambient:', this._pendingAmbient);
+        console.log('🔊 Pending voiceover:', this._pendingVoiceover);
       }
 
       // Load proximity sounds if specified
@@ -874,11 +953,16 @@ export class Game {
 
     // Music volume control
     if (musicSlider) {
+      console.log('🔊 Music slider found, adding listener');
       musicSlider.addEventListener('input', (e) => {
         const value = parseInt(e.target.value);
+        console.log('🔊 Music slider changed to:', value);
         this.soundManager.setVolume('music', value / 100);
+        console.log('🔊 Current music volume after change:', this.soundManager.volumes.music);
         updateDisplay(null, musicValue, value);
       });
+    } else {
+      console.warn('⚠️ Music slider not found!');
     }
 
     // SFX volume control
@@ -901,12 +985,18 @@ export class Game {
 
     // Mute button
     if (muteBtn) {
-      muteBtn.addEventListener('click', () => {
+      console.log('🔊 Mute button found, adding click listener');
+      muteBtn.addEventListener('click', (e) => {
+        console.log('🔊 Mute button clicked!');
+        e.stopPropagation();
         this.soundManager.toggleMute();
         const isMuted = this.soundManager.muted;
+        console.log('🔊 Muted state:', isMuted);
         muteBtn.textContent = isMuted ? '🔊 Unmute All' : '🔇 Mute All';
         muteBtn.classList.toggle('muted', isMuted);
       });
+    } else {
+      console.warn('⚠️ Mute button not found in DOM!');
     }
   }
 
