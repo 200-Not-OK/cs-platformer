@@ -240,6 +240,10 @@ export const levels = [
           url: 'src/assets/audio/sfx/snake.wav',
           loop: false
         },
+        'potion': {
+          url: 'src/assets/audio/sfx/potion.wav',
+          loop: false
+        },
         'walk': {
           url: 'src/assets/audio/sfx/walking.mp3',
           loop: false
@@ -321,6 +325,10 @@ export const levels = [
           url: 'src/assets/audio/sfx/snake.wav',
           loop: false
         },
+        'potion': {
+          url: 'src/assets/audio/sfx/potion.wav',
+          loop: false
+        },
         'low-health': {
           url: 'src/assets/audio/sfx/low_health.mp3',
           loop: false
@@ -339,6 +347,10 @@ export const levels = [
         },
         'vo-chest': {
           url: 'src/assets/audio/ambient/pravesh_02.mp3',
+          loop: false
+        },
+        'vo-lastchest': {
+          url: 'src/assets/audio/ambient/pravesh_05.mp3',
           loop: false
         },
         'vo-fail': {
@@ -384,23 +396,6 @@ export const levels = [
         radius: 10,
         volume: 0.7
       }
-    ],
-    enemies: [
-      {
-        type: "snake",
-        position: [140, 1.4, -30],
-        patrolPoints: [
-          [140, 1.4, -30],
-          [130, 1.4, -20],
-          [150, 1.4, -20],
-          [145, 1.4, -35]
-        ],
-        health: 35,
-        speed: 10,
-        chaseRange: 6.0,
-        modelUrl: "src/assets/enemies/snake/scene.gltf"
-    "lights": [
-      "BasicLights"
     ],
     "enemies": [
       {
