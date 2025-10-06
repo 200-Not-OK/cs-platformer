@@ -83,7 +83,14 @@ export class CombatSystem {
     for (const enemy of this.enemies) {
       if (!enemy || !enemy.alive || !enemy.mesh) continue;
 
-      const enemyPos = enemy.mesh.position.clone();
+      // Use physics body position for boss enemies to account for collider offset
+      let enemyPos;
+      if (enemy.isBoss && enemy.body) {
+        enemyPos = new THREE.Vector3(enemy.body.position.x, enemy.body.position.y, enemy.body.position.z);
+
+      } else {
+        enemyPos = enemy.mesh.position.clone();
+      }
       const toEnemy = enemyPos.clone().sub(playerPos);
       
       console.log(`🔍 Checking enemy ${enemy.constructor.name} at position:`, enemyPos);
@@ -316,8 +323,19 @@ export class CombatSystem {
     const enemyMeshes = [];
     for (const enemy of this.enemies) {
       if (enemy.alive && enemy.mesh && enemy.mesh.children.length > 0) {
+        // For boss enemies, we need to account for the collider offset
+        // Create a temporary group at the correct position for raycasting
+        let targetMesh = enemy.mesh;
+        if (enemy.isBoss && enemy.body) {
+          // Create a temporary group at the physics body position
+          const tempGroup = new THREE.Group();
+          tempGroup.position.set(enemy.body.position.x, enemy.body.position.y, enemy.body.position.z);
+          tempGroup.copy(enemy.mesh, false);
+          targetMesh = tempGroup;
+        }
+        
         // Add all children of the enemy mesh group
-        enemy.mesh.traverse((child) => {
+        targetMesh.traverse((child) => {
           if (child.isMesh) {
             child.userData.enemy = enemy; // Store reference to enemy
             enemyMeshes.push(child);
