@@ -199,27 +199,30 @@ export class Level {
   
   _createPhysicsBodyFromDefinition(colliderDef) {
     try {
-      const { type, position, size, materialType = 'ground' } = colliderDef;
+      const { type, position, size, rotation, materialType = 'ground' } = colliderDef;
+      
+      // Log rotation info for debugging
+      if (rotation && (rotation[0] !== 0 || rotation[1] !== 0 || rotation[2] !== 0)) {
+        console.log(`🔄 Creating rotated collider ${colliderDef.id}: rotation [${rotation[0]}, ${rotation[1]}, ${rotation[2]}] degrees`);
+      }
       
       if (type === 'box') {
         return this.physicsWorld.addStaticBox(
           new THREE.Vector3(position[0], position[1], position[2]),
           new THREE.Vector3(size[0], size[1], size[2]),
-          materialType
+          materialType,
+          rotation // Pass rotation to physics world
         );
       } else if (type === 'sphere') {
         return this.physicsWorld.addStaticSphere(
           new THREE.Vector3(position[0], position[1], position[2]),
           size[0], // radius
-          materialType
+          materialType,
+          rotation // Pass rotation to physics world
         );
       } else if (type === 'capsule') {
-        return this.physicsWorld.addStaticCapsule(
-          new THREE.Vector3(position[0], position[1], position[2]),
-          size[0], // radius
-          size[1], // height
-          materialType
-        );
+        console.warn(`Capsule colliders are not yet supported`);
+        return null;
       }
       
       console.warn(`Unknown collider type: ${type}`);
@@ -358,6 +361,6 @@ export class Level {
   }
 
   getEnemies() {
-    return this.enemyManager.enemies;
+    return this.enemyManager ? this.enemyManager.enemies : [];
   }
 }
