@@ -400,32 +400,96 @@ export const levels = [
     "enemies": [
       {
         "type": "snake",
-        "position": [
-          140,
-          1.4,
-          -30
-        ],
+        "position": [140, 1.4, -30],
         "patrolPoints": [
-          [
-            140,
-            1.4,
-            -30
-          ],
-          [
-            130,
-            1.4,
-            -20
-          ],
-          [
-            150,
-            1.4,
-            -20
-          ],
-          [
-            145,
-            1.4,
-            -35
-          ]
+          [140, 1.4, -30],
+          [130, 1.4, -20],
+          [150, 1.4, -20],
+          [145, 1.4, -35]
+        ],
+        "health": 35,
+        "speed": 10,
+        "chaseRange": 6,
+        "modelUrl": "src/assets/enemies/snake/scene.gltf"
+      },
+      {
+        "type": "snake",
+        "position": [151.97, 1.4, 28.12],
+        "patrolPoints": [
+          [151.97, 1.4, 28.12],
+          [141.97, 1.4, 38.12],
+          [161.97, 1.4, 38.12],
+          [156.97, 1.4, 23.12]
+        ],
+        "health": 35,
+        "speed": 10,
+        "chaseRange": 6,
+        "modelUrl": "src/assets/enemies/snake/scene.gltf"
+      },
+      {
+        "type": "snake",
+        "position": [122.02, 1.4, 126.51],
+        "patrolPoints": [
+          [122.02, 1.4, 126.51],
+          [112.02, 1.4, 136.51],
+          [132.02, 1.4, 136.51],
+          [127.02, 1.4, 121.51]
+        ],
+        "health": 35,
+        "speed": 10,
+        "chaseRange": 6,
+        "modelUrl": "src/assets/enemies/snake/scene.gltf"
+      },
+      {
+        "type": "snake",
+        "position": [88.65, 1.4, 165.63],
+        "patrolPoints": [
+          [88.65, 1.4, 165.63],
+          [78.65, 1.4, 175.63],
+          [98.65, 1.4, 175.63],
+          [93.65, 1.4, 160.63]
+        ],
+        "health": 35,
+        "speed": 10,
+        "chaseRange": 6,
+        "modelUrl": "src/assets/enemies/snake/scene.gltf"
+      },
+      {
+        "type": "snake",
+        "position": [220.46, 1.4, 69.91],
+        "patrolPoints": [
+          [220.46, 1.4, 69.91],
+          [210.46, 1.4, 79.91],
+          [230.46, 1.4, 79.91],
+          [225.46, 1.4, 64.91]
+        ],
+        "health": 35,
+        "speed": 10,
+        "chaseRange": 6,
+        "modelUrl": "src/assets/enemies/snake/scene.gltf"
+      },
+      {
+        "type": "snake",
+        "position": [-4.63, 1.4, 179.30],
+        "patrolPoints": [
+          [-4.63, 1.4, 179.30],
+          [-14.63, 1.4, 189.30],
+          [5.37, 1.4, 189.30],
+          [0.37, 1.4, 174.30]
+        ],
+        "health": 35,
+        "speed": 10,
+        "chaseRange": 6,
+        "modelUrl": "src/assets/enemies/snake/scene.gltf"
+      },
+      {
+        "type": "snake",
+        "position": [75.63, 1.4, -7.35],
+        "patrolPoints": [
+          [75.63, 1.4, -7.35],
+          [65.63, 1.4, 2.65],
+          [85.63, 1.4, 2.65],
+          [80.63, 1.4, -12.35]
         ],
         "health": 35,
         "speed": 10,
@@ -466,7 +530,7 @@ export const levels = [
             -35
           ]
         ],
-        "health": 300,
+        "health": 100,
         "speed": 5,
         "chaseRange": 12
       }
