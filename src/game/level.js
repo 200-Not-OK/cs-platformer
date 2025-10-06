@@ -6,10 +6,11 @@ import { CinematicsManager } from './cinematicsManager.js';
 
 // A Level that can load geometry from GLTF files or fallback to procedural objects
 export class Level {
-  constructor(scene, physicsWorld, levelData, showColliders = true) {
+  constructor(scene, physicsWorld, levelData, showColliders = true, game = null) {
     this.scene = scene;
     this.physicsWorld = physicsWorld;
     this.data = levelData;
+    this.game = game; // Reference to game for passing to enemies
     this.objects = []; // contains visual meshes
     this.physicsBodies = []; // contains physics bodies for collision
     this.showColliders = showColliders;
@@ -20,8 +21,8 @@ export class Level {
   }
 
   // Static factory method for async construction
-  static async create(scene, physicsWorld, levelData, showColliders = true) {
-    const level = new Level(scene, physicsWorld, levelData, showColliders);
+  static async create(scene, physicsWorld, levelData, showColliders = true, game = null) {
+    const level = new Level(scene, physicsWorld, levelData, showColliders, game);
     await level._buildFromData();
     return level;
   }
@@ -280,7 +281,9 @@ export class Level {
     if (this.data.enemies && Array.isArray(this.data.enemies)) {
       for (const ed of this.data.enemies) {
         try {
-          this.enemyManager.spawn(ed.type, ed);
+          // Pass game reference to enemies through options
+          const enemyOptions = { ...ed, game: this.game };
+          this.enemyManager.spawn(ed.type, enemyOptions);
         } catch (e) {
           console.warn('Failed to spawn enemy', ed, e);
         }

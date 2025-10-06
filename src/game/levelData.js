@@ -218,6 +218,39 @@ export const levels = [
           }
         ]
       }
+    },
+    // Example sound configuration (add your audio files to use)
+    sounds: {
+      music: {
+        'intro-theme': {
+          url: 'src/assets/audio/music/whispers_beneath_the_canopy.mp3',
+          loop: true
+        }
+      },
+      sfx: {
+        'sword': {
+          url: 'src/assets/audio/sfx/sword.mp3',
+          loop: false
+        },
+        'chest': {
+          url: 'src/assets/audio/sfx/chest_open.MP3',
+          loop: false
+        },
+        'snake': {
+          url: 'src/assets/audio/sfx/snake.wav',
+          loop: false
+        },
+        'walk': {
+          url: 'src/assets/audio/sfx/walking.mp3',
+          loop: false
+        },
+        'jump': {
+          url: 'src/assets/audio/sfx/jumping.wav',
+          loop: false
+        }
+      },
+      // Auto-play on level start
+      playMusic: 'intro-theme'
     }
   },
   {
@@ -263,6 +296,109 @@ export const levels = [
         }
       }
     ],
+    lights: ["BasicLights"],
+    sounds: {
+      music: {
+        'level2-theme': {
+          url: 'src/assets/audio/music/whispers_beneath_the_canopy.mp3',
+          loop: true
+        }
+      },
+      sfx: {
+        'door': {
+          url: 'src/assets/audio/sfx/door.mp3',
+          loop: false
+        },
+        'torch': {
+          url: 'src/assets/audio/ambient/torch.mp3',
+          loop: false
+        },
+        'chest': {
+          url: 'src/assets/audio/sfx/chest_open.mp3',
+          loop: false
+        },
+        'snake': {
+          url: 'src/assets/audio/sfx/snake.wav',
+          loop: false
+        },
+        'low-health': {
+          url: 'src/assets/audio/sfx/low_health.mp3',
+          loop: false
+        },
+        'rumbling': {
+          url: 'src/assets/audio/sfx/rumbling.wav',
+          loop: false
+        },
+        'vo-levelstart': {
+          url: 'src/assets/audio/ambient/pravesh_levelstart_vo.mp3',
+          loop: false
+        },
+        'vo-maze': {
+          url: 'src/assets/audio/ambient/pravesh_01.mp3',
+          loop: false
+        },
+        'vo-chest': {
+          url: 'src/assets/audio/ambient/pravesh_02.mp3',
+          loop: false
+        },
+        'vo-fail': {
+          url: 'src/assets/audio/ambient/pravesh_fail_vo.mp3',
+          loop: false
+        },
+        'vo-success': {
+          url: 'src/assets/audio/ambient/pravesh_success_vo.mp3',
+          loop: false
+        }
+      },
+      ambient: {
+        'torch-ambient': {
+          url: 'src/assets/audio/ambient/torch.mp3',
+          loop: true
+        }
+      },
+      playMusic: 'level2-theme',
+      playVoiceover: 'vo-levelstart'
+    },
+    proximitySounds: [
+      {
+        position: [203, 3.7, -66.7],
+        sound: 'torch-ambient',
+        radius: 10,
+        volume: 0.7
+      },
+      {
+        position: [187.9, 3.7, -66.7],
+        sound: 'torch-ambient',
+        radius: 10,
+        volume: 0.7
+      },
+      {
+        position: [160.3, 4.6, -36.1],
+        sound: 'torch-ambient',
+        radius: 10,
+        volume: 0.7
+      },
+      {
+        position: [160.3, 4.6, -25.7],
+        sound: 'torch-ambient',
+        radius: 10,
+        volume: 0.7
+      }
+    ],
+    enemies: [
+      {
+        type: "snake",
+        position: [140, 1.4, -30],
+        patrolPoints: [
+          [140, 1.4, -30],
+          [130, 1.4, -20],
+          [150, 1.4, -20],
+          [145, 1.4, -35]
+        ],
+        health: 35,
+        speed: 10,
+        chaseRange: 6.0,
+        modelUrl: "src/assets/enemies/snake/scene.gltf"
     "lights": [
       "BasicLights"
     ],

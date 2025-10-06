@@ -15,7 +15,10 @@ export class SnakeEnemy extends EnemyBase {
     };
 
     super(scene, physicsWorld, snakeOptions);
-    
+
+    // Store game reference for accessing soundManager
+    this.game = options.game || null;
+
     // Snake-specific properties
     this.enemyType = 'snake';
     this.attackRange = 2.5; // Increased attack range to account for collider sizes
@@ -456,6 +459,13 @@ export class SnakeEnemy extends EnemyBase {
       if (currentTime - this.lastAttackTime >= this.attackCooldown) {
         this.behaviorState = 'attack';
         this.stateTimer = 0;
+        console.log(`🐍 Snake attacking player! Distance: ${distanceToPlayer.toFixed(2)}, Attack Range: ${this.attackRange}`);
+
+        // Play snake attack sound
+        if (this.game && this.game.soundManager) {
+          this.game.soundManager.playSFX('snake', 0.7);
+        }
+
         this.attackTargetLocked = true; // Lock onto target when attack starts
         console.log(`🐍 Snake attacking player! Distance: ${distanceToPlayer.toFixed(2)}, Attack Range: ${this.attackRange} - TARGET LOCKED`);
         if (this.snakeAnimations.strike) {
