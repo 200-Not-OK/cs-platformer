@@ -6,6 +6,7 @@ export class Player {
   constructor(scene, physicsWorld, options = {}) {
     this.scene = scene;
     this.physicsWorld = physicsWorld;
+    this.game = options.game; // Reference to the game instance for death handling
     
     // Player settings
     this.speed = options.speed ?? 8;
@@ -470,7 +471,13 @@ export class Player {
     if (this.actions.death) {
       this.playAction(this.actions.death, 0.2, false);
     }
-    // Can trigger game over, respawn, etc.
+    
+    // Trigger game death menu after a short delay to let animation start
+    if (this.game && this.game.showDeathMenu) {
+      setTimeout(() => {
+        this.game.showDeathMenu();
+      }, 1000); // 1 second delay to let death animation play
+    }
   }
 
   performInteract() {

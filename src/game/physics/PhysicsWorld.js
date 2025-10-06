@@ -172,12 +172,61 @@ export class PhysicsWorld {
     const maxDelta = 1/30;
     const clampedDelta = Math.min(deltaTime, maxDelta);
     
-    // Step physics simulation
-    this.world.step(clampedDelta);
+    try {
+      // Validate physics world state before stepping
+      if (!this.world || !this.world.bodies) {
+        console.error('Physics world is corrupted, skipping step');
+        return;
+      }
+      
+      // Check for corrupted bodies and remove them
+      const bodiesToRemove = [];
+      for (let i = 0; i < this.world.bodies.length; i++) {
+        const body = this.world.bodies[i];
+        if (!body || !body.position || !body.quaternion || !body.velocity) {
+          console.warn(`Removing corrupted physics body at index ${i}`);
+          bodiesToRemove.push(body);
+        }
+      }
+      
+      // Remove corrupted bodies
+      bodiesToRemove.forEach(body => {
+        if (body) {
+          this.removeBody(body);
+        }
+      });
+      
+      // Step physics simulation
+      this.world.step(clampedDelta);
+    } catch (error) {
+      console.error('Physics step error:', error);
+      // Try to recover by clearing corrupted state
+      this._recoverFromPhysicsError();
+    }
     
     // Update debug renderer if enabled
     if (this.debugEnabled && this.debugRenderer) {
       this.debugRenderer.update();
+    }
+  }
+  
+  _recoverFromPhysicsError() {
+    console.warn('Attempting to recover from physics error...');
+    try {
+      // Reset world time to prevent accumulation issues
+      this.world.time = 0;
+      
+      // Clear any invalid contacts
+      if (this.world.contacts) {
+        this.world.contacts.length = 0;
+      }
+      
+      // Reset solver iterations
+      if (this.world.solver) {
+        this.world.solver.iterations = 10;
+      }
+    } catch (error) {
+      console.error('Failed to recover from physics error:', error);
     }
   }
   
@@ -361,6 +410,14 @@ export class PhysicsWorld {
     body.userData = { type: 'dynamic' };
     
     return body;
+  }
+
+  /**
+   * Add a physics body to the world
+   */
+  addBody(body) {
+    if (!body) return;
+    this.world.addBody(body);
   }
   
   removeBody(body) {
