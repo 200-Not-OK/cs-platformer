@@ -660,109 +660,98 @@ export class Game {
   }
 
   // Load level by index and swap UI based on level metadata
-  async loadLevel(index) {
-    if (this.level) this.level.dispose();
-    
-    // Preserve debug state before disposing old physics world
-    const wasDebugEnabled = this.physicsWorld.isDebugEnabled();
-    
-    // Clear existing physics bodies and recreate physics world with improved collision detection
-    this.physicsWorld.dispose();
-    this.physicsWorld = new PhysicsWorld(this.scene, {
-      useAccurateCollision: false, // Disable Trimesh by default for more reliable collision
-      debugMode: wasDebugEnabled   // Preserve debug state across level transitions
-    });
-    
-    // Update player's physics world reference
-    this.player.physicsWorld = this.physicsWorld;
-    
-    // Update combat system's physics world reference
-    this.combatSystem.physicsWorld = this.physicsWorld;
-    
-    // Update door manager's physics world reference
-    this.doorManager.physicsWorld = this.physicsWorld;
-    
-    // Update collectibles manager's physics world reference
-    this.collectiblesManager.updatePhysicsWorld(this.physicsWorld);
-    
-    // Clear existing doors when loading a new level
-    this.doorManager.dispose();
-    this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
-    this.doorsUnlockedByApples = false; // Reset door unlock status for new level
-    
-    // Recreate player's physics body in the new physics world
-    if (this.player.originalModelSize) {
-      this.player.createPhysicsBody(this.player.originalModelSize);
-    }
-    
-    // Update level manager's physics world reference
-    this.levelManager.physicsWorld = this.physicsWorld;
-    
-    this.level = await this.levelManager.loadIndex(index);
+// Load level by index and swap UI based on level metadata
+async loadLevel(index) {
+  if (this.level) this.level.dispose();
 
-    // Position player at start position from level data
-    const start = this.level.data.startPosition;
-    this.player.setPosition(new THREE.Vector3(...start));
-    console.log(`🏃 Player spawned at position: [${start.join(', ')}] for level: ${this.level.data.name}`);
-    
-    // Trigger level start cinematic
-    this.level.triggerLevelStartCinematic(this.activeCamera, this.player);
+  // Preserve debug state before disposing old physics world
+  const wasDebugEnabled = this.physicsWorld.isDebugEnabled();
 
-    // spawn doors at specific positions only on level 2
-    if (index === 1) { // level2
-      // Boss door - locked until all apples collected
-      this.doorManager.spawn('model', { 
-        position: [25.9, 0, -4.5],
-        preset: 'wooden',
-        width: 6,
-        height: 6.5,
-        depth: 0.5,
-        type: 'model',
-        modelUrl: 'src/assets/doors/level2_boss_door.glb',
-        swingDirection: 'forward left',
-        interactionDistance: 10,
-        autoOpenOnApproach: false, // Disabled until unlocked
-        locked: true, // Lock the door initially
-        requiredKey: 'all_apples' // Custom key requirement
-      //  passcode: '123'
-      });
-      console.log('Spawned locked boss door model at position [25.9, 0, -4.5] on level 2 - requires all apples');
-      
-      // Second door - also locked until all apples collected
-      this.doorManager.spawn('basic', { 
-        position: [56.5, 0, -9.4],
-        preset: 'wooden',
-        width: 4.7,
-        height: 6.5,
-        depth: 0.5,
-        type: 'model',
-        modelUrl: 'src/assets/doors/level2_boss_door.glb',
-        swingDirection: 'forward left',
-        initialRotation: 90,
-        interactionDistance: 10,
-        autoOpenOnApproach: false, // Disabled until unlocked
-        locked: true, // Lock the door initially
-        requiredKey: 'all_apples' // Custom key requirement
-      });
-      console.log('Spawned locked basic door at position [55, 0, -4.5] on level 2 - requires all apples');
-      
-      // Apply current door helper visibility state
-      this.doorManager.toggleColliders(this.doorHelpersVisible);
-    }
+  // Clear existing physics bodies and recreate physics world with improved collision detection
+  this.physicsWorld.dispose();
+  this.physicsWorld = new PhysicsWorld(this.scene, {
+    useAccurateCollision: false, // Disable Trimesh by default for more reliable collision
+    debugMode: wasDebugEnabled   // Preserve debug state across level transitions
+  });
 
-    // swap UI components according to level.data.ui (array of strings)
-    this.applyLevelUI(this.level.data);
-    // swap lighting according to level.data.lights (array of descriptors)
-    this.applyLevelLights(this.level.data);
-    // load and play sounds for this level
-    await this.applyLevelSounds(this.level.data);
+  // Update references that depend on physics world
+  this.player.physicsWorld = this.physicsWorld;
+  this.combatSystem.physicsWorld = this.physicsWorld;
+  this.doorManager.physicsWorld = this.physicsWorld;
+  this.collectiblesManager.updatePhysicsWorld(this.physicsWorld);
+  this.doorManager.dispose();
+  this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
+  this.doorsUnlockedByApples = false;
 
-    // Spawn collectibles after all systems are initialized
-    this.collectiblesManager.cleanup();
-    await this.collectiblesManager.spawnCollectiblesForLevel(this.level.data);
-
-    return this.level;
+  if (this.player.originalModelSize) {
+    this.player.createPhysicsBody(this.player.originalModelSize);
   }
+
+  this.levelManager.physicsWorld = this.physicsWorld;
+  this.level = await this.levelManager.loadIndex(index);
+
+  // Position player at start position from level data
+  const start = this.level.data.startPosition;
+  this.player.setPosition(new THREE.Vector3(...start));
+  console.log(`🏃 Player spawned at position: [${start.join(', ')}] for level: ${this.level.data.name}`);
+
+  // swap UI + lights first
+  this.applyLevelUI(this.level.data);
+  this.applyLevelLights(this.level.data);
+
+  // IMPORTANT:
+  // If an onLevelStart cinematic exists, we want the cinematic to control VO timing.
+  const hasLevelStartCinematic =
+    !!(this.level?.data?.cinematics && (this.level.data.cinematics.onLevelStart || Array.isArray(this.level.data.cinematics)));
+
+  // Load sounds. If cinematic exists, defer VO to it.
+  await this.applyLevelSounds(this.level.data, { deferVoiceoverToCinematic: hasLevelStartCinematic });
+
+  // Spawn collectibles AFTER sounds/UI are ready
+  this.collectiblesManager.cleanup();
+  await this.collectiblesManager.spawnCollectiblesForLevel(this.level.data);
+
+  // Doors (Level 2 example)
+  if (index === 1) {
+    this.doorManager.spawn('model', {
+      position: [25.9, 0, -4.5],
+      preset: 'wooden',
+      width: 6,
+      height: 6.5,
+      depth: 0.5,
+      type: 'model',
+      modelUrl: 'src/assets/doors/level2_boss_door.glb',
+      swingDirection: 'forward left',
+      interactionDistance: 10,
+      autoOpenOnApproach: false,
+      locked: true,
+      requiredKey: 'all_apples'
+    });
+    this.doorManager.spawn('basic', {
+      position: [56.5, 0, -9.4],
+      preset: 'wooden',
+      width: 4.7,
+      height: 6.5,
+      depth: 0.5,
+      type: 'model',
+      modelUrl: 'src/assets/doors/level2_boss_door.glb',
+      swingDirection: 'forward left',
+      initialRotation: 90,
+      interactionDistance: 10,
+      autoOpenOnApproach: false,
+      locked: true,
+      requiredKey: 'all_apples'
+    });
+    this.doorManager.toggleColliders(this.doorHelpersVisible);
+  }
+
+  // Finally: trigger the cinematic (sounds are loaded and ready).
+  // The cinematic's `playVO` step will start narration exactly on cue.
+  this.level.triggerLevelStartCinematic(this.activeCamera, this.player);
+
+  return this.level;
+}
+
 
   /**
    * Check if all apples have been collected and unlock doors in Level 2
@@ -993,100 +982,72 @@ export class Game {
     }
   }
 
-  async applyLevelSounds(levelData) {
-    console.log('🔊🔊🔊 applyLevelSounds CALLED! 🔊🔊🔊');
-    console.log('🔊 applyLevelSounds called for level:', levelData.name);
-    console.log('🔊 Sound manager exists?', !!this.soundManager);
-    console.log('🔊 Level sounds config:', levelData.sounds);
+async applyLevelSounds(levelData, opts = {}) {
+  const { deferVoiceoverToCinematic = false } = opts;
 
-    if (!this.soundManager) {
-      console.warn('⚠️ Sound manager not available!');
-      return;
-    }
+  console.log('🔊 applyLevelSounds for:', levelData?.name, 'deferVO:', deferVoiceoverToCinematic);
 
-    if (!levelData.sounds) {
-      console.warn('⚠️ No sounds config in level data!');
-      console.log('🔍 Skipping to proximity sounds check...');
-      // Even if no sounds, still check for proximity sounds
-      console.log(`🔍 Checking for proximity sounds in level data...`);
-      console.log(`🔍 levelData.proximitySounds exists?`, !!levelData.proximitySounds);
-      console.log(`🔍 levelData.proximitySounds value:`, levelData.proximitySounds);
-      return;
-    }
+  if (!this.soundManager) {
+    console.warn('⚠️ Sound manager not available!');
+    return;
+  }
+  if (!levelData?.sounds) {
+    console.warn('⚠️ No sounds config in level data!');
+    // Proximity sounds still handled below if present
+  }
 
-    try {
-      console.log('🔊 Starting to load sounds...');
-      // Load sounds for this level
+  try {
+    if (levelData?.sounds) {
       await this.soundManager.loadSounds(levelData.sounds);
-      console.log('🔊 Sounds loaded successfully!');
+      console.log('🔊 Sounds loaded OK');
 
-      // Store what music/ambient/voiceover to play for this level
-      console.log('🔊 DEBUG: levelData.sounds object:', levelData.sounds);
-      console.log('🔊 DEBUG: levelData.sounds.playMusic =', levelData.sounds.playMusic);
-      console.log('🔊 DEBUG: levelData.sounds.playAmbient =', levelData.sounds.playAmbient);
-      console.log('🔊 DEBUG: levelData.sounds.playVoiceover =', levelData.sounds.playVoiceover);
+      // Store what to play
+      this._pendingMusic    = levelData.sounds.playMusic || null;
+      this._pendingAmbient  = levelData.sounds.playAmbient || null;
 
-      this._pendingMusic = levelData.sounds.playMusic;
-      this._pendingAmbient = levelData.sounds.playAmbient;
-      this._pendingVoiceover = levelData.sounds.playVoiceover;
+      // If a cinematic will drive VO timing, do NOT set a pending VO here.
+      this._pendingVoiceover = deferVoiceoverToCinematic ? null : (levelData.sounds.playVoiceover || null);
 
-      // Check if AudioContext is already running (user has interacted)
-      const audioContext = this.soundManager.listener.context;
-      console.log('🔊 AudioContext state:', audioContext.state);
+      const ctx = this.soundManager.listener.context;
+      const ctxRunning = ctx && ctx.state === 'running';
 
-      if (audioContext.state === 'running') {
-        // AudioContext is ready, play immediately
+      // Start music/ambient immediately if we can. (No delay!)
+      if (ctxRunning) {
         if (this._pendingMusic) {
-          console.log('🔊 AudioContext running, playing music:', this._pendingMusic);
           this.soundManager.playMusic(this._pendingMusic);
           this._pendingMusic = null;
         }
         if (this._pendingAmbient) {
-          console.log('🔊 AudioContext running, playing ambient:', this._pendingAmbient);
           this.soundManager.playAmbient(this._pendingAmbient);
           this._pendingAmbient = null;
         }
+        // Only auto-play VO if not deferred to cinematic
         if (this._pendingVoiceover) {
-          console.log('🔊 AudioContext running, playing voiceover:', this._pendingVoiceover);
-          const voToPlay = this._pendingVoiceover;
+          // No 500ms delay—start now so it doesn’t drift
+          const vo = this._pendingVoiceover;
           this._pendingVoiceover = null;
-          setTimeout(() => {
-            this.playVoiceover(voToPlay, 15000); // 15 seconds for voiceover
-          }, 500); // Small delay so VO plays after music starts
+          this.playVoiceover(vo, 2000);
         }
       } else {
-        console.log('🔊 AudioContext suspended. Music will play after user interaction (click).');
-        console.log('🔊 Pending music:', this._pendingMusic);
-        console.log('🔊 Pending ambient:', this._pendingAmbient);
-        console.log('🔊 Pending voiceover:', this._pendingVoiceover);
+        console.log('🔊 AudioContext suspended. Will start audio on first user click.');
       }
-
-      // Load proximity sounds if specified
-      console.log(`🔍 Checking for proximity sounds in level data...`);
-      console.log(`🔍 levelData.proximitySounds exists?`, !!levelData.proximitySounds);
-      console.log(`🔍 levelData.proximitySounds value:`, levelData.proximitySounds);
-
-      if (levelData.proximitySounds) {
-        console.log(`🎵 Level has ${levelData.proximitySounds.length} proximity sound zones`);
-        // Create proximity sound manager if not exists
-        if (!this.proximitySoundManager) {
-          console.log(`🎵 Creating new ProximitySoundManager`);
-          this.proximitySoundManager = new ProximitySoundManager(this.soundManager, this.player);
-        }
-        this.proximitySoundManager.loadProximitySounds(levelData.proximitySounds);
-      } else {
-        console.warn(`⚠️⚠️⚠️ NO PROXIMITY SOUNDS FOUND IN LEVEL DATA! ⚠️⚠️⚠️`);
-        if (this.proximitySoundManager) {
-          // Clean up proximity sounds if no proximity sounds in new level
-          this.proximitySoundManager.dispose();
-        }
-      }
-
-      console.log(`🔊 Loaded sounds for level: ${levelData.name}`);
-    } catch (error) {
-      console.error(`❌ Failed to load sounds for level ${levelData.name}:`, error);
     }
+
+    // Proximity sounds
+    if (levelData?.proximitySounds) {
+      if (!this.proximitySoundManager) {
+        this.proximitySoundManager = new ProximitySoundManager(this.soundManager, this.player);
+      }
+      this.proximitySoundManager.loadProximitySounds(levelData.proximitySounds);
+    } else if (this.proximitySoundManager) {
+      // Clean up if the new level doesn't define proximity audio
+      this.proximitySoundManager.dispose();
+    }
+  } catch (err) {
+    console.error(`❌ Failed to load/apply sounds for ${levelData?.name}:`, err);
   }
+}
+
 
   checkFinalSnake() {
     if (!this.level || !this.level.getEnemies) return;
