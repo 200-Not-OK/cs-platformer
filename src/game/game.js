@@ -165,7 +165,7 @@ export class Game {
     // Add voiceover card for character dialogues
     this.ui.add('voiceoverCard', VoiceoverCard, {
       characterName: 'Praveen',
-      position: 'right'
+      position: 'left'
     });
 
     // Combat system
@@ -402,6 +402,11 @@ export class Game {
     }
     
     if (potionUsed) {
+      // Play potion sound
+      if (this.soundManager && this.soundManager.sfx['potion']) {
+        this.soundManager.playSFX('potion', 0.8);
+      }
+
       // Heal the player
       if (this.player && this.player.heal) {
         this.player.heal(25); // Heal 25 HP

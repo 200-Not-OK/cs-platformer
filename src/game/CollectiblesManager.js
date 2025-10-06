@@ -633,8 +633,43 @@ export class CollectiblesManager {
       }
       console.log('🧪 Found a healing potion in the chest! Added to inventory.');
     }
-    
+
     this.triggerEvent('onCollectiblePickup', chestCollectible);
+
+    // Check chest count (Level 2 only)
+    if (this.game && this.game.levelManager && this.game.levelManager.currentIndex === 1) {
+      const allChests = Array.from(this.collectibles.values()).filter(c => c.type === 'chest');
+      const collectedChests = allChests.filter(c => c.collected);
+      const remainingChests = allChests.filter(c => !c.collected);
+
+      // After 3rd chest is opened, play rumbling 5 times
+      if (collectedChests.length === 3 && !this._thirdChestRumblingPlayed) {
+        this._thirdChestRumblingPlayed = true;
+        setTimeout(() => {
+          if (this.game && this.game.soundManager && this.game.soundManager.sfx['rumbling']) {
+            // Play rumbling 5 times with 2 second delay between each
+            let playCount = 0;
+            const playRumbling = () => {
+              if (playCount < 5) {
+                this.game.soundManager.playSFX('rumbling', 0.7);
+                playCount++;
+                setTimeout(playRumbling, 2000); // 2 seconds between each rumble
+              }
+            };
+            playRumbling();
+          }
+        }, 1000);
+      }
+
+      // Last chest - play special voiceover
+      if (remainingChests.length === 0) {
+        setTimeout(() => {
+          if (this.game && this.game.playVoiceover) {
+            this.game.playVoiceover('vo-lastchest', 10000);
+          }
+        }, 1000);
+      }
+    }
     
     // Remove from our tracking after a delay to allow animation
     setTimeout(() => {
