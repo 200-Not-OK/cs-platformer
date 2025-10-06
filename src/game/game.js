@@ -15,6 +15,7 @@ import { Crosshair } from './components/crosshair.js';
 import { Collectibles } from './components/collectibles.js';
 import { InteractionPrompt } from './components/interactionPrompt.js';
 import { DeathMenu } from './components/deathMenu.js';
+import { VoiceoverCard } from './components/voiceoverCard.js';
 import { FirstPersonCamera } from './firstPersonCamera.js';
 import { LightManager } from './lightManager.js';
 import * as LightModules from './lights/index.js';
@@ -22,6 +23,8 @@ import { PhysicsWorld } from './physics/PhysicsWorld.js';
 import { CombatSystem } from './combatSystem.js';
 import { DoorManager } from '../assets/doors/DoorManager.js';
 import { CollectiblesManager } from './CollectiblesManager.js';
+import { SoundManager } from './soundManager.js';
+import { ProximitySoundManager } from './proximitySoundManager.js';
 
 export class Game {
   constructor() {
@@ -39,7 +42,7 @@ export class Game {
     this.input = new InputManager(window);
 
     // Level system
-    this.levelManager = new LevelManager(this.scene, this.physicsWorld);
+    this.levelManager = new LevelManager(this.scene, this.physicsWorld, this);
     this.level = null;
 
     // Player
@@ -72,6 +75,45 @@ export class Game {
     // doesn't accidentally trigger a second request or race with the resume flow.
     window.addEventListener('click', (e) => {
       if (this.pauseMenu && this.pauseMenu.contains && this.pauseMenu.contains(e.target)) return;
+
+      // Resume AudioContext on first user interaction (required by browsers)
+      if (this.soundManager && this.soundManager.listener && this.soundManager.listener.context) {
+        if (this.soundManager.listener.context.state === 'suspended') {
+          this.soundManager.listener.context.resume().then(() => {
+            console.log('🔊 AudioContext resumed - now playing pending audio');
+
+            // Play any pending music/ambient/voiceover after AudioContext is resumed
+            if (this._pendingMusic) {
+              console.log('🔊 Playing pending music:', this._pendingMusic);
+              this.soundManager.playMusic(this._pendingMusic);
+              this._pendingMusic = null;
+            }
+            if (this._pendingAmbient) {
+              console.log('🔊 Playing pending ambient:', this._pendingAmbient);
+              this.soundManager.playAmbient(this._pendingAmbient);
+              this._pendingAmbient = null;
+            }
+            if (this._pendingVoiceover) {
+              console.log('🔊 Playing pending voiceover:', this._pendingVoiceover);
+              const voToPlay = this._pendingVoiceover;
+              this._pendingVoiceover = null;
+              setTimeout(() => {
+                // Play first voiceover with callback to play maze voiceover after
+                this.playVoiceover(voToPlay, 15000, () => {
+                  // After levelstart VO finishes, play maze VO (Level 2 only)
+                  if (this.levelManager && this.levelManager.currentIndex === 1) {
+                    console.log('🎤 Levelstart VO finished, playing maze VO next');
+                    setTimeout(() => {
+                      this.playVoiceover('vo-maze', 12000);
+                    }, 2000); // 2 second pause between voiceovers
+                  }
+                });
+              }, 500); // Small delay so VO plays after music starts
+            }
+          });
+        }
+      }
+
       // request pointer lock when clicking while in first or third person
       if ((this.activeCamera === this.thirdCameraObject || this.activeCamera === this.firstCameraObject) && document.pointerLockElement !== document.body) {
         try {
@@ -120,26 +162,40 @@ export class Game {
     this.ui.add('crosshair', Crosshair, { visible: true });
     // Add interaction prompt for chests
     this.ui.add('interactionPrompt', InteractionPrompt, { message: 'to interact' });
+    // Add voiceover card for character dialogues
+    this.ui.add('voiceoverCard', VoiceoverCard, {
+      characterName: 'Praveen',
+      position: 'left'
+    });
 
     // Combat system
     this.combatSystem = new CombatSystem(this.scene, this.physicsWorld);
 
     // Collectibles system
-    this.collectiblesManager = new CollectiblesManager(this.scene, this.physicsWorld);
+    this.collectiblesManager = new CollectiblesManager(this.scene, this.physicsWorld, this);
 
     // Door system
     this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
     this.doorHelpersVisible = false; // Track door collision helper visibility (invisible by default)
+    this.doorsUnlockedByApples = false; // Track if doors have been unlocked by apple collection
 
     // Lighting manager (modular per-level lights)
     this.lights = new LightManager(this.scene);
 
+<<<<<<< HEAD
     // Flame placement positions
     this.flamePositions = [];
     this.maxActiveFlames = 40;
     this.flameCounter = 0;
     this.placedFlameKeys = [];
     this.jPressed = false;
+=======
+    // Sound manager (initialize with camera for 3D audio)
+    this.soundManager = new SoundManager(this.thirdCameraObject);
+
+    // Proximity sound manager (for location-based sounds like torches)
+    this.proximitySoundManager = null; // Will be initialized after player is ready
+>>>>>>> f396ee2e2cb9d9b5efa2ff7b3bfad0165e93045e
 
     // Load the initial level early so subsequent code can reference `this.level`
     this._initializeLevel();
@@ -151,6 +207,8 @@ export class Game {
     this.paused = false;
     this.playerDead = false; // Flag to track if player is dead
     this.pauseMenu = document.getElementById('pauseMenu');
+
+    // Resume button
     const resumeBtn = document.getElementById('resumeBtn');
     if (resumeBtn) resumeBtn.addEventListener('click', (e) => {
       // prevent the click from bubbling to the global click handler which would
@@ -169,6 +227,9 @@ export class Game {
         }
       }
     });
+
+    // Setup audio controls
+    this._setupAudioControls();
 
     // loop
     this.last = performance.now();
@@ -239,7 +300,7 @@ export class Game {
         this.loadLevel(nextIndex).catch(err => console.error('Failed to load level:', err));
       } else if (code === 'KeyM') {
         // toggle physics debug visualization
-        const debugEnabled = this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
+        this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
       } else if (code === 'KeyH') {
         // toggle door collision helpers (green boxes around doors)
         if (this.doorManager) {
@@ -276,6 +337,32 @@ export class Game {
         if (this.player && this.player.takeDamage) {
           this.player.takeDamage(50);
           console.log('🩸 Debug: Player damaged for testing');
+        }
+      } else if (code === 'KeyP') {
+        // Debug: manually play music
+        console.log('🔊 DEBUG: Manual music trigger (P key pressed)');
+        console.log('🔊 AudioContext state:', this.soundManager.listener.context.state);
+        console.log('🔊 Pending music:', this._pendingMusic);
+        console.log('🔊 Current music:', this.soundManager.currentMusic);
+        console.log('🔊 Available music tracks:', Object.keys(this.soundManager.music));
+
+        // Try to resume AudioContext
+        if (this.soundManager.listener.context.state === 'suspended') {
+          this.soundManager.listener.context.resume().then(() => {
+            console.log('🔊 AudioContext resumed via P key');
+          });
+        }
+
+        // Try to play pending or intro music
+        if (this._pendingMusic) {
+          console.log('🔊 Playing pending music:', this._pendingMusic);
+          this.soundManager.playMusic(this._pendingMusic, 0); // No fade for debugging
+        } else if (this.soundManager.music['intro-theme']) {
+          console.log('🔊 Playing intro-theme directly');
+          this.soundManager.playMusic('intro-theme', 0); // No fade for debugging
+        } else if (this.soundManager.music['level2-theme']) {
+          console.log('🔊 Playing level2-theme directly');
+          this.soundManager.playMusic('level2-theme', 0); // No fade for debugging
         }
       }
     });
@@ -324,6 +411,11 @@ export class Game {
     }
     
     if (potionUsed) {
+      // Play potion sound
+      if (this.soundManager && this.soundManager.sfx['potion']) {
+        this.soundManager.playSFX('potion', 0.8);
+      }
+
       // Heal the player
       if (this.player && this.player.heal) {
         this.player.heal(25); // Heal 25 HP
@@ -336,33 +428,90 @@ export class Game {
     }
   }
 
+  playVoiceover(voName, duration = 5000, onComplete = null) {
+    console.log(`🎤 playVoiceover called with: ${voName}`);
+    console.log(`🎤 soundManager exists?`, !!this.soundManager);
+    console.log(`🎤 soundManager.sfx exists?`, !!this.soundManager?.sfx);
+    console.log(`🎤 soundManager.sfx[${voName}] exists?`, !!this.soundManager?.sfx?.[voName]);
+
+    // Play voiceover and show the card
+    if (this.soundManager && this.soundManager.sfx[voName]) {
+      console.log(`🎤 Playing voiceover: ${voName}`);
+      this.soundManager.playSFX(voName, 1.0);
+
+      // Show voiceover card
+      const voCard = this.ui.get('voiceoverCard');
+      console.log(`🎤 voCard exists?`, !!voCard);
+      if (voCard) {
+        console.log(`🎤 Showing voiceover card for Pravesh`);
+        voCard.show('Praveen');
+        voCard.startSpeaking();
+
+        // Hide after duration
+        setTimeout(() => {
+          console.log(`🎤 Stopping voiceover card speaking animation`);
+          voCard.stopSpeaking();
+          setTimeout(() => {
+            console.log(`🎤 Hiding voiceover card`);
+            voCard.hide();
+
+            // Call completion callback if provided
+            if (onComplete && typeof onComplete === 'function') {
+              console.log(`🎤 Calling voiceover completion callback`);
+              onComplete();
+            }
+          }, 500);
+        }, duration);
+      } else {
+        console.error(`🎤 ERROR: voiceoverCard component not found!`);
+        // Still call callback even if card fails
+        if (onComplete && typeof onComplete === 'function') {
+          setTimeout(() => onComplete(), duration);
+        }
+      }
+    } else {
+      console.error(`🎤 ERROR: Voiceover ${voName} not found in soundManager.sfx`);
+      console.log(`🎤 Available SFX:`, Object.keys(this.soundManager?.sfx || {}));
+    }
+  }
+
   showDeathMenu() {
     console.log('💀 Showing death menu');
-    
+
+    // Play fail voiceover if available
+    if (this.soundManager && this.soundManager.sfx['vo-fail']) {
+      console.log('🎤 Playing fail voiceover');
+      // Stop music and play fail VO
+      if (this.soundManager.currentMusic) {
+        this.soundManager.stopMusic();
+      }
+      this.playVoiceover('vo-fail', 10000); // 10 seconds for fail voiceover
+    }
+
     // Set death state flag
     this.playerDead = true;
-    
+
     // Create death menu if it doesn't exist
     if (!this.ui.get('deathMenu')) {
       this.ui.add('deathMenu', DeathMenu, {
         onRespawn: () => this.respawnPlayer()
       });
     }
-    
+
     // Show the death menu
     const deathMenu = this.ui.get('deathMenu');
     if (deathMenu && deathMenu.show) {
       deathMenu.show();
     }
-    
+
     // Pause the game without showing pause menu
     this.paused = true;
-    
+
     // Disable input handling when paused
     if (this.input && this.input.setEnabled) {
       this.input.setEnabled(false);
     }
-    
+
     // Exit pointer lock if active
     if (document.pointerLockElement) {
       this._suppressPointerLockPause = true;
@@ -438,7 +587,9 @@ export class Game {
           health: this.player.health ?? 100,
           maxHealth: this.player.maxHealth ?? 100 
         },
-        playerModel: this.player.mesh
+        playerModel: this.player.mesh,
+        enemies: this.level ? this.level.getEnemies() : [],
+        collectibles: this.collectiblesManager ? this.collectiblesManager.getAllCollectibles() : []
       };
       this.ui.update(delta, ctx);
     }
@@ -484,6 +635,11 @@ export class Game {
     // Update combat system
     this.combatSystem.update(delta);
 
+    // Check for final snake remaining (Level 2 only)
+    if (this.levelManager && this.levelManager.currentIndex === 1) { // Level 2
+      this.checkFinalSnake();
+    }
+
     // Update door system
     this.doorManager.update(delta, this.player.getPosition());
 
@@ -497,6 +653,21 @@ export class Game {
 
     // Update collectibles system
     this.collectiblesManager.update(delta);
+
+    // Update proximity sounds
+    if (this.proximitySoundManager) {
+      this.proximitySoundManager.update();
+    } else {
+      // Debug: Log once per second if proximity sound manager doesn't exist
+      if (!this._proximityDebugTime) this._proximityDebugTime = 0;
+      this._proximityDebugTime += delta;
+      if (this._proximityDebugTime > 1000) {
+        console.log('⚠️ No proximitySoundManager in update loop');
+        this._proximityDebugTime = 0;
+      }
+    }
+    // Check apple collection status for Level 2 door unlocking
+    this.checkAppleCollectionForDoors();
 
   // update lights (allow dynamic lights to animate)
   if (this.lights) this.lights.update(delta);
@@ -534,6 +705,7 @@ export class Game {
     // Clear existing doors when loading a new level
     this.doorManager.dispose();
     this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
+    this.doorsUnlockedByApples = false; // Reset door unlock status for new level
     
     // Recreate player's physics body in the new physics world
     if (this.player.originalModelSize) {
@@ -558,7 +730,7 @@ export class Game {
 
     // spawn doors at specific positions only on level 2
     if (index === 1) { // level2
-      // Boss door
+      // Boss door - locked until all apples collected
       this.doorManager.spawn('model', { 
         position: [25.9, 0, -4.5],
         preset: 'wooden',
@@ -569,12 +741,14 @@ export class Game {
         modelUrl: 'src/assets/doors/level2_boss_door.glb',
         swingDirection: 'forward left',
         interactionDistance: 10,
-        autoOpenOnApproach: true
+        autoOpenOnApproach: false, // Disabled until unlocked
+        locked: true, // Lock the door initially
+        requiredKey: 'all_apples' // Custom key requirement
       //  passcode: '123'
       });
-      console.log('Spawned boss door model at position [25.9, 0, -4.5] on level 2');
+      console.log('Spawned locked boss door model at position [25.9, 0, -4.5] on level 2 - requires all apples');
       
-      // Second door
+      // Second door - also locked until all apples collected
       this.doorManager.spawn('basic', { 
         position: [56.5, 0, -9.4],
         preset: 'wooden',
@@ -586,9 +760,11 @@ export class Game {
         swingDirection: 'forward left',
         initialRotation: 90,
         interactionDistance: 10,
-        autoOpenOnApproach: true
+        autoOpenOnApproach: false, // Disabled until unlocked
+        locked: true, // Lock the door initially
+        requiredKey: 'all_apples' // Custom key requirement
       });
-      console.log('Spawned basic door at position [55, 0, -4.5] on level 2');
+      console.log('Spawned locked basic door at position [55, 0, -4.5] on level 2 - requires all apples');
       
       // Apply current door helper visibility state
       this.doorManager.toggleColliders(this.doorHelpersVisible);
@@ -597,8 +773,143 @@ export class Game {
     // swap UI components according to level.data.ui (array of strings)
     this.applyLevelUI(this.level.data);
     // swap lighting according to level.data.lights (array of descriptors)
+<<<<<<< HEAD
     await this.applyLevelLights(this.level.data);
+=======
+    this.applyLevelLights(this.level.data);
+    // load and play sounds for this level
+    await this.applyLevelSounds(this.level.data);
+
+    // Spawn collectibles after all systems are initialized
+    this.collectiblesManager.cleanup();
+    await this.collectiblesManager.spawnCollectiblesForLevel(this.level.data);
+
+>>>>>>> f396ee2e2cb9d9b5efa2ff7b3bfad0165e93045e
     return this.level;
+  }
+
+  /**
+   * Check if all apples have been collected and unlock doors in Level 2
+   */
+  checkAppleCollectionForDoors() {
+    // Only check in Level 2
+    if (!this.level || this.level.data.id !== 'level2') {
+      return;
+    }
+
+    // Skip if doors are already unlocked
+    if (this.doorsUnlockedByApples) {
+      return;
+    }
+
+    // Get collectible statistics
+    const stats = this.collectiblesManager.getStats();
+    
+    // Check if all apples have been collected
+    const allApplesCollected = stats.apples.total > 0 && stats.apples.collected >= stats.apples.total;
+    
+    if (allApplesCollected && this.doorManager && this.doorManager.doors) {
+      // Find and unlock doors that require 'all_apples'
+      let doorsUnlocked = 0;
+      for (const door of this.doorManager.doors) {
+        if (door.locked && door.requiredKey === 'all_apples') {
+          door.locked = false;
+          door.autoOpenOnApproach = true; // Enable auto-open now that it's unlocked
+          doorsUnlocked++;
+        }
+      }
+      
+      if (doorsUnlocked > 0) {
+        this.doorsUnlockedByApples = true;
+        console.log(`🔓 ${doorsUnlocked} door(s) unlocked! All ${stats.apples.total} apples collected in Level 2`);
+        
+        // Trigger Pravesh dialogue about mysterious door opening
+        console.log('🎬 About to trigger apple collection dialogue...');
+        this.triggerAppleCollectionDialogue();
+      }
+    }
+  }
+
+  /**
+   * Trigger dialogue when all apples are collected
+   */
+  triggerAppleCollectionDialogue() {
+    console.log('🎬 triggerAppleCollectionDialogue called!');
+    
+    // Simple approach: create dialogue UI directly
+    this.showSimpleDialogue('Pravesh', 'Ooh, a mysterious door has opened!', 3000);
+  }
+
+  /**
+   * Show a simple dialogue message
+   */
+  showSimpleDialogue(character, message, duration = 3000) {
+    console.log(`🎬 Showing dialogue: ${character}: ${message}`);
+    
+    // Create dialogue element
+    const dialogue = document.createElement('div');
+    dialogue.style.cssText = `
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      max-width: 600px;
+      text-align: center;
+      font-family: Arial, sans-serif;
+      z-index: 1000;
+      animation: fadeIn 0.5s ease-in;
+    `;
+    
+    // Add character name
+    const characterElement = document.createElement('div');
+    characterElement.style.cssText = `
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #ffdd44;
+    `;
+    characterElement.textContent = character.toUpperCase();
+    
+    // Add message text
+    const textElement = document.createElement('div');
+    textElement.style.cssText = `
+      font-size: 18px;
+      line-height: 1.4;
+    `;
+    textElement.textContent = message;
+    
+    // Add fade animation
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+        to { opacity: 1; transform: translateX(-50%) translateY(0); }
+      }
+      @keyframes fadeOut {
+        from { opacity: 1; transform: translateX(-50%) translateY(0); }
+        to { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    dialogue.appendChild(characterElement);
+    dialogue.appendChild(textElement);
+    document.body.appendChild(dialogue);
+    
+    // Auto-hide after duration
+    setTimeout(() => {
+      dialogue.style.animation = 'fadeOut 0.5s ease-out';
+      setTimeout(() => {
+        document.body.removeChild(dialogue);
+        document.head.removeChild(style);
+      }, 500);
+    }, duration);
+    
+    console.log('🎬 Dialogue displayed successfully!');
   }
 
   applyLevelLights(levelData) {
@@ -644,6 +955,9 @@ export class Game {
     if (this.ui.get('interactionPrompt')) {
       globalComponents.set('interactionPrompt', this.ui.get('interactionPrompt'));
     }
+    if (this.ui.get('voiceoverCard')) {
+      globalComponents.set('voiceoverCard', this.ui.get('voiceoverCard'));
+    }
     
     this.ui.clear();
     
@@ -675,7 +989,11 @@ export class Game {
       if (key === 'hud') {
         this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
       } else if (key === 'minimap') {
-        this.ui.add('minimap', Minimap, config);
+        const minimap = this.ui.add('minimap', Minimap, config);
+        // Set level data for minimap rendering
+        if (minimap && minimap.setLevelData) {
+          minimap.setLevelData(levelData);
+        }
       } else if (key === 'objectives') {
         this.ui.add('objectives', Objectives, { 
           items: levelData.objectives ?? ['Reach the goal'],
@@ -704,6 +1022,201 @@ export class Game {
     }
     if (interactionPrompt) {
       this.collectiblesManager.setInteractionPrompt(interactionPrompt);
+    }
+  }
+
+  async applyLevelSounds(levelData) {
+    console.log('🔊🔊🔊 applyLevelSounds CALLED! 🔊🔊🔊');
+    console.log('🔊 applyLevelSounds called for level:', levelData.name);
+    console.log('🔊 Sound manager exists?', !!this.soundManager);
+    console.log('🔊 Level sounds config:', levelData.sounds);
+
+    if (!this.soundManager) {
+      console.warn('⚠️ Sound manager not available!');
+      return;
+    }
+
+    if (!levelData.sounds) {
+      console.warn('⚠️ No sounds config in level data!');
+      console.log('🔍 Skipping to proximity sounds check...');
+      // Even if no sounds, still check for proximity sounds
+      console.log(`🔍 Checking for proximity sounds in level data...`);
+      console.log(`🔍 levelData.proximitySounds exists?`, !!levelData.proximitySounds);
+      console.log(`🔍 levelData.proximitySounds value:`, levelData.proximitySounds);
+      return;
+    }
+
+    try {
+      console.log('🔊 Starting to load sounds...');
+      // Load sounds for this level
+      await this.soundManager.loadSounds(levelData.sounds);
+      console.log('🔊 Sounds loaded successfully!');
+
+      // Store what music/ambient/voiceover to play for this level
+      console.log('🔊 DEBUG: levelData.sounds object:', levelData.sounds);
+      console.log('🔊 DEBUG: levelData.sounds.playMusic =', levelData.sounds.playMusic);
+      console.log('🔊 DEBUG: levelData.sounds.playAmbient =', levelData.sounds.playAmbient);
+      console.log('🔊 DEBUG: levelData.sounds.playVoiceover =', levelData.sounds.playVoiceover);
+
+      this._pendingMusic = levelData.sounds.playMusic;
+      this._pendingAmbient = levelData.sounds.playAmbient;
+      this._pendingVoiceover = levelData.sounds.playVoiceover;
+
+      // Check if AudioContext is already running (user has interacted)
+      const audioContext = this.soundManager.listener.context;
+      console.log('🔊 AudioContext state:', audioContext.state);
+
+      if (audioContext.state === 'running') {
+        // AudioContext is ready, play immediately
+        if (this._pendingMusic) {
+          console.log('🔊 AudioContext running, playing music:', this._pendingMusic);
+          this.soundManager.playMusic(this._pendingMusic);
+          this._pendingMusic = null;
+        }
+        if (this._pendingAmbient) {
+          console.log('🔊 AudioContext running, playing ambient:', this._pendingAmbient);
+          this.soundManager.playAmbient(this._pendingAmbient);
+          this._pendingAmbient = null;
+        }
+        if (this._pendingVoiceover) {
+          console.log('🔊 AudioContext running, playing voiceover:', this._pendingVoiceover);
+          const voToPlay = this._pendingVoiceover;
+          this._pendingVoiceover = null;
+          setTimeout(() => {
+            this.playVoiceover(voToPlay, 15000); // 15 seconds for voiceover
+          }, 500); // Small delay so VO plays after music starts
+        }
+      } else {
+        console.log('🔊 AudioContext suspended. Music will play after user interaction (click).');
+        console.log('🔊 Pending music:', this._pendingMusic);
+        console.log('🔊 Pending ambient:', this._pendingAmbient);
+        console.log('🔊 Pending voiceover:', this._pendingVoiceover);
+      }
+
+      // Load proximity sounds if specified
+      console.log(`🔍 Checking for proximity sounds in level data...`);
+      console.log(`🔍 levelData.proximitySounds exists?`, !!levelData.proximitySounds);
+      console.log(`🔍 levelData.proximitySounds value:`, levelData.proximitySounds);
+
+      if (levelData.proximitySounds) {
+        console.log(`🎵 Level has ${levelData.proximitySounds.length} proximity sound zones`);
+        // Create proximity sound manager if not exists
+        if (!this.proximitySoundManager) {
+          console.log(`🎵 Creating new ProximitySoundManager`);
+          this.proximitySoundManager = new ProximitySoundManager(this.soundManager, this.player);
+        }
+        this.proximitySoundManager.loadProximitySounds(levelData.proximitySounds);
+      } else {
+        console.warn(`⚠️⚠️⚠️ NO PROXIMITY SOUNDS FOUND IN LEVEL DATA! ⚠️⚠️⚠️`);
+        if (this.proximitySoundManager) {
+          // Clean up proximity sounds if no proximity sounds in new level
+          this.proximitySoundManager.dispose();
+        }
+      }
+
+      console.log(`🔊 Loaded sounds for level: ${levelData.name}`);
+    } catch (error) {
+      console.error(`❌ Failed to load sounds for level ${levelData.name}:`, error);
+    }
+  }
+
+  checkFinalSnake() {
+    if (!this.level || !this.level.getEnemies) return;
+
+    const enemies = this.level.getEnemies();
+    const aliveSnakes = enemies.filter(e => e.isAlive && e.health > 0);
+
+    // Play rumbling when only 1 snake remains
+    if (aliveSnakes.length === 1 && !this._rumblingSoundPlayed) {
+      console.log('🐍 Final snake remaining! Playing rumbling sound');
+      if (this.soundManager && this.soundManager.sfx['rumbling']) {
+        this.soundManager.playSFX('rumbling', 0.7);
+      }
+      this._rumblingSoundPlayed = true; // Play only once
+    }
+
+    // Reset flag when level reloads
+    if (aliveSnakes.length > 1) {
+      this._rumblingSoundPlayed = false;
+    }
+  }
+
+  _setupAudioControls() {
+    if (!this.soundManager) return;
+
+    // Get all audio control elements
+    const masterSlider = document.getElementById('masterVolume');
+    const musicSlider = document.getElementById('musicVolume');
+    const sfxSlider = document.getElementById('sfxVolume');
+    const ambientSlider = document.getElementById('ambientVolume');
+    const muteBtn = document.getElementById('muteBtn');
+
+    const masterValue = document.getElementById('masterValue');
+    const musicValue = document.getElementById('musicValue');
+    const sfxValue = document.getElementById('sfxValue');
+    const ambientValue = document.getElementById('ambientValue');
+
+    // Update volume display helper
+    const updateDisplay = (slider, valueElement, value) => {
+      if (slider) slider.value = value;
+      if (valueElement) valueElement.textContent = `${value}%`;
+    };
+
+    // Master volume control
+    if (masterSlider) {
+      masterSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        this.soundManager.setVolume('master', value / 100);
+        updateDisplay(null, masterValue, value);
+      });
+    }
+
+    // Music volume control
+    if (musicSlider) {
+      console.log('🔊 Music slider found, adding listener');
+      musicSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        console.log('🔊 Music slider changed to:', value);
+        this.soundManager.setVolume('music', value / 100);
+        console.log('🔊 Current music volume after change:', this.soundManager.volumes.music);
+        updateDisplay(null, musicValue, value);
+      });
+    } else {
+      console.warn('⚠️ Music slider not found!');
+    }
+
+    // SFX volume control
+    if (sfxSlider) {
+      sfxSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        this.soundManager.setVolume('sfx', value / 100);
+        updateDisplay(null, sfxValue, value);
+      });
+    }
+
+    // Ambient volume control
+    if (ambientSlider) {
+      ambientSlider.addEventListener('input', (e) => {
+        const value = parseInt(e.target.value);
+        this.soundManager.setVolume('ambient', value / 100);
+        updateDisplay(null, ambientValue, value);
+      });
+    }
+
+    // Mute button
+    if (muteBtn) {
+      console.log('🔊 Mute button found, adding click listener');
+      muteBtn.addEventListener('click', (e) => {
+        console.log('🔊 Mute button clicked!');
+        e.stopPropagation();
+        this.soundManager.toggleMute();
+        const isMuted = this.soundManager.muted;
+        console.log('🔊 Muted state:', isMuted);
+        muteBtn.textContent = isMuted ? '🔊 Unmute All' : '🔇 Mute All';
+        muteBtn.classList.toggle('muted', isMuted);
+      });
+    } else {
+      console.warn('⚠️ Mute button not found in DOM!');
     }
   }
 

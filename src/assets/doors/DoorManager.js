@@ -22,7 +22,7 @@ export class DoorManager {
       if (!Cls) throw new Error('Unknown door type: ' + type);
       const position = options.position || [0, 0, 0];
       console.log('Spawning door:', { type, position, options });
-      const door = new Cls(this.scene, this.physicsWorld, position, options);
+      const door = new Cls(this.scene, this.physicsWorld, position, options, this.gameInstance);
       this.doors.push(door);
       console.log('Door spawned successfully, total doors:', this.doors.length);
       return door;

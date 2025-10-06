@@ -60,10 +60,20 @@ export class Player {
     this.isInteracting = false;
     this.lastInteractionTime = 0;
     
+    // Movement lock system for animations
+    this.movementLocked = false;
+    this.movementLockReason = '';
+    
     // Movement state
     this.isGrounded = false;
+    this.isOnSlope = false; // Track if player is on a sloped surface
     this.isSprinting = false;
     this.isJumping = false;
+    this.isMoving = false;
+
+    // Sound state for footsteps
+    this.footstepTimer = 0;
+    this.footstepInterval = 0.4; // Time between footsteps (seconds)
     
     // Ground detection
     this.groundCheckDistance = 0.1;
@@ -403,8 +413,13 @@ export class Player {
 
     this.isAttacking = true;
     this.lastAttackTime = Date.now();
-    
+
     console.log('🗡️ Player starting attack animation');
+
+    // Play sword sound
+    if (this.game && this.game.soundManager) {
+      this.game.soundManager.playSFX('sword', 0.6);
+    }
 
     // Play attack animation if available
     if (this.actions.attack) {
@@ -449,13 +464,27 @@ export class Player {
   }
 
   takeDamage(amount) {
+    const previousHealth = this.health;
     this.health = Math.max(0, this.health - amount);
     console.log(`💔 Player took ${amount} damage, health: ${this.health}/${this.maxHealth}`);
-    
+
+    // Play low health warning sound when health drops below 30%
+    const lowHealthThreshold = this.maxHealth * 0.3;
+    const wasAboveThreshold = previousHealth > lowHealthThreshold;
+    const isNowBelowThreshold = this.health <= lowHealthThreshold && this.health > 0;
+
+    if (wasAboveThreshold && isNowBelowThreshold) {
+      // First time crossing low health threshold
+      if (this.game && this.game.soundManager && this.game.soundManager.sfx['low-health']) {
+        console.log('⚠️ Playing low health warning sound');
+        this.game.soundManager.playSFX('low-health', 0.8);
+      }
+    }
+
     if (this.health <= 0) {
       this.onDeath();
     }
-    
+
     return this.health;
   }
 
@@ -554,6 +583,31 @@ export class Player {
     this.currentAction = action;
   }
 
+  /**
+   * Lock player movement (e.g., during chest animations)
+   */
+  lockMovement(reason = 'Animation') {
+    this.movementLocked = true;
+    this.movementLockReason = reason;
+    console.log(`🔒 Player movement locked: ${reason}`);
+  }
+
+  /**
+   * Unlock player movement
+   */
+  unlockMovement() {
+    this.movementLocked = false;
+    console.log(`🔓 Player movement unlocked (was locked for: ${this.movementLockReason})`);
+    this.movementLockReason = '';
+  }
+
+  /**
+   * Check if player movement is currently locked
+   */
+  isMovementLocked() {
+    return this.movementLocked;
+  }
+
   update(delta, input, camOrientation = null, platforms = [], playerActive = true) {
     // Clear wall normals from previous frame
     this.wallNormals = [];
@@ -581,11 +635,53 @@ export class Player {
     // Apply wall sliding physics (works even without input)
     this.applyWallSlidingPhysics(delta);
     
+    // Clamp Y velocity when on slopes to prevent bouncing
+    if (this.isGrounded && this.isOnSlope) {
+      // Limit upward velocity when on slopes to prevent being shot into the air
+      if (this.body.velocity.y > 2.0) {
+        this.body.velocity.y = Math.min(this.body.velocity.y, 2.0);
+      }
+      // Also prevent excessive downward velocity that might cause jitter
+      if (this.body.velocity.y < -5.0) {
+        this.body.velocity.y = Math.max(this.body.velocity.y, -5.0);
+      }
+    }
+    
     // Sync visual mesh with physics body
     this.syncMeshWithBody();
     
     // Update animations
     this.updateAnimations(delta);
+
+    // Handle footstep sounds
+    this.updateFootsteps(delta);
+  }
+
+  updateFootsteps(delta) {
+    // Only play footsteps when moving and grounded
+    if (this.isMoving && this.isGrounded) {
+      // Adjust footstep speed based on whether sprinting
+      const currentInterval = this.isSprinting ? this.footstepInterval * 0.6 : this.footstepInterval;
+
+      this.footstepTimer += delta;
+
+      if (this.footstepTimer >= currentInterval) {
+        this.footstepTimer = 0;
+
+        // Play footstep sound if sound manager is available
+        if (this.game && this.game.soundManager) {
+          // Use different sound for running vs walking
+          const soundName = this.isSprinting ? 'running' : 'walk';
+          console.log(`🎵 Playing footstep: ${soundName}, SFX available:`, Object.keys(this.game.soundManager.sfx));
+          this.game.soundManager.playSFX(soundName, 0.4);
+        } else {
+          console.warn('⚠️ Sound manager not available for footsteps');
+        }
+      }
+    } else {
+      // Reset timer when not moving
+      this.footstepTimer = 0;
+    }
   }
 
   updateGroundDetection() {
@@ -593,32 +689,75 @@ export class Player {
     const wasGrounded = this.isGrounded;
     this.isGrounded = this.physicsWorld.isBodyGrounded(this.body, this.groundNormalThreshold);
     
+    // Check if we're on a slope (for better physics handling)
+    this.isOnSlope = this.checkIfOnSlope();
+    
     // Reset jumping flag when player lands
     if (this.isGrounded && this.isJumping && this.body.velocity.y <= 0.1) {
       this.isJumping = false;
     }
   }
 
+  /**
+   * Check if the player is standing on a sloped surface
+   */
+  checkIfOnSlope() {
+    const contacts = this.physicsWorld.getContactsForBody(this.body);
+    
+    for (const contact of contacts) {
+      // Get the contact normal
+      let normalY;
+      if (contact.bi === this.body) {
+        normalY = -contact.ni.y;
+      } else {
+        normalY = contact.ni.y;
+      }
+      
+      // If normal Y is between slope threshold and grounded threshold, we're on a slope
+      if (normalY > this.groundNormalThreshold && normalY < 0.9) {
+        // Debug logging for slope detection
+        if (Math.random() < 0.01) { // Log occasionally to avoid spam
+          console.log(`🏔️ Player on slope - Normal Y: ${normalY.toFixed(3)}`);
+        }
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
   handleMovementInput(input, camOrientation, delta) {
     if (!input || !input.isKey) {
       return;
     }
-    
+
     if (!this.body) {
+      return;
+    }
+
+    // Check if movement is locked (e.g., during chest animations)
+    if (this.movementLocked) {
+      // Stop any existing movement when locked
+      this.body.velocity.x = 0;
+      this.body.velocity.z = 0;
       return;
     }
     
     let moveForward = 0;
     let moveRight = 0;
-    
+
     // Read input
     if (input.isKey('KeyW')) moveForward = 1;
     if (input.isKey('KeyS')) moveForward = -1;
     if (input.isKey('KeyA')) moveRight = -1;
     if (input.isKey('KeyD')) moveRight = 1;
-    
+
     // Check for sprint
     this.isSprinting = input.isKey('ShiftLeft') || input.isKey('ShiftRight');
+
+    // Track movement state for footsteps
+    const wasMoving = this.isMoving;
+    this.isMoving = (moveForward !== 0 || moveRight !== 0);
     
     // Apply movement if there's input
     if (moveForward !== 0 || moveRight !== 0) {
@@ -640,23 +779,44 @@ export class Player {
       let targetVelX = moveDirection.x * targetSpeed;
       let targetVelZ = moveDirection.z * targetSpeed;
       
-      // Apply wall sliding if enabled and there are wall collisions
-      if (this.enableWallSliding && this.wallNormals.length > 0) {
-        const slidingVelocity = this.calculateSlidingVelocity(
-          new THREE.Vector3(targetVelX, 0, targetVelZ),
-          this.wallNormals
-        );
-        targetVelX = slidingVelocity.x;
-        targetVelZ = slidingVelocity.z;
-      }
-      
       // Apply movement based on grounded state
       if (this.isGrounded) {
-        // When grounded, use direct velocity for stable movement
-        this.body.velocity.x = targetVelX;
-        this.body.velocity.z = targetVelZ;
+        // Apply wall sliding to movement input for smooth wall movement
+        if (this.enableWallSliding && this.wallNormals.length > 0) {
+          const slidingVelocity = this.calculateSlidingVelocity(
+            new THREE.Vector3(targetVelX, 0, targetVelZ),
+            this.wallNormals
+          );
+          targetVelX = slidingVelocity.x;
+          targetVelZ = slidingVelocity.z;
+        }
+        
+        if (this.isOnSlope) {
+          // On slopes, use force-based movement to work better with contact resolution
+          const forceMultiplier = 75; // Increased force for better responsiveness
+          const maxSpeed = targetSpeed * 1.1; // Slightly faster on slopes to compensate for force-based movement
+          
+          // Apply forces instead of direct velocity to let physics handle slope interaction
+          const currentSpeed = Math.sqrt(this.body.velocity.x * this.body.velocity.x + this.body.velocity.z * this.body.velocity.z);
+          if (currentSpeed < maxSpeed) {
+            this.body.applyForce(
+              new CANNON.Vec3(targetVelX * forceMultiplier, 0, targetVelZ * forceMultiplier),
+              this.body.position
+            );
+          }
+          
+          // Apply gentle damping to prevent excessive speed buildup
+          this.body.velocity.x *= 0.95; // Reduced damping for better speed retention
+          this.body.velocity.z *= 0.95;
+        } else {
+          // On flat ground, use direct velocity for stable movement
+          this.body.velocity.x = targetVelX;
+          this.body.velocity.z = targetVelZ;
+        }
       } else {
-        // When airborne, use blended velocity for responsive but realistic movement
+        // When airborne, DON'T apply wall sliding to input
+        // Let the player gain velocity, then applyWallSlidingPhysics will handle collision
+        // This prevents "clinging" when jumping then pressing forward into wall
         const airControl = 0.3; // Reduce air control compared to ground movement
         const currentVelX = this.body.velocity.x;
         const currentVelZ = this.body.velocity.z;
@@ -692,73 +852,45 @@ export class Player {
   }
 
   applyWallSlidingPhysics(delta) {
-    // Only apply wall sliding physics when touching walls
-    if (!this.enableWallSliding || this.wallNormals.length === 0) {
+    // Only apply wall sliding physics when grounded
+    // When airborne, let the physics engine handle collisions naturally
+    if (!this.enableWallSliding || this.wallNormals.length === 0 || !this.isGrounded) {
       return;
     }
 
     // Get current velocity
     const currentVel = this.body.velocity.clone();
     
-    // Calculate wall sliding for current velocity
+    // When grounded, apply full wall sliding for smooth movement along walls
     const slidingVelocity = this.calculateSlidingVelocity(
-      new THREE.Vector3(currentVel.x, 0, currentVel.z), // Only horizontal components
+      new THREE.Vector3(currentVel.x, 0, currentVel.z),
       this.wallNormals
     );
     
-    // Apply sliding to horizontal velocity with stronger effect for enemies
-    const slidingStrength = 1.2; // Stronger sliding effect
+    const slidingStrength = 0.8;
     this.body.velocity.x = THREE.MathUtils.lerp(this.body.velocity.x, slidingVelocity.x, slidingStrength * delta * 60);
     this.body.velocity.z = THREE.MathUtils.lerp(this.body.velocity.z, slidingVelocity.z, slidingStrength * delta * 60);
-    
-    // Add small downward slide when airborne and against walls
-    if (!this.isGrounded && this.wallNormals.length > 0) {
-      // Calculate average wall normal
-      let avgNormal = new THREE.Vector3();
-      for (const normal of this.wallNormals) {
-        avgNormal.add(normal);
-      }
-      avgNormal.divideScalar(this.wallNormals.length).normalize();
-      
-      // Add slight downward sliding along the wall
-      const wallSlideSpeed = this.wallSlideSpeed; // Use configurable speed
-      const tangentVector = new THREE.Vector3();
-      
-      // Calculate tangent vector (perpendicular to wall normal, pointing down)
-      const up = new THREE.Vector3(0, 1, 0);
-      tangentVector.crossVectors(avgNormal, up).normalize();
-      
-      // If the cross product is near zero, use a different approach
-      if (tangentVector.length() < 0.1) {
-        // Wall is nearly horizontal, slide in the direction of current horizontal velocity
-        const horizontalVel = new THREE.Vector3(currentVel.x, 0, currentVel.z);
-        if (horizontalVel.length() > 0.1) {
-          tangentVector.copy(horizontalVel.normalize());
-        }
-      }
-      
-      // Apply wall sliding force with stronger effect for enemy collisions
-      if (tangentVector.length() > 0.1) {
-        const slideForce = tangentVector.multiplyScalar(wallSlideSpeed);
-        this.body.velocity.x += slideForce.x * delta * 2; // Doubled for enemies
-        this.body.velocity.z += slideForce.z * delta * 2;
-      }
-      
-      // Reduce vertical velocity when sliding against walls (friction effect)
-      if (this.body.velocity.y < 0) {
-        this.body.velocity.y *= 0.98; // Less friction for smoother sliding
-      }
-    }
   }
 
   handleJumpInput(input) {
     if (!input || !input.isKey) return;
+
+    
+    // Check if movement is locked (prevent jumping during animations)
+    if (this.movementLocked) {
+      return;
+    }
     
     if (input.isKey('Space')) {
       if (this.isGrounded && !this.isJumping) {
         // Apply upward impulse for jumping
         this.body.velocity.y = this.jumpStrength;
         this.isJumping = true;
+
+        // Play jump sound
+        if (this.game && this.game.soundManager) {
+          this.game.soundManager.playSFX('jump', 0.5);
+        }
       }
     }
   }

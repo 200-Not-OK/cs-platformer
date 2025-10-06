@@ -6,10 +6,11 @@ import { CinematicsManager } from './cinematicsManager.js';
 
 // A Level that can load geometry from GLTF files or fallback to procedural objects
 export class Level {
-  constructor(scene, physicsWorld, levelData, showColliders = true) {
+  constructor(scene, physicsWorld, levelData, showColliders = true, game = null) {
     this.scene = scene;
     this.physicsWorld = physicsWorld;
     this.data = levelData;
+    this.game = game; // Reference to game for passing to enemies
     this.objects = []; // contains visual meshes
     this.physicsBodies = []; // contains physics bodies for collision
     this.showColliders = showColliders;
@@ -20,8 +21,8 @@ export class Level {
   }
 
   // Static factory method for async construction
-  static async create(scene, physicsWorld, levelData, showColliders = true) {
-    const level = new Level(scene, physicsWorld, levelData, showColliders);
+  static async create(scene, physicsWorld, levelData, showColliders = true, game = null) {
+    const level = new Level(scene, physicsWorld, levelData, showColliders, game);
     await level._buildFromData();
     return level;
   }
@@ -198,27 +199,30 @@ export class Level {
   
   _createPhysicsBodyFromDefinition(colliderDef) {
     try {
-      const { type, position, size, materialType = 'ground' } = colliderDef;
+      const { type, position, size, rotation, materialType = 'ground' } = colliderDef;
+      
+      // Log rotation info for debugging
+      if (rotation && (rotation[0] !== 0 || rotation[1] !== 0 || rotation[2] !== 0)) {
+        console.log(`🔄 Creating rotated collider ${colliderDef.id}: rotation [${rotation[0]}, ${rotation[1]}, ${rotation[2]}] degrees`);
+      }
       
       if (type === 'box') {
         return this.physicsWorld.addStaticBox(
           new THREE.Vector3(position[0], position[1], position[2]),
           new THREE.Vector3(size[0], size[1], size[2]),
-          materialType
+          materialType,
+          rotation // Pass rotation to physics world
         );
       } else if (type === 'sphere') {
         return this.physicsWorld.addStaticSphere(
           new THREE.Vector3(position[0], position[1], position[2]),
           size[0], // radius
-          materialType
+          materialType,
+          rotation // Pass rotation to physics world
         );
       } else if (type === 'capsule') {
-        return this.physicsWorld.addStaticCapsule(
-          new THREE.Vector3(position[0], position[1], position[2]),
-          size[0], // radius
-          size[1], // height
-          materialType
-        );
+        console.warn(`Capsule colliders are not yet supported`);
+        return null;
       }
       
       console.warn(`Unknown collider type: ${type}`);
@@ -277,7 +281,9 @@ export class Level {
     if (this.data.enemies && Array.isArray(this.data.enemies)) {
       for (const ed of this.data.enemies) {
         try {
-          this.enemyManager.spawn(ed.type, ed);
+          // Pass game reference to enemies through options
+          const enemyOptions = { ...ed, game: this.game };
+          this.enemyManager.spawn(ed.type, enemyOptions);
         } catch (e) {
           console.warn('Failed to spawn enemy', ed, e);
         }
@@ -355,6 +361,6 @@ export class Level {
   }
 
   getEnemies() {
-    return this.enemyManager.enemies;
+    return this.enemyManager ? this.enemyManager.enemies : [];
   }
 }

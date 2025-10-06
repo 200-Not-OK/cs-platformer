@@ -3,10 +3,11 @@ import * as CANNON from 'cannon-es';
 import { ColliderHelper } from './colliderHelper.js';
 
 export class DoorBase {
-  constructor(scene, physicsWorld, position, options = {}) {
+  constructor(scene, physicsWorld, position, options = {}, game = null) {
     try {
       this.scene = scene;
       this.physicsWorld = physicsWorld;
+      this.game = game; // Reference to game for accessing soundManager
       this.options = options;
 
       // Create door mesh
@@ -556,6 +557,11 @@ export class DoorBase {
   open() {
     if (this.isOpen || this.isOpening) return;
 
+    // Play door opening sound
+    if (this.game && this.game.soundManager) {
+      this.game.soundManager.playSFX('door', 0.6);
+    }
+
     this.isOpening = true;
     // Determine rotation direction based on swing direction
     const directions = this.swingDirection.split(' ');
@@ -583,6 +589,11 @@ export class DoorBase {
 
   close() {
     if (!this.isOpen || this.isOpening) return;
+
+    // Play door closing sound
+    if (this.game && this.game.soundManager) {
+      this.game.soundManager.playSFX('door', 0.5);
+    }
 
     this.isOpening = true;
     this.targetRotation = 0;
