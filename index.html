@@ -26,6 +26,7 @@
         z-index: 9999;
         font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
         color: #fff;
+        pointer-events: auto; /* Enable pointer events for pause menu */
       }
       #pauseMenu .panel {
         background: rgba(20,20,20,0.95);
@@ -39,7 +40,7 @@
       #pauseMenu h1 { margin: 0 0 12px 0; font-size: 20px; }
       #pauseMenu h2 { margin: 18px 0 12px 0; font-size: 16px; color: #aaa; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 18px; }
       #pauseMenu p { margin: 0 0 18px 0; color: #ccc; }
-      #pauseMenu button { padding: 8px 14px; border-radius: 6px; border: none; background: #2b6eff; color: white; cursor: pointer; }
+      #pauseMenu button { padding: 8px 14px; border-radius: 6px; border: none; background: #2b6eff; color: white; cursor: pointer; pointer-events: auto; }
       #pauseMenu button:active { transform: translateY(1px); }
 
       /* Audio controls */
@@ -78,6 +79,8 @@
         margin-top: 8px;
         background: rgba(255,255,255,0.1) !important;
         font-size: 12px;
+        pointer-events: auto;
+        cursor: pointer;
       }
       .mute-btn.muted {
         background: #ff6b6b !important;
@@ -105,8 +108,8 @@
           </div>
           <div class="audio-control">
             <label for="musicVolume">Music</label>
-            <input type="range" id="musicVolume" min="0" max="100" value="50">
-            <span class="value" id="musicValue">50%</span>
+            <input type="range" id="musicVolume" min="0" max="100" value="10">
+            <span class="value" id="musicValue">10%</span>
           </div>
           <div class="audio-control">
             <label for="sfxVolume">SFX</label>
@@ -118,7 +121,6 @@
             <input type="range" id="ambientVolume" min="0" max="100" value="20">
             <span class="value" id="ambientValue">20%</span>
           </div>
-          <button id="muteBtn" class="mute-btn">🔇 Mute All</button>
         </div>
 
         <div style="display:flex;gap:12px;justify-content:center;margin-top:20px;">

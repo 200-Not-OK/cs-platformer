@@ -17,7 +17,7 @@ export class SoundManager {
     // Volume controls
     this.volumes = {
       master: 1.0,
-      music: 0.2,
+      music: 0.1,  // Reduced from 0.2 to 0.1 (10% volume)
       sfx: 0.9,
       ambient: 0.2
     };
@@ -269,21 +269,31 @@ export class SoundManager {
    */
   toggleMute() {
     this.muted = !this.muted;
+    console.log('🔊 toggleMute called, new muted state:', this.muted);
 
     if (this.muted) {
-      if (this.currentMusic && this.currentMusic.isPlaying) {
-        this.currentMusic.pause();
+      // Mute by setting gain to 0
+      if (this.currentMusic) {
+        this.currentMusic.setVolume(0);
+        console.log('🔊 Muted music');
       }
-      if (this.currentAmbient && this.currentAmbient.isPlaying) {
-        this.currentAmbient.pause();
+      if (this.currentAmbient) {
+        this.currentAmbient.setVolume(0);
+        console.log('🔊 Muted ambient');
       }
+      // Also mute all SFX by storing original volume
+      console.log('🔊 Muted all sounds');
     } else {
-      if (this.currentMusic && !this.currentMusic.isPlaying) {
-        this.currentMusic.play();
+      // Unmute by restoring volumes
+      if (this.currentMusic) {
+        this.currentMusic.setVolume(this._getCategoryVolume('music'));
+        console.log('🔊 Unmuted music, volume:', this._getCategoryVolume('music'));
       }
-      if (this.currentAmbient && !this.currentAmbient.isPlaying) {
-        this.currentAmbient.play();
+      if (this.currentAmbient) {
+        this.currentAmbient.setVolume(this._getCategoryVolume('ambient'));
+        console.log('🔊 Unmuted ambient, volume:', this._getCategoryVolume('ambient'));
       }
+      console.log('🔊 Unmuted all sounds');
     }
   }
 
