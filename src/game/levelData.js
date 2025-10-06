@@ -1423,12 +1423,12 @@ export const levels = [
         "id": "wall_7000",
         "type": "box",
         "position": [
-          187.42000000000002,
+          188.52,
           3,
           -66.49
         ],
         "size": [
-          7.02000000000001,
+          9.7,
           6,
           0.5
         ],
@@ -1439,12 +1439,12 @@ export const levels = [
         "id": "wall_7001",
         "type": "box",
         "position": [
-          203.42000000000002,
-          3,
+          202.62,
+          3.1,
           -66.49
         ],
         "size": [
-          7.5800000000000125,
+          9.7,
           6,
           0.5
         ],
@@ -1583,14 +1583,14 @@ export const levels = [
         "id": "wall_7010",
         "type": "box",
         "position": [
-          128.185,
+          129.89,
           3,
-          -8.650000000000002
+          -8.65
         ],
         "size": [
-          14.189999999999998,
+          15.8,
           6,
-          0.5
+          0.8
         ],
         "materialType": "wall",
         "meshName": null
@@ -1599,14 +1599,14 @@ export const levels = [
         "id": "wall_7011",
         "type": "box",
         "position": [
-          153.335,
+          151.54,
           3,
-          -8.650000000000002
+          -8.65
         ],
         "size": [
-          16.110000000000014,
+          18.4,
           6,
-          0.5
+          1.1
         ],
         "materialType": "wall",
         "meshName": null
@@ -1665,12 +1665,12 @@ export const levels = [
         "position": [
           121.09,
           3,
-          -42.504999999999995
+          -41
         ],
         "size": [
-          0.5,
+          1,
           6,
-          15.089999999999996
+          16
         ],
         "materialType": "wall",
         "meshName": null
@@ -1681,12 +1681,12 @@ export const levels = [
         "position": [
           121.09,
           3,
-          -17.755000000000003
+          -19.06
         ],
         "size": [
-          0.5,
+          1,
           6,
-          18.209999999999997
+          19
         ],
         "materialType": "wall",
         "meshName": null
@@ -1711,14 +1711,14 @@ export const levels = [
         "id": "wall_7018",
         "type": "box",
         "position": [
-          131.535,
+          133.33,
           3,
-          10.350000000000001
+          10.35
         ],
         "size": [
-          7.490000000000009,
+          9,
           6,
-          0.5
+          2.1
         ],
         "materialType": "wall",
         "meshName": null
@@ -1727,14 +1727,14 @@ export const levels = [
         "id": "wall_7019",
         "type": "box",
         "position": [
-          156.685,
+          154.69,
           3,
-          10.350000000000001
+          10.35
         ],
         "size": [
-          22.810000000000002,
+          24.810000000000002,
           6,
-          0.5
+          1.6
         ],
         "materialType": "wall",
         "meshName": null
@@ -1745,12 +1745,12 @@ export const levels = [
         "position": [
           168.09,
           3,
-          21.925
+          23.13
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          23.15
+          24.6
         ],
         "materialType": "wall",
         "meshName": null
@@ -1761,12 +1761,12 @@ export const levels = [
         "position": [
           168.09,
           3,
-          46.724999999999994
+          45.22
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          9.250000000000007
+          10.7
         ],
         "materialType": "wall",
         "meshName": null
@@ -2671,14 +2671,14 @@ export const levels = [
         "id": "wall_7078",
         "type": "box",
         "position": [
-          73.815,
+          75.41,
           3,
-          11.16
+          10.66
         ],
         "size": [
-          17.909999999999997,
+          20,
           6,
-          0.5
+          1.6
         ],
         "materialType": "wall",
         "meshName": null
@@ -2687,14 +2687,14 @@ export const levels = [
         "id": "wall_7079",
         "type": "box",
         "position": [
-          99.015,
+          97.72,
           3,
-          11.16
+          10.86
         ],
         "size": [
-          14.490000000000009,
+          16,
           6,
-          0.5
+          1.5
         ],
         "materialType": "wall",
         "meshName": null
@@ -2703,14 +2703,14 @@ export const levels = [
         "id": "wall_7080",
         "type": "box",
         "position": [
-          73.89500000000001,
+          71.3,
           3,
           -13.54
         ],
         "size": [
-          18.070000000000007,
+          27,
           6,
-          0.5
+          1.5
         ],
         "materialType": "wall",
         "meshName": null
@@ -2719,14 +2719,14 @@ export const levels = [
         "id": "wall_7081",
         "type": "box",
         "position": [
-          98.845,
+          97.04,
           3,
-          -13.54
+          -13.24
         ],
         "size": [
-          14.829999999999998,
+          15.3,
           6,
-          0.5
+          1.3
         ],
         "materialType": "wall",
         "meshName": null
@@ -2737,12 +2737,12 @@ export const levels = [
         "position": [
           106.26,
           3,
-          -8.465
+          -7.66
         ],
         "size": [
-          0.5,
+          1.4,
           6,
-          10.149999999999999
+          12.4
         ],
         "materialType": "wall",
         "meshName": null
@@ -2753,12 +2753,12 @@ export const levels = [
         "position": [
           106.26,
           3,
-          7.984999999999999
+          6.78
         ],
         "size": [
-          0.5,
+          1.5,
           6,
-          6.3500000000000005
+          7.6
         ],
         "materialType": "wall",
         "meshName": null
@@ -3025,12 +3025,12 @@ export const levels = [
         "position": [
           96.89,
           3,
-          68.02
+          69.42
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          8.93999999999999
+          9.6
         ],
         "materialType": "wall",
         "meshName": null
@@ -3041,12 +3041,12 @@ export const levels = [
         "position": [
           96.89,
           3,
-          84.42
+          83.02
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          7.860000000000014
+          8.7
         ],
         "materialType": "wall",
         "meshName": null
@@ -3425,12 +3425,12 @@ export const levels = [
         "position": [
           72.6,
           3,
-          157.65000000000003
+          158.95
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          15.539999999999992
+          17
         ],
         "materialType": "wall",
         "meshName": null
@@ -3489,12 +3489,12 @@ export const levels = [
         "position": [
           20.71,
           3,
-          176.52
+          176.22
         ],
         "size": [
-          0.5,
+          1.6,
           6,
-          8.599999999999994
+          9.4
         ],
         "materialType": "wall",
         "meshName": null
@@ -4220,6 +4220,262 @@ export const levels = [
         "meshName": null
       },
       {
+        "id": "collider_10",
+        "type": "box",
+        "position": [
+          195.52,
+          6.76,
+          -65.87
+        ],
+        "size": [
+          4,
+          2,
+          2
+        ],
+        "materialType": "ground",
+        "meshName": null
+      },
+      {
+        "id": "collider_10",
+        "type": "box",
+        "position": [
+          161.53,
+          6.98,
+          -31.09
+        ],
+        "size": [
+          2,
+          2,
+          8.5
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_11",
+        "type": "box",
+        "position": [
+          161.33,
+          3.71,
+          -34.08
+        ],
+        "size": [
+          1.5,
+          6,
+          2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_12",
+        "type": "box",
+        "position": [
+          161.43,
+          3.64,
+          -27.73
+        ],
+        "size": [
+          1.4,
+          6,
+          2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_10",
+        "type": "box",
+        "position": [
+          121,
+          6.63,
+          -30.9
+        ],
+        "size": [
+          1.1,
+          2,
+          4.2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          140.3,
+          7.1,
+          -8.58
+        ],
+        "size": [
+          4,
+          2,
+          1.1
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_10",
+        "type": "box",
+        "position": [
+          106.22,
+          7.03,
+          0.83
+        ],
+        "size": [
+          1.2,
+          2,
+          4.2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_11",
+        "type": "box",
+        "position": [
+          87.37,
+          6.73,
+          -13.37
+        ],
+        "size": [
+          4.2,
+          2,
+          1.1
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_12",
+        "type": "box",
+        "position": [
+          87.6,
+          7.01,
+          10.85
+        ],
+        "size": [
+          4,
+          2,
+          1.6
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_13",
+        "type": "box",
+        "position": [
+          140.05,
+          6.89,
+          10.35
+        ],
+        "size": [
+          4.2,
+          2,
+          1.6
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_16",
+        "type": "box",
+        "position": [
+          168.14,
+          6.97,
+          37.64
+        ],
+        "size": [
+          1.6,
+          2,
+          4.3
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_17",
+        "type": "box",
+        "position": [
+          96.91,
+          6.82,
+          76.51
+        ],
+        "size": [
+          1.6,
+          2,
+          4.3
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_19",
+        "type": "box",
+        "position": [
+          72.72,
+          3.12,
+          172.79
+        ],
+        "size": [
+          1.6,
+          6,
+          1.9
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_20",
+        "type": "box",
+        "position": [
+          72.72,
+          7,
+          169.59
+        ],
+        "size": [
+          1.6,
+          2,
+          4.2
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_21",
+        "type": "box",
+        "position": [
+          20.48,
+          3.23,
+          166.4
+        ],
+        "size": [
+          1.6,
+          6,
+          1.7
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_22",
+        "type": "box",
+        "position": [
+          20.68,
+          7.06,
+          169.3
+        ],
+        "size": [
+          1.6,
+          2,
+          4
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
         "id": "collider_15",
         "type": "box",
         "position": [
@@ -4484,6 +4740,662 @@ export const levels = [
         ],
         "materialType": "wall",
         "meshName": null
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          188.82,
+          2.93,
+          -92.23
+        ],
+        "size": [
+          5.7,
+          7,
+          6.4
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          204,
+          1.45,
+          -82.54
+        ],
+        "size": [
+          5.7,
+          2.5,
+          8.1
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_16",
+        "type": "box",
+        "position": [
+          186.31,
+          0.75,
+          -74.02
+        ],
+        "size": [
+          2.4,
+          1.4,
+          3.3
+        ],
+        "materialType": "wall",
+        "meshName": null
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          204.59,
+          1.44,
+          -87.89
+        ],
+        "size": [
+          1.757465370328589,
+          2.5572642381467574,
+          1.7574413663201511
+        ],
+        "materialType": "wall",
+        "meshName": "chair002"
+      },
+      {
+        "id": "collider_16",
+        "type": "box",
+        "position": [
+          204.84,
+          1.44,
+          -77.08
+        ],
+        "size": [
+          2.152840001657381,
+          2.5572642381467574,
+          2.152830954113398
+        ],
+        "materialType": "wall",
+        "meshName": "chair003"
+      },
+      {
+        "id": "collider_17",
+        "type": "box",
+        "position": [
+          124.62,
+          2.36,
+          -45.85
+        ],
+        "size": [
+          4.35594794524178,
+          4.466686896193157,
+          4.690001612282799
+        ],
+        "materialType": "wall",
+        "meshName": "crates_stacked"
+      },
+      {
+        "id": "collider_18",
+        "type": "box",
+        "position": [
+          137.08,
+          4.29,
+          -49.6
+        ],
+        "size": [
+          7.072999954223633,
+          8.34000015258789,
+          2.85144659878398
+        ],
+        "materialType": "wall",
+        "meshName": "wall_shelves"
+      },
+      {
+        "id": "collider_19",
+        "type": "box",
+        "position": [
+          144.78,
+          4.29,
+          -49.6
+        ],
+        "size": [
+          8.34000015258789,
+          8.34000015258789,
+          2.85144659878398
+        ],
+        "materialType": "wall",
+        "meshName": "wall_shelves001"
+      },
+      {
+        "id": "collider_20",
+        "type": "box",
+        "position": [
+          157.44,
+          2.26,
+          -44.43
+        ],
+        "size": [
+          5.124869306974489,
+          4.275760503148355,
+          7.8348425867092
+        ],
+        "materialType": "wall",
+        "meshName": "keg_decorated"
+      },
+      {
+        "id": "collider_21",
+        "type": "box",
+        "position": [
+          157.94,
+          1.97,
+          -14.85
+        ],
+        "size": [
+          4.052922466748356,
+          3.690738274420097,
+          4.30761308253085
+        ],
+        "materialType": "wall",
+        "meshName": "barrel_small_stack"
+      },
+      {
+        "id": "collider_22",
+        "type": "box",
+        "position": [
+          155.39,
+          1.97,
+          -11.73
+        ],
+        "size": [
+          4.052922466748356,
+          3.690738274420097,
+          4.30761308253085
+        ],
+        "materialType": "wall",
+        "meshName": "barrel_small_stack001"
+      },
+      {
+        "id": "collider_23",
+        "type": "box",
+        "position": [
+          124.47,
+          3.01,
+          -17.64
+        ],
+        "size": [
+          4.170001070499438,
+          5.7703789499025575,
+          8.392271500590141
+        ],
+        "materialType": "wall",
+        "meshName": "table_long_decorated_C"
+      },
+      {
+        "id": "collider_24",
+        "type": "box",
+        "position": [
+          124.59,
+          0.65,
+          -11.65
+        ],
+        "size": [
+          1.5637501528859161,
+          1.042499956935643,
+          1.5637740138177492
+        ],
+        "materialType": "wall",
+        "meshName": "stool"
+      },
+      {
+        "id": "collider_25",
+        "type": "box",
+        "position": [
+          164.35,
+          1.17,
+          21.16
+        ],
+        "size": [
+          4.170000821948065,
+          2.0849998672679035,
+          8.340001146793384
+        ],
+        "materialType": "wall",
+        "meshName": "table_long"
+      },
+      {
+        "id": "collider_26",
+        "type": "box",
+        "position": [
+          162.77,
+          3.57,
+          46.61
+        ],
+        "size": [
+          8.7,
+          6.8990676468725525,
+          6.7
+        ],
+        "materialType": "wall",
+        "meshName": "box_stacked001"
+      },
+      {
+        "id": "collider_27",
+        "type": "box",
+        "position": [
+          154.06,
+          1.67,
+          48.99
+        ],
+        "size": [
+          3.1848668356683163,
+          3.0917049312002973,
+          3.1795514938651124
+        ],
+        "materialType": "wall",
+        "meshName": "box_small_decorated"
+      },
+      {
+        "id": "collider_28",
+        "type": "box",
+        "position": [
+          131.43,
+          1.69,
+          13.76
+        ],
+        "size": [
+          4.260210182779048,
+          3.1274999329447724,
+          4.2602102300157
+        ],
+        "materialType": "wall",
+        "meshName": "box_large"
+      },
+      {
+        "id": "collider_29",
+        "type": "box",
+        "position": [
+          118.24,
+          1.67,
+          66.17
+        ],
+        "size": [
+          3.1465359855462083,
+          3.0917049312002973,
+          3.1519117178215623
+        ],
+        "materialType": "wall",
+        "meshName": "box_small_decorated001"
+      },
+      {
+        "id": "collider_30",
+        "type": "box",
+        "position": [
+          101.78,
+          3.57,
+          68.04
+        ],
+        "size": [
+          7.7,
+          6.1,
+          7.5
+        ],
+        "materialType": "wall",
+        "meshName": "box_stacked002"
+      },
+      {
+        "id": "collider_31",
+        "type": "box",
+        "position": [
+          49.02,
+          1.21,
+          133.02
+        ],
+        "size": [
+          3.349154446603606,
+          2.16980228698435,
+          2.614415169395528
+        ],
+        "materialType": "wall",
+        "meshName": "chest_gold"
+      },
+      {
+        "id": "collider_32",
+        "type": "box",
+        "position": [
+          36.79,
+          2.79,
+          114.43
+        ],
+        "size": [
+          4.040640519874842,
+          5.330205046825412,
+          3.868601585774684
+        ],
+        "materialType": "wall",
+        "meshName": "barrel_large_decorated"
+      },
+      {
+        "id": "collider_33",
+        "type": "box",
+        "position": [
+          89.57,
+          1.97,
+          135.2
+        ],
+        "size": [
+          3.8625783454449305,
+          3.690738274420097,
+          2.0943309827061967
+        ],
+        "materialType": "wall",
+        "meshName": "barrel_small_stack002"
+      },
+      {
+        "id": "collider_34",
+        "type": "box",
+        "position": [
+          81.71,
+          3.01,
+          134.11
+        ],
+        "size": [
+          8.393263917184925,
+          5.7703789499025575,
+          4.171997504070561
+        ],
+        "materialType": "wall",
+        "meshName": "table_long_decorated_C001"
+      },
+      {
+        "id": "collider_35",
+        "type": "box",
+        "position": [
+          71.1,
+          2.26,
+          134.35
+        ],
+        "size": [
+          7.337932731056867,
+          4.275760503148355,
+          4.170000076293945
+        ],
+        "materialType": "wall",
+        "meshName": "keg_decorated001"
+      },
+      {
+        "id": "collider_36",
+        "type": "box",
+        "position": [
+          93.68,
+          1.97,
+          135.05
+        ],
+        "size": [
+          3.8625783454449305,
+          3.690738274420097,
+          2.0943309827061967
+        ],
+        "materialType": "wall",
+        "meshName": "barrel_small_stack003"
+      },
+      {
+        "id": "collider_15",
+        "type": "box",
+        "position": [
+          120.71,
+          1.21,
+          134.96
+        ],
+        "size": [
+          3.396459982979863,
+          2.16980228698435,
+          2.67561891825045
+        ],
+        "materialType": "wall",
+        "meshName": "chest_gold001"
+      },
+      {
+        "id": "collider_16",
+        "type": "box",
+        "position": [
+          100.57,
+          3.57,
+          132.58
+        ],
+        "size": [
+          7.245948341737744,
+          6.8990676468725525,
+          7.578448686971569
+        ],
+        "materialType": "wall",
+        "meshName": "box_stacked003"
+      },
+      {
+        "id": "collider_17",
+        "type": "box",
+        "position": [
+          135.14,
+          2.37,
+          120.4
+        ],
+        "size": [
+          2.1111022819883942,
+          4.497112573409595,
+          2.0850000381469727
+        ],
+        "materialType": "wall",
+        "meshName": "table_small_decorated_B"
+      },
+      {
+        "id": "collider_18",
+        "type": "box",
+        "position": [
+          78.94,
+          1.44,
+          153.65
+        ],
+        "size": [
+          9.687037760079306,
+          2.640169605041251,
+          6.017541128824746
+        ],
+        "materialType": "wall",
+        "meshName": "table_long_broken"
+      },
+      {
+        "id": "collider_19",
+        "type": "box",
+        "position": [
+          107.07,
+          1.44,
+          153.64
+        ],
+        "size": [
+          9.466253568379997,
+          2.640169605041251,
+          5.561150127080623
+        ],
+        "materialType": "wall",
+        "meshName": "table_long_broken001"
+      },
+      {
+        "id": "collider_20",
+        "type": "box",
+        "position": [
+          109.13,
+          1.14,
+          171.19
+        ],
+        "size": [
+          4.746952188438058,
+          2.026126515893545,
+          5.063198392341803
+        ],
+        "materialType": "wall",
+        "meshName": "table_medium_broken"
+      },
+      {
+        "id": "collider_21",
+        "type": "box",
+        "position": [
+          -15.77,
+          1.14,
+          185.58
+        ],
+        "size": [
+          6.501108033266455,
+          2.026126515893545,
+          6.644120551591669
+        ],
+        "materialType": "wall",
+        "meshName": "table_medium_broken001"
+      },
+      {
+        "id": "collider_22",
+        "type": "box",
+        "position": [
+          -9.03,
+          1.44,
+          185.92
+        ],
+        "size": [
+          9.570408109219692,
+          2.640169605041251,
+          5.771688765302258
+        ],
+        "materialType": "wall",
+        "meshName": "table_long_broken002"
+      },
+      {
+        "id": "collider_23",
+        "type": "box",
+        "position": [
+          -14.81,
+          3.77,
+          168.25
+        ],
+        "size": [
+          8.339277862299657,
+          7.297500146141733,
+          6.255000362992291
+        ],
+        "materialType": "wall",
+        "meshName": "rubble_half001"
+      },
+      {
+        "id": "collider_24",
+        "type": "box",
+        "position": [
+          8.01,
+          0.75,
+          186.52
+        ],
+        "size": [
+          3.336000110745431,
+          1.2510001968741449,
+          2.5974991752096344
+        ],
+        "materialType": "wall",
+        "meshName": "chest001"
+      },
+      {
+        "id": "collider_25",
+        "type": "box",
+        "position": [
+          18.03,
+          1.81,
+          186.62
+        ],
+        "size": [
+          2.16635034337466,
+          3.3804100273628137,
+          2.5254335686679497
+        ],
+        "materialType": "wall",
+        "meshName": "table_small_decorated_A"
+      },
+      {
+        "id": "collider_26",
+        "type": "box",
+        "position": [
+          90.08,
+          3.57,
+          153.81
+        ],
+        "size": [
+          6.6,
+          6.2,
+          7.9
+        ],
+        "materialType": "wall",
+        "meshName": "box_stacked004"
+      },
+      {
+        "id": "collider_27",
+        "type": "box",
+        "position": [
+          92.78,
+          4.33,
+          10.49
+        ],
+        "size": [
+          4.6537252908040045,
+          8.34000015258789,
+          3.5656915300789365
+        ],
+        "materialType": "wall",
+        "meshName": "pillar_decorated003"
+      },
+      {
+        "id": "collider_28",
+        "type": "box",
+        "position": [
+          116.06,
+          3.57,
+          83.54
+        ],
+        "size": [
+          7.245948341737744,
+          6.8990676468725525,
+          7.578448686971569
+        ],
+        "materialType": "wall",
+        "meshName": "box_stacked005"
+      },
+      {
+        "id": "collider_29",
+        "type": "box",
+        "position": [
+          115.15,
+          1.76,
+          128.84
+        ],
+        "size": [
+          1.9397143695487529,
+          3.4966749854724894,
+          4.655946352112522
+        ],
+        "materialType": "wall",
+        "meshName": "sword_shield_gold"
+      },
+      {
+        "id": "collider_30",
+        "type": "box",
+        "position": [
+          115.15,
+          1.76,
+          124.05
+        ],
+        "size": [
+          1.9397143695487529,
+          3.4966749854724894,
+          4.655946352112508
+        ],
+        "materialType": "wall",
+        "meshName": "sword_shield_gold001"
       }
     ],
     "fallbackObjects": [
