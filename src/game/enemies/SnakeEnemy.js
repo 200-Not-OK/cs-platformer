@@ -27,6 +27,7 @@ export class SnakeEnemy extends EnemyBase {
     this.chaseSpeed = 1.7; // Reduced from 2.2 to make chase less aggressive
     this.attackCooldown = 2500; // 2.5 seconds between attacks
     this.lastAttackTime = 0;
+    this.attackTargetLocked = false; // Track if attack is committed
     
     // Snake behavior states
     this.behaviorState = 'patrol'; // 'patrol', 'chase', 'attack', 'retreat'
@@ -465,6 +466,8 @@ export class SnakeEnemy extends EnemyBase {
           this.game.soundManager.playSFX('snake', 0.7);
         }
 
+        this.attackTargetLocked = true; // Lock onto target when attack starts
+        console.log(`🐍 Snake attacking player! Distance: ${distanceToPlayer.toFixed(2)}, Attack Range: ${this.attackRange} - TARGET LOCKED`);
         if (this.snakeAnimations.strike) {
           this._playSnakeAction(this.snakeAnimations.strike);
         }
@@ -507,12 +510,13 @@ export class SnakeEnemy extends EnemyBase {
     
     // Stay in attack state for animation duration
     if (this.stateTimer > 1.0) { // Attack animation duration
-      // Deal damage to player if still in range
-      if (distanceToPlayer <= this.attackRange * 1.2) {
+      // Deal damage to player if attack was committed (started in range)
+      if (this.attackTargetLocked) {
         if (player.takeDamage) {
           player.takeDamage(15);
-          console.log('🐍 Snake bite hit! Player took 15 damage');
+          console.log('🐍 Snake bite hit! Player took 15 damage (attack was committed)');
         }
+        this.attackTargetLocked = false; // Reset the lock
       }
       
       this.lastAttackTime = Date.now();

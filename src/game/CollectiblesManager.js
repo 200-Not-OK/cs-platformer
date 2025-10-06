@@ -594,7 +594,20 @@ export class CollectiblesManager {
       }, 1000); // Play VO 1 second after chest sound
     }
 
-    // Mark chest as animating to prevent further interaction
+    // Mark chest as animating to prevent further interaction    
+    // Lock player movement during chest animation
+    if (this.playerRef && this.playerRef.lockMovement) {
+      this.playerRef.lockMovement('Chest Animation');
+    }
+
+    // Play player interact animation if available
+    if (this.playerRef && this.playerRef.performInteract) {
+      this.playerRef.performInteract();
+    }
+    
+    // Mark chest as collected and animating
+    chestCollectible.collected = true;
+    chestCollectible.isOpen = true;
     chestCollectible.mesh.userData.isAnimating = true;
 
     // Start the interaction animation (raise and spin)
@@ -612,7 +625,7 @@ export class CollectiblesManager {
       if (this.uiRef) {
         this.uiRef.collectApple();
       }
-      console.log('🍎 Found an apple in the chest!');
+      console.log('🍎 Found an apple in the chest! Marked as collected.');
     } else if (chestCollectible.contents === 'potion') {
       this.triggerEvent('onPotionCollected', chestCollectible);
       if (this.uiRef) {
@@ -625,6 +638,11 @@ export class CollectiblesManager {
     
     // Remove from our tracking after a delay to allow animation
     setTimeout(() => {
+      // Unlock player movement when animation is complete
+      if (this.playerRef && this.playerRef.unlockMovement) {
+        this.playerRef.unlockMovement();
+      }
+      
       this.scene.remove(chestCollectible.mesh);
       this.physicsWorld.removeBody(chestCollectible.body);
       this.collectibles.delete(chestCollectible.id);
@@ -907,15 +925,37 @@ export class CollectiblesManager {
     
     for (const [id, collectible] of this.collectibles) {
       stats.total++;
-      if (collectible.type === 'apple') {
+      
+      // Check if this is an apple collectible (direct apple or chest containing apple)
+      const isApple = collectible.type === 'apple' || 
+                     (collectible.type === 'chest' && collectible.contents === 'apple');
+      
+      // Check if this is a potion collectible (direct potion or chest containing potion)
+      const isPotion = collectible.type === 'potion' || 
+                      (collectible.type === 'chest' && collectible.contents === 'potion');
+      
+      if (isApple) {
         stats.apples.total++;
         if (collectible.collected) stats.apples.collected++;
-      } else if (collectible.type === 'potion') {
+      } else if (isPotion) {
         stats.potions.total++;
         if (collectible.collected) stats.potions.collected++;
       }
     }
     
     return stats;
+  }
+
+  /**
+   * Get all collectibles (for minimap display)
+   */
+  getAllCollectibles() {
+    const collectibles = [];
+    for (const [id, collectible] of this.collectibles) {
+      if (!collectible.collected) {
+        collectibles.push(collectible);
+      }
+    }
+    return collectibles;
   }
 }

@@ -177,6 +177,7 @@ export class Game {
     // Door system
     this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
     this.doorHelpersVisible = false; // Track door collision helper visibility (invisible by default)
+    this.doorsUnlockedByApples = false; // Track if doors have been unlocked by apple collection
 
     // Lighting manager (modular per-level lights)
     this.lights = new LightManager(this.scene);
@@ -572,7 +573,9 @@ export class Game {
           health: this.player.health ?? 100,
           maxHealth: this.player.maxHealth ?? 100 
         },
-        playerModel: this.player.mesh
+        playerModel: this.player.mesh,
+        enemies: this.level ? this.level.getEnemies() : [],
+        collectibles: this.collectiblesManager ? this.collectiblesManager.getAllCollectibles() : []
       };
       this.ui.update(delta, ctx);
     }
@@ -641,6 +644,8 @@ export class Game {
         this._proximityDebugTime = 0;
       }
     }
+    // Check apple collection status for Level 2 door unlocking
+    this.checkAppleCollectionForDoors();
 
   // update lights (allow dynamic lights to animate)
   if (this.lights) this.lights.update(delta);
@@ -678,6 +683,7 @@ export class Game {
     // Clear existing doors when loading a new level
     this.doorManager.dispose();
     this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
+    this.doorsUnlockedByApples = false; // Reset door unlock status for new level
     
     // Recreate player's physics body in the new physics world
     if (this.player.originalModelSize) {
@@ -699,7 +705,7 @@ export class Game {
 
     // spawn doors at specific positions only on level 2
     if (index === 1) { // level2
-      // Boss door
+      // Boss door - locked until all apples collected
       this.doorManager.spawn('model', { 
         position: [25.9, 0, -4.5],
         preset: 'wooden',
@@ -710,12 +716,14 @@ export class Game {
         modelUrl: 'src/assets/doors/level2_boss_door.glb',
         swingDirection: 'forward left',
         interactionDistance: 10,
-        autoOpenOnApproach: true
+        autoOpenOnApproach: false, // Disabled until unlocked
+        locked: true, // Lock the door initially
+        requiredKey: 'all_apples' // Custom key requirement
       //  passcode: '123'
       });
-      console.log('Spawned boss door model at position [25.9, 0, -4.5] on level 2');
+      console.log('Spawned locked boss door model at position [25.9, 0, -4.5] on level 2 - requires all apples');
       
-      // Second door
+      // Second door - also locked until all apples collected
       this.doorManager.spawn('basic', { 
         position: [56.5, 0, -9.4],
         preset: 'wooden',
@@ -727,9 +735,11 @@ export class Game {
         swingDirection: 'forward left',
         initialRotation: 90,
         interactionDistance: 10,
-        autoOpenOnApproach: true
+        autoOpenOnApproach: false, // Disabled until unlocked
+        locked: true, // Lock the door initially
+        requiredKey: 'all_apples' // Custom key requirement
       });
-      console.log('Spawned basic door at position [55, 0, -4.5] on level 2');
+      console.log('Spawned locked basic door at position [55, 0, -4.5] on level 2 - requires all apples');
       
       // Apply current door helper visibility state
       this.doorManager.toggleColliders(this.doorHelpersVisible);
@@ -747,6 +757,130 @@ export class Game {
     await this.collectiblesManager.spawnCollectiblesForLevel(this.level.data);
 
     return this.level;
+  }
+
+  /**
+   * Check if all apples have been collected and unlock doors in Level 2
+   */
+  checkAppleCollectionForDoors() {
+    // Only check in Level 2
+    if (!this.level || this.level.data.id !== 'level2') {
+      return;
+    }
+
+    // Skip if doors are already unlocked
+    if (this.doorsUnlockedByApples) {
+      return;
+    }
+
+    // Get collectible statistics
+    const stats = this.collectiblesManager.getStats();
+    
+    // Check if all apples have been collected
+    const allApplesCollected = stats.apples.total > 0 && stats.apples.collected >= stats.apples.total;
+    
+    if (allApplesCollected && this.doorManager && this.doorManager.doors) {
+      // Find and unlock doors that require 'all_apples'
+      let doorsUnlocked = 0;
+      for (const door of this.doorManager.doors) {
+        if (door.locked && door.requiredKey === 'all_apples') {
+          door.locked = false;
+          door.autoOpenOnApproach = true; // Enable auto-open now that it's unlocked
+          doorsUnlocked++;
+        }
+      }
+      
+      if (doorsUnlocked > 0) {
+        this.doorsUnlockedByApples = true;
+        console.log(`🔓 ${doorsUnlocked} door(s) unlocked! All ${stats.apples.total} apples collected in Level 2`);
+        
+        // Trigger Pravesh dialogue about mysterious door opening
+        console.log('🎬 About to trigger apple collection dialogue...');
+        this.triggerAppleCollectionDialogue();
+      }
+    }
+  }
+
+  /**
+   * Trigger dialogue when all apples are collected
+   */
+  triggerAppleCollectionDialogue() {
+    console.log('🎬 triggerAppleCollectionDialogue called!');
+    
+    // Simple approach: create dialogue UI directly
+    this.showSimpleDialogue('Pravesh', 'Ooh, a mysterious door has opened!', 3000);
+  }
+
+  /**
+   * Show a simple dialogue message
+   */
+  showSimpleDialogue(character, message, duration = 3000) {
+    console.log(`🎬 Showing dialogue: ${character}: ${message}`);
+    
+    // Create dialogue element
+    const dialogue = document.createElement('div');
+    dialogue.style.cssText = `
+      position: fixed;
+      bottom: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      max-width: 600px;
+      text-align: center;
+      font-family: Arial, sans-serif;
+      z-index: 1000;
+      animation: fadeIn 0.5s ease-in;
+    `;
+    
+    // Add character name
+    const characterElement = document.createElement('div');
+    characterElement.style.cssText = `
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 10px;
+      color: #ffdd44;
+    `;
+    characterElement.textContent = character.toUpperCase();
+    
+    // Add message text
+    const textElement = document.createElement('div');
+    textElement.style.cssText = `
+      font-size: 18px;
+      line-height: 1.4;
+    `;
+    textElement.textContent = message;
+    
+    // Add fade animation
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+        to { opacity: 1; transform: translateX(-50%) translateY(0); }
+      }
+      @keyframes fadeOut {
+        from { opacity: 1; transform: translateX(-50%) translateY(0); }
+        to { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    dialogue.appendChild(characterElement);
+    dialogue.appendChild(textElement);
+    document.body.appendChild(dialogue);
+    
+    // Auto-hide after duration
+    setTimeout(() => {
+      dialogue.style.animation = 'fadeOut 0.5s ease-out';
+      setTimeout(() => {
+        document.body.removeChild(dialogue);
+        document.head.removeChild(style);
+      }, 500);
+    }, duration);
+    
+    console.log('🎬 Dialogue displayed successfully!');
   }
 
   applyLevelLights(levelData) {
@@ -818,7 +952,11 @@ export class Game {
       if (key === 'hud') {
         this.ui.add('hud', HUD, { health: this.player.health ?? 100 });
       } else if (key === 'minimap') {
-        this.ui.add('minimap', Minimap, config);
+        const minimap = this.ui.add('minimap', Minimap, config);
+        // Set level data for minimap rendering
+        if (minimap && minimap.setLevelData) {
+          minimap.setLevelData(levelData);
+        }
       } else if (key === 'objectives') {
         this.ui.add('objectives', Objectives, { 
           items: levelData.objectives ?? ['Reach the goal'],
