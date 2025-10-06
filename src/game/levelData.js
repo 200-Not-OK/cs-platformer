@@ -295,8 +295,24 @@ export const levels = [
           url: 'src/assets/audio/sfx/snake.wav',
           loop: false
         },
+        'low-health': {
+          url: 'src/assets/audio/sfx/low_health.mp3',
+          loop: false
+        },
+        'rumbling': {
+          url: 'src/assets/audio/sfx/rumbling.wav',
+          loop: false
+        },
         'vo-levelstart': {
           url: 'src/assets/audio/ambient/pravesh_levelstart_vo.mp3',
+          loop: false
+        },
+        'vo-maze': {
+          url: 'src/assets/audio/ambient/pravesh_01.mp3',
+          loop: false
+        },
+        'vo-chest': {
+          url: 'src/assets/audio/ambient/pravesh_02.mp3',
           loop: false
         },
         'vo-fail': {

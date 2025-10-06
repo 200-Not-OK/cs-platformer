@@ -98,7 +98,16 @@ export class Game {
               const voToPlay = this._pendingVoiceover;
               this._pendingVoiceover = null;
               setTimeout(() => {
-                this.playVoiceover(voToPlay, 15000); // 15 seconds for voiceover
+                // Play first voiceover with callback to play maze voiceover after
+                this.playVoiceover(voToPlay, 15000, () => {
+                  // After levelstart VO finishes, play maze VO (Level 2 only)
+                  if (this.levelManager && this.levelManager.currentIndex === 1) {
+                    console.log('🎤 Levelstart VO finished, playing maze VO next');
+                    setTimeout(() => {
+                      this.playVoiceover('vo-maze', 12000);
+                    }, 2000); // 2 second pause between voiceovers
+                  }
+                });
               }, 500); // Small delay so VO plays after music starts
             }
           });
@@ -404,7 +413,7 @@ export class Game {
     }
   }
 
-  playVoiceover(voName, duration = 5000) {
+  playVoiceover(voName, duration = 5000, onComplete = null) {
     console.log(`🎤 playVoiceover called with: ${voName}`);
     console.log(`🎤 soundManager exists?`, !!this.soundManager);
     console.log(`🎤 soundManager.sfx exists?`, !!this.soundManager?.sfx);
@@ -430,10 +439,20 @@ export class Game {
           setTimeout(() => {
             console.log(`🎤 Hiding voiceover card`);
             voCard.hide();
+
+            // Call completion callback if provided
+            if (onComplete && typeof onComplete === 'function') {
+              console.log(`🎤 Calling voiceover completion callback`);
+              onComplete();
+            }
           }, 500);
         }, duration);
       } else {
         console.error(`🎤 ERROR: voiceoverCard component not found!`);
+        // Still call callback even if card fails
+        if (onComplete && typeof onComplete === 'function') {
+          setTimeout(() => onComplete(), duration);
+        }
       }
     } else {
       console.error(`🎤 ERROR: Voiceover ${voName} not found in soundManager.sfx`);
@@ -598,6 +617,11 @@ export class Game {
 
     // Update combat system
     this.combatSystem.update(delta);
+
+    // Check for final snake remaining (Level 2 only)
+    if (this.levelManager && this.levelManager.currentIndex === 1) { // Level 2
+      this.checkFinalSnake();
+    }
 
     // Update door system
     this.doorManager.update(delta, this.player.getPosition());
@@ -918,6 +942,27 @@ export class Game {
       console.log(`🔊 Loaded sounds for level: ${levelData.name}`);
     } catch (error) {
       console.error(`❌ Failed to load sounds for level ${levelData.name}:`, error);
+    }
+  }
+
+  checkFinalSnake() {
+    if (!this.level || !this.level.getEnemies) return;
+
+    const enemies = this.level.getEnemies();
+    const aliveSnakes = enemies.filter(e => e.isAlive && e.health > 0);
+
+    // Play rumbling when only 1 snake remains
+    if (aliveSnakes.length === 1 && !this._rumblingSoundPlayed) {
+      console.log('🐍 Final snake remaining! Playing rumbling sound');
+      if (this.soundManager && this.soundManager.sfx['rumbling']) {
+        this.soundManager.playSFX('rumbling', 0.7);
+      }
+      this._rumblingSoundPlayed = true; // Play only once
+    }
+
+    // Reset flag when level reloads
+    if (aliveSnakes.length > 1) {
+      this._rumblingSoundPlayed = false;
     }
   }
 
