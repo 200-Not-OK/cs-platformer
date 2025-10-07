@@ -168,7 +168,7 @@ export class Game {
     this.ui.add('interactionPrompt', InteractionPrompt, { message: 'to interact' });
     // Add voiceover card for character dialogues
     this.ui.add('voiceoverCard', VoiceoverCard, {
-      characterName: 'Praveen',
+      characterName: 'Pravesh',
       position: 'left'
     });
 
@@ -447,8 +447,8 @@ export class Game {
       const voCard = this.ui.get('voiceoverCard');
       console.log(`🎤 voCard exists?`, !!voCard);
       if (voCard) {
-        console.log(`🎤 Showing voiceover card for Praveen`);
-        voCard.show('Praveen');
+        console.log(`🎤 Showing voiceover card for Pravesh`);
+        voCard.show('Pravesh');
         voCard.startSpeaking();
 
         // Hide after duration

@@ -13,7 +13,7 @@ window.addEventListener('load', () => {
 
   // Build overlay with only the two levels requested
   const LVLS = Array.isArray(LEVELS) ? LEVELS : (LEVELS?.levels ?? []);
-  const availableLevels = (LVLS || []).filter(l => ['intro', 'level2'].includes(l.id));
+  const availableLevels = (LVLS || []).filter(l => ['Intro Level', 'Level 3'].includes(l.id));
 
   const overlay = new LevelCompleteOverlay({
     availableLevels,

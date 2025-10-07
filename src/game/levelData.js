@@ -260,7 +260,7 @@ export const levels = [
   },
   {
     "id": "level2",
-    "name": "Level 2",
+    "name": "Level 3: The Serpent's Labyrinth",
     "order": 0,
     "gltfUrl": "src/assets/levels/Level2/Level2.gltf",
     "startPosition": [
