@@ -9,21 +9,110 @@ class LightComponent {
 
 export class CastleBioluminescentPlant extends LightComponent {
     static sharedClock = new THREE.Clock(true);
+    
+    // PRECOMPUTED ANIMATION SYSTEM - Record once, replay forever
+    static precomputedAnimations = {
+        isRecording: false,
+        isRecorded: false,
+        recordingDuration: 3.0, // Record for 3 seconds only
+        recordingFPS: 60,
+        playbackFrame: 0, // Current frame for all instances
+        totalFrames: 0,
+        
+        // Recorded data arrays (indexed by frame)
+        frames: {
+            // Node animations (8 nodes - STATIC during playback for performance)
+            nodePositions: [],    // [frame][nodeIndex] = {x, y, z}
+            nodeColors: [],       // [frame][nodeIndex] = {r, g, b}
+            nodeScales: [],       // [frame][nodeIndex] = scale
+            nodeIntensities: [],  // [frame][nodeIndex] = intensity
+            
+            // Leaf animations (16 leaves - STATIC during playback for performance)
+            leafRotations: [],    // [frame][leafIndex] = {x, y, z}
+            leafScales: [],       // [frame][leafIndex] = scale
+            leafColors: [],       // [frame][leafIndex] = {r, g, b}
+            leafIntensities: [],  // [frame][leafIndex] = intensity
+            
+            // Firefly particles (20 fireflies - ONLY these animate)
+            fireflyPositions: [], // [frame][fireflyIndex] = {x, y, z}
+            fireflyTime: [],      // [frame] = time value for shader
+            
+            // Global animations
+            swayRotation: [],     // [frame] = rotation value
+            glowScale: [],        // [frame] = glow mesh scale
+            ambientLightData: [], // [frame][lightIndex] = {intensity, hue}
+        }
+    };
+    
+    // PERFORMANCE: Track number of plant instances
+    static instanceCount = 0;
+    static masterPlant = null; // First plant does recording
+    static allPlants = []; // Track all plant instances for animation
 
     constructor(props = {}) {
         super(props);
+        
+        // Enable modern color management for vibrant colors
+        if (THREE.ColorManagement) {
+            THREE.ColorManagement.legacyMode = false;
+            THREE.ColorManagement.enabled = true;
+        }
+        
         this.basePosition = new THREE.Vector3().fromArray(props.position || [0, 0, 0]);
         this.plantGroup = null;
         this.fireflies = null;
         this.glowingNodes = [];
         this.leaves = [];
         
-        // Pure vibrant color palette
+        // PERFORMANCE: Reusable objects to prevent allocations
+        this._tempColor = new THREE.Color();
+        this._tempVector3 = new THREE.Vector3();
+        this._fireflyCurrentPos = new THREE.Vector3();
+        this._fireflyCurrentTarget = new THREE.Vector3();
+        this._fireflyToTarget = new THREE.Vector3();
+        
+        // PERFORMANCE: Instance tracking
+        CastleBioluminescentPlant.instanceCount++;
+        this.instanceId = CastleBioluminescentPlant.instanceCount;
+        this.isMasterPlant = (this.instanceId === 1);
+        
+        // Register this plant in the global list
+        CastleBioluminescentPlant.allPlants.push(this);
+        
+        console.log(`🌱 Creating Plant #${this.instanceId}, isMaster: ${this.isMasterPlant}`);
+        
+        // Random playback offset (0 to 1500) for visual variety - assigned immediately!
+        // Each plant gets a different phase of the animation
+        this.playbackOffset = Math.random() * 25.0; // Random time offset (0-25 seconds)
+        this.offsetIsFrames = false; // Track if offset has been converted from seconds to frames
+        
+        if (this.isMasterPlant) {
+            CastleBioluminescentPlant.masterPlant = this;
+            this.playbackOffset = 0; // Master has no offset
+            this.offsetIsFrames = true; // Master's offset is already in frames
+            // Start recording if not done yet
+            if (!CastleBioluminescentPlant.precomputedAnimations.isRecorded) {
+                this.startRecording();
+            }
+        } else {
+            console.log(`✨ Plant #${this.instanceId} will animate with ${this.playbackOffset.toFixed(2)}s time offset`);
+        }
+        
+        // Ultra vibrant color palette with enhanced saturation
         this.colorHSL = {
-            deepCyan: { h: 0.55, s: 1.0, l: 0.7 },
+            electricPurple: { h: 0.78, s: 1.0, l: 0.7 },
+            neonBlue: { h: 0.65, s: 1.0, l: 0.7 },
+            vibrantCyan: { h: 0.55, s: 1.0, l: 0.8 },
             emerald: { h: 0.4, s: 1.0, l: 0.7 },
-            mysticTeal: { h: 0.5, s: 1.0, l: 0.7 },
-            crystalBlue: { h: 0.58, s: 1.0, l: 0.7 }
+            mysticTeal: { h: 0.5, s: 1.0, l: 0.8 },
+            crystalBlue: { h: 0.58, s: 1.0, l: 0.8 },
+            forestGreen: { h: 0.35, s: 1.0, l: 0.7 },
+            aquaGreen: { h: 0.45, s: 1.0, l: 0.8 },
+            seaGreen: { h: 0.38, s: 1.0, l: 0.7 },
+            turquoise: { h: 0.48, s: 1.0, l: 0.8 },
+            marineBlue: { h: 0.62, s: 1.0, l: 0.7 },
+            hotPink: { h: 0.95, s: 1.0, l: 0.7 },
+            electricLime: { h: 0.15, s: 1.0, l: 0.8 }
         };
         
         this.animationState = {
@@ -40,12 +129,9 @@ export class CastleBioluminescentPlant extends LightComponent {
         this.nextPulseTime = 0;
         this.plantType = props.plantType || 'moss';
         
-        this.fireflyCount = props.fireflyCount || 60;
+        this.fireflyCount = props.fireflyCount || 20; // REDUCED from 30 to 20 - match flame approach
         this.fireflySpeed = 0.03;
         this.fireflyArea = props.fireflyArea || { x: 4.0, y: 4.0, z: 2.5 };
-
-        this.magicParticleCount = 120;
-        this.magicTrailLength = 4;
 
         this.lightWaveSpeed = 0.8;
         this.lightWaveAmplitude = 0.6;
@@ -65,13 +151,20 @@ export class CastleBioluminescentPlant extends LightComponent {
         this.normalMap = null;
         this.roughnessMap = null;
 
-        // REMOVED all white light properties
-        this.plantGlowIntensity = props.plantGlowIntensity || 3.0;
+        this.plantGlowIntensity = props.plantGlowIntensity || 1.2;
+        
+        // Ambient light settings - localized range for area around plant
+        this.ambientLightRange = 20;
+        this.ambientLight = null;
     }
 
     async loadTextures() {
         this.normalMap = this.createProceduralNormalMap();
         this.roughnessMap = this.createProceduralRoughnessMap();
+        
+        // Set proper color space for textures
+        if (this.normalMap) this.normalMap.colorSpace = THREE.SRGBColorSpace;
+        if (this.roughnessMap) this.roughnessMap.colorSpace = THREE.SRGBColorSpace;
     }
 
     createProceduralNormalMap() {
@@ -143,37 +236,333 @@ export class CastleBioluminescentPlant extends LightComponent {
         canvas.height = 256;
         const ctx = canvas.getContext('2d');
         
-        // Pure cyan-blue-green gradient - NO WHITE!
+        // Gentle gradient that preserves color
         const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-        gradient.addColorStop(0, 'rgba(100, 255, 255, 1)');
-        gradient.addColorStop(0.05, 'rgba(80, 255, 220, 0.95)');
-        gradient.addColorStop(0.2, 'rgba(60, 220, 180, 0.8)');
-        gradient.addColorStop(0.5, 'rgba(40, 180, 140, 0.5)');
-        gradient.addColorStop(0.8, 'rgba(20, 140, 100, 0.2)');
-        gradient.addColorStop(1, 'rgba(0, 100, 80, 0)');
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.15, 'rgba(240, 240, 255, 0.9)');
+        gradient.addColorStop(0.4, 'rgba(200, 200, 255, 0.7)');
+        gradient.addColorStop(0.7, 'rgba(150, 150, 200, 0.4)');
+        gradient.addColorStop(1, 'rgba(100, 100, 150, 0)');
         
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, 256, 256);
         
-        return new THREE.CanvasTexture(canvas);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        return texture;
     }
 
     async mount(scene) {
-        await this.loadTextures();
-        
         this.plantGroup = new THREE.Group();
         this.plantGroup.position.copy(this.basePosition);
         
+        // Load textures only once for master
+        if (this.isMasterPlant) {
+            await this.loadTextures();
+        }
+        
+        // Create individual plant structure with actual meshes
+        // These will be used for both recording and playback
         this.createPlantStructure();
         this.createEnhancedFireflies();
-        this.createEnhancedMagicParticles();
-        this.createColoredIllumination(); // REPLACED createPlantGlowLights
-        this.createAmbientGlow();
-        this.createWallLightProjection();
+        
+        // Only master creates lights (reduced from 3 to 1)
+        if (this.isMasterPlant) {
+            this.createAmbientLight();
+        }
         
         scene.add(this.plantGroup);
         this._mounted = true;
     }
+
+    createAmbientLight() {
+        // OPTIMIZED: Reduced from 9 lights to 1 light for performance
+        const ambientLightGroup = new THREE.Group();
+        
+        // Single light with larger range for area coverage
+        const mainLight = new THREE.PointLight(0x9932cc, 15, 25, 1);
+        mainLight.position.set(0, 1.5, 0);
+        ambientLightGroup.add(mainLight);
+        
+        this.plantGroup.add(ambientLightGroup);
+        this.ambientLight = ambientLightGroup;
+    }
+
+    // ==================== PRECOMPUTED ANIMATION SYSTEM ====================
+    
+    startRecording() {
+        const precomp = CastleBioluminescentPlant.precomputedAnimations;
+        precomp.isRecording = true;
+        precomp.totalFrames = Math.ceil(precomp.recordingDuration * precomp.recordingFPS);
+        precomp.recordingFrame = 0;
+        precomp.playbackFrame = 0;
+        
+        console.log(`🎬 Starting animation recording: ${precomp.totalFrames} frames at ${precomp.recordingFPS}fps`);
+        console.log(`⚡ All other plants will WAIT for recording to complete...`);
+        
+        // Pre-allocate all arrays
+        precomp.frames.nodePositions = new Array(precomp.totalFrames);
+        precomp.frames.nodeColors = new Array(precomp.totalFrames);
+        precomp.frames.nodeScales = new Array(precomp.totalFrames);
+        precomp.frames.nodeIntensities = new Array(precomp.totalFrames);
+        precomp.frames.leafRotations = new Array(precomp.totalFrames);
+        precomp.frames.leafScales = new Array(precomp.totalFrames);
+        precomp.frames.leafColors = new Array(precomp.totalFrames);
+        precomp.frames.leafIntensities = new Array(precomp.totalFrames);
+        precomp.frames.fireflyPositions = new Array(precomp.totalFrames);
+        precomp.frames.fireflyTime = new Array(precomp.totalFrames);
+        precomp.frames.swayRotation = new Array(precomp.totalFrames);
+        precomp.frames.glowScale = new Array(precomp.totalFrames);
+        precomp.frames.ambientLightData = new Array(precomp.totalFrames);
+    }
+    
+    recordCurrentFrame(time) {
+        const precomp = CastleBioluminescentPlant.precomputedAnimations;
+        const frame = precomp.recordingFrame;
+        
+        // Record node data - now from data structure, not mesh objects
+        const nodeData = {
+            positions: new Array(this.glowingNodes.length),
+            colors: new Array(this.glowingNodes.length),
+            scales: new Array(this.glowingNodes.length),
+            intensities: new Array(this.glowingNodes.length)
+        };
+        
+        this.glowingNodes.forEach((nodeItem, i) => {
+            // Get the mesh node
+            const node = nodeItem.node;
+            if (!node) return;
+            
+            // During recording, we compute positions dynamically
+            const basePos = nodeItem.basePosition;
+            const positionAlongStem = nodeItem.positionAlongStem;
+            const wavePhase = nodeItem.wavePhase;
+            const baseScale = nodeItem.baseScale;
+            const baseColor = node.userData.baseColor || { h: 0.7, s: 1.0, l: 0.5 };
+            
+            // Apply animation calculations
+            const waveOffset = Math.sin(this.animationState.lightWave - positionAlongStem * 5 + wavePhase) * 0.025;
+            const sideWave = Math.cos(this.animationState.lightWave * 1.3 - positionAlongStem * 3 + wavePhase) * 0.01;
+            const floatOffset = Math.sin(time * 1.2 + i * 0.8) * 0.012;
+            
+            const animatedPos = {
+                x: basePos.x + sideWave,
+                y: basePos.y + waveOffset + floatOffset,
+                z: basePos.z
+            };
+            
+            // Animated color
+            const hueShift = baseColor.h + Math.sin(time * 0.5 + i * 0.7) * 0.08;
+            const lightness = 0.55 + Math.sin(time * 0.8 + positionAlongStem * 3) * 0.08;
+            this._tempColor.setHSL(hueShift, 1.0, lightness);
+            
+            // Animated scale
+            const wavePulse = Math.sin(this.animationState.lightWave * 3 - positionAlongStem * 8 + wavePhase) * 0.4 + 0.6;
+            const basePulse = this.animationState.pulse > 0.1 ? 
+                Math.sin(time * 12 + i) * this.animationState.pulse * 0.4 : 0;
+            const pulseSize = 1.0 + Math.sin(this.animationState.lightWave * 4 - positionAlongStem * 7) * 0.4;
+            
+            nodeData.positions[i] = animatedPos;
+            nodeData.colors[i] = { r: this._tempColor.r, g: this._tempColor.g, b: this._tempColor.b };
+            nodeData.scales[i] = baseScale * pulseSize;
+            nodeData.intensities[i] = 1.0;
+        });
+        
+        // Record leaf data
+        const leafData = {
+            rotations: new Array(this.leaves.length),
+            scales: new Array(this.leaves.length),
+            colors: new Array(this.leaves.length),
+            intensities: new Array(this.leaves.length)
+        };
+        
+        this.leaves.forEach((leafItem, i) => {
+            const leaf = leafItem.leaf;
+            if (!leaf) return;
+            
+            const baseRotation = leafItem.baseRotation || 0;
+            const baseScale = leaf.userData.baseScale || new THREE.Vector3(1, 1, 1);
+            const phase = leaf.userData.phase || 0;
+            
+            // Apply animation
+            const rustle = Math.sin(time * 2.0 + i * 0.5) * 0.15;
+            const gentleSway = Math.sin(time * 0.7 + i * 0.3) * 0.08;
+            
+            const primaryPulse = 1.0 + Math.sin(time * this.leafPulseSpeed + phase) * this.leafPulseAmplitude;
+            const secondaryPulse = 1.0 + Math.sin(time * this.leafPulseSpeed * 1.7 + phase * 1.3) * (this.leafPulseAmplitude * 0.4);
+            const pulse = primaryPulse * secondaryPulse;
+            
+            const colorShift = 0.50 + Math.sin(time * 0.3 + i) * 0.08;
+            this._tempColor.setHSL(colorShift, 1.0, 0.45);
+            
+            leafData.rotations[i] = { 
+                x: leaf.rotation.x + gentleSway * 0.1, 
+                y: leaf.rotation.y, 
+                z: baseRotation + rustle 
+            };
+            leafData.scales[i] = baseScale.x * pulse;
+            leafData.colors[i] = { r: this._tempColor.r, g: this._tempColor.g, b: this._tempColor.b };
+            leafData.intensities[i] = 1.0;
+        });
+        
+        // Record firefly positions
+        const fireflyData = new Array(this.fireflyCount);
+        if (this.fireflies) {
+            const positions = this.fireflies.geometry.attributes.position.array;
+            for (let i = 0; i < this.fireflyCount; i++) {
+                const idx = i * 3;
+                fireflyData[i] = { x: positions[idx], y: positions[idx + 1], z: positions[idx + 2] };
+            }
+        }
+        
+        // Record ambient light data
+        const ambientData = [];
+        if (this.ambientLight) {
+            this.ambientLight.children.forEach((child, i) => {
+                if (child.isPointLight) {
+                    ambientData[i] = { intensity: child.intensity, hue: 0, saturation: 0, lightness: 0 };
+                    child.color.getHSL(ambientData[i]);
+                }
+            });
+        }
+        
+        // Store frame data
+        precomp.frames.nodePositions[frame] = nodeData.positions;
+        precomp.frames.nodeColors[frame] = nodeData.colors;
+        precomp.frames.nodeScales[frame] = nodeData.scales;
+        precomp.frames.nodeIntensities[frame] = nodeData.intensities;
+        precomp.frames.leafRotations[frame] = leafData.rotations;
+        precomp.frames.leafScales[frame] = leafData.scales;
+        precomp.frames.leafColors[frame] = leafData.colors;
+        precomp.frames.leafIntensities[frame] = leafData.intensities;
+        precomp.frames.fireflyPositions[frame] = fireflyData;
+        precomp.frames.fireflyTime[frame] = time;
+        precomp.frames.swayRotation[frame] = this.plantGroup.rotation.z;
+        precomp.frames.glowScale[frame] = this.glowMesh ? this.glowMesh.scale.x : 1.0;
+        precomp.frames.ambientLightData[frame] = ambientData;
+        
+        precomp.recordingFrame++;
+        
+        // Check if recording is complete
+        if (precomp.recordingFrame >= precomp.totalFrames) {
+            this.finishRecording();
+        }
+    }
+    
+    finishRecording() {
+        const precomp = CastleBioluminescentPlant.precomputedAnimations;
+        precomp.isRecording = false;
+        precomp.isRecorded = true;
+        precomp.playbackFrame = 0; // Start playback from frame 0
+        
+        console.log(`✅ Recording complete! ${precomp.totalFrames} frames (3 seconds at 60fps)`);
+        console.log(`📊 Memory: ~${(JSON.stringify(precomp.frames).length / 1024).toFixed(2)} KB`);
+        console.log(`� Master plant plays back, all others are passive clones!`);
+        console.log(`🚀 Non-master plants do ZERO calculations - ultimate performance!`);
+    }
+    
+    playbackFrame() {
+        const precomp = CastleBioluminescentPlant.precomputedAnimations;
+        
+        // Only master updates all plants
+        if (!this.isMasterPlant) {
+            return;
+        }
+        
+        const maxFrames = precomp.totalFrames;
+        if (maxFrames === 0) return;
+        
+        const masterFrame = precomp.playbackFrame;
+        
+        // SAFETY: Ensure frame data exists
+        if (!precomp.frames.nodePositions || !precomp.frames.nodePositions[masterFrame]) {
+            return;
+        }
+        
+        // Update all plants
+        CastleBioluminescentPlant.allPlants.forEach(plant => {
+            // Calculate plant's unique frame with offset
+            if (!plant.offsetIsFrames) {
+                plant.playbackOffset = Math.round(plant.playbackOffset * precomp.recordingFPS);
+                plant.offsetIsFrames = true;
+            }
+            const plantFrame = (masterFrame + plant.playbackOffset) % maxFrames;
+            
+            // Apply global plant animation (sway)
+            plant.plantGroup.rotation.z = precomp.frames.swayRotation[plantFrame];
+            
+            // Update nodes
+            const nodePositions = precomp.frames.nodePositions[plantFrame];
+            const nodeScales = precomp.frames.nodeScales[plantFrame];
+            const nodeColors = precomp.frames.nodeColors[plantFrame];
+            
+            if (nodePositions && nodeScales && nodeColors) {
+                for (let i = 0; i < plant.glowingNodes.length; i++) {
+                    const nodeItem = plant.glowingNodes[i];
+                    const node = nodeItem ? nodeItem.node : null;
+                    if (node && nodePositions[i]) {
+                        node.position.set(nodePositions[i].x, nodePositions[i].y, nodePositions[i].z);
+                        node.scale.setScalar(nodeScales[i] || 1.0);
+                        const colorData = nodeColors[i];
+                        if (colorData && node.material) {
+                            node.material.color.setRGB(colorData.r, colorData.g, colorData.b);
+                        }
+                    }
+                }
+            }
+            
+            // Update leaves
+            const leafRotations = precomp.frames.leafRotations[plantFrame];
+            const leafScales = precomp.frames.leafScales[plantFrame];
+            const leafColors = precomp.frames.leafColors[plantFrame];
+            
+            if (leafRotations && leafScales && leafColors) {
+                for (let i = 0; i < plant.leaves.length; i++) {
+                    const leafItem = plant.leaves[i];
+                    const leaf = leafItem ? leafItem.leaf : null;
+                    const rotData = leafRotations[i];
+                    
+                    if (rotData && leaf) {
+                        leaf.rotation.set(rotData.x, rotData.y, rotData.z);
+                        leaf.scale.setScalar(leafScales[i] || 1.0);
+                        
+                        const colorData = leafColors[i];
+                        if (colorData && leaf.material) {
+                            leaf.material.color.setRGB(colorData.r, colorData.g, colorData.b);
+                        }
+                    }
+                }
+            }
+            
+            // Update fireflies
+            plant.updateFirefliesFromFrame(plantFrame);
+        });
+    }
+    
+    updateFirefliesFromFrame(frame) {
+        const precomp = CastleBioluminescentPlant.precomputedAnimations;
+        const fireflyPositions = precomp.frames.fireflyPositions[frame];
+        
+        if (this.fireflies && fireflyPositions) {
+            const positions = this.fireflies.geometry.attributes.position.array;
+            fireflyPositions.forEach((pos, i) => {
+                const idx = i * 3;
+                positions[idx] = pos.x;
+                positions[idx + 1] = pos.y;
+                positions[idx + 2] = pos.z;
+            });
+            this.fireflies.geometry.attributes.position.needsUpdate = true;
+            this.fireflies.material.uniforms.time.value = precomp.frames.fireflyTime[frame];
+        }
+        
+        if (this.glowMesh) {
+            this.glowMesh.scale.setScalar(precomp.frames.glowScale[frame]);
+            this.glowMesh.material.uniforms.time.value = precomp.frames.fireflyTime[frame];
+        }
+    }
+    
+    // ==================== END PRECOMPUTED ANIMATION SYSTEM ====================
+
 
     createPlantStructure() {
         switch (this.plantType) {
@@ -205,36 +594,29 @@ export class CastleBioluminescentPlant extends LightComponent {
             new THREE.Vector3(-0.05, 1.95, 0.02)
         ]);
         
-        // PURE colored materials - NO LIGHTS!
-        const stemMaterial = new THREE.MeshPhysicalMaterial({
-            color: new THREE.Color().setHSL(0.52, 1.0, 0.15),
-            emissive: new THREE.Color().setHSL(0.50, 1.0, 0.4), // BRIGHT emissive only
-            emissiveIntensity: 4.0, // High emissive = no need for lights
-            roughness: 0.9,
-            metalness: 0.0,
-            normalMap: this.normalMap,
-            normalScale: new THREE.Vector2(0.5, 0.5),
+        const stemMaterial = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(0.38, 1.0, 0.45),
             transparent: true,
             opacity: 0.95,
-            transmission: 0.05,
-            thickness: 0.8
+            toneMapped: false
         });
 
-        const stemGeometry = new THREE.TubeGeometry(curve, 60, 0.06, 20, false);
+        const stemGeometry = new THREE.TubeGeometry(curve, 30, 0.06, 8, false);
         const stem = new THREE.Mesh(stemGeometry, stemMaterial);
         stemGroup.add(stem);
         
-        const nodeCount = 18;
+        // Create individual node meshes (necessary for proper rendering)
+        const nodeCount = 8;
         for (let i = 0.1; i < 0.98; i += 1 / nodeCount) {
             const node = this.createEnhancedGlowingNode(0.08);
             const point = curve.getPoint(i);
             const tangent = curve.getTangent(i);
             node.position.copy(point);
-            
             node.rotation.y = Math.atan2(tangent.x, tangent.z);
             stemGroup.add(node);
+            
             this.glowingNodes.push({ 
-                node, 
+                node,
                 basePosition: point.clone(),
                 positionAlongStem: i,
                 wavePhase: Math.random() * Math.PI * 2,
@@ -242,13 +624,12 @@ export class CastleBioluminescentPlant extends LightComponent {
             });
         }
         
-        this.createEnhancedLeafClusters(stemGroup, curve);
-        this.createEnhancedMossPatches(stemGroup);
-        
+        // Tip node
         const tipNode = this.createEnhancedGlowingNode(0.11);
         const tipPoint = curve.getPoint(0.98);
         tipNode.position.copy(tipPoint);
         stemGroup.add(tipNode);
+        
         this.glowingNodes.push({
             node: tipNode,
             basePosition: tipPoint.clone(),
@@ -257,37 +638,33 @@ export class CastleBioluminescentPlant extends LightComponent {
             baseScale: 1.3
         });
         
+        this.createEnhancedLeafClusters(stemGroup, curve);
+        this.createEnhancedMossPatches(stemGroup);
+        
         this.plantGroup.add(stemGroup);
     }
 
     createEnhancedGlowingNode(size = 0.07) {
-        const geometry = new THREE.SphereGeometry(size, 16, 14);
+        const geometry = new THREE.SphereGeometry(size, 8, 6);
         
         const vibrantColors = [
-            { h: 0.78, s: 1.0, l: 0.2 }, { h: 0.82, s: 1.0, l: 0.18 },
-            { h: 0.60, s: 1.0, l: 0.22 }, { h: 0.55, s: 1.0, l: 0.25 },
-            { h: 0.52, s: 1.0, l: 0.28 }, { h: 0.48, s: 1.0, l: 0.24 },
-            { h: 0.45, s: 1.0, l: 0.22 }, { h: 0.40, s: 1.0, l: 0.20 },
-            { h: 0.35, s: 1.0, l: 0.24 }, { h: 0.30, s: 1.0, l: 0.18 },
-            { h: 0.25, s: 1.0, l: 0.22 }, { h: 0.15, s: 1.0, l: 0.26 },
-            { h: 0.08, s: 1.0, l: 0.28 }, { h: 0.05, s: 1.0, l: 0.24 },
-            { h: 0.95, s: 1.0, l: 0.20 }, { h: 0.88, s: 1.0, l: 0.24 }
+            { h: 0.95, s: 1.0, l: 0.45 }, { h: 0.90, s: 1.0, l: 0.47 },
+            { h: 0.85, s: 1.0, l: 0.50 }, { h: 0.80, s: 1.0, l: 0.52 },
+            { h: 0.75, s: 1.0, l: 0.55 }, { h: 0.70, s: 1.0, l: 0.50 },
+            { h: 0.65, s: 1.0, l: 0.47 }, { h: 0.60, s: 1.0, l: 0.45 },
+            { h: 0.55, s: 1.0, l: 0.50 }, { h: 0.52, s: 1.0, l: 0.43 },
+            { h: 0.50, s: 1.0, l: 0.47 }, { h: 0.48, s: 1.0, l: 0.52 },
+            { h: 0.00, s: 1.0, l: 0.55 }, { h: 0.02, s: 1.0, l: 0.50 },
+            { h: 0.97, s: 1.0, l: 0.45 }, { h: 0.92, s: 1.0, l: 0.50 }
         ];
         
         const chosenColor = vibrantColors[Math.floor(Math.random() * vibrantColors.length)];
         
-        // HIGH EMISSIVE materials - NO LIGHTS NEEDED!
-        const material = new THREE.MeshPhysicalMaterial({
-            color: new THREE.Color().setHSL(chosenColor.h, chosenColor.s, chosenColor.l),
-            emissive: new THREE.Color().setHSL(chosenColor.h, 1.0, 0.5), // VERY bright emissive
-            emissiveIntensity: 6.0, // Extremely high - creates own light
-            roughness: 0.9,
-            metalness: 0.0,
+        const material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(chosenColor.h, 1.0, 0.7),
             transparent: true,
-            opacity: 0.98,
-            transmission: 0.02,
-            thickness: size * 6,
-            ior: 1.3
+            opacity: 0.95,
+            toneMapped: false
         });
         
         const node = new THREE.Mesh(geometry, material);
@@ -327,7 +704,7 @@ export class CastleBioluminescentPlant extends LightComponent {
                 
                 cluster.add(leaf);
                 this.leaves.push({ 
-                    leaf, 
+                    leaf,
                     baseRotation: leaf.rotation.z,
                     bendPhase: Math.random() * Math.PI * 2
                 });
@@ -358,20 +735,12 @@ export class CastleBioluminescentPlant extends LightComponent {
         }
         geometry.computeVertexNormals();
         
-        // HIGH EMISSIVE leaves - NO LIGHTS!
-        const leafMaterial = new THREE.MeshPhysicalMaterial({
-            color: new THREE.Color().setHSL(0.30, 1.0, 0.15),
-            emissive: new THREE.Color().setHSL(0.28, 1.0, 0.4),
-            emissiveIntensity: 4.5,
-            roughness: 0.9,
-            metalness: 0.0,
+        const leafMaterial = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(0.52, 1.0, 0.5),
             transparent: true,
-            opacity: 0.95,
+            opacity: 0.90,
             side: THREE.DoubleSide,
-            normalMap: this.normalMap,
-            normalScale: new THREE.Vector2(0.2, 0.2),
-            transmission: 0.03,
-            thickness: 0.25
+            toneMapped: false
         });
         
         return new THREE.Mesh(geometry, leafMaterial);
@@ -396,9 +765,9 @@ export class CastleBioluminescentPlant extends LightComponent {
         const blobCount = 5 + Math.floor(Math.random() * 4);
         
         const mossColors = [
-            { h: 0.35, s: 1.0, l: 0.20 }, { h: 0.30, s: 1.0, l: 0.16 },
-            { h: 0.28, s: 1.0, l: 0.18 }, { h: 0.45, s: 1.0, l: 0.22 },
-            { h: 0.50, s: 1.0, l: 0.24 }
+            { h: 0.90, s: 1.0, l: 0.40 }, { h: 0.85, s: 1.0, l: 0.36 },
+            { h: 0.88, s: 1.0, l: 0.38 }, { h: 0.92, s: 1.0, l: 0.42 },
+            { h: 0.95, s: 1.0, l: 0.44 }
         ];
         const chosenMossColor = mossColors[Math.floor(Math.random() * mossColors.length)];
         
@@ -407,8 +776,9 @@ export class CastleBioluminescentPlant extends LightComponent {
             const geometry = new THREE.SphereGeometry(size, 7, 7);
             const material = new THREE.MeshPhongMaterial({
                 color: new THREE.Color().setHSL(chosenMossColor.h, chosenMossColor.s, chosenMossColor.l),
-                emissive: new THREE.Color().setHSL(chosenMossColor.h, 0.9, 0.3),
-                emissiveIntensity: 2.5
+                emissive: new THREE.Color().setHSL(chosenMossColor.h, 0.9, 0.4),
+                emissiveIntensity: 0.6,
+                toneMapped: false // Prevent ambient light from affecting emissive color
             });
             
             const blob = new THREE.Mesh(geometry, material);
@@ -452,18 +822,30 @@ export class CastleBioluminescentPlant extends LightComponent {
             targets[i3 + 1] = Math.random() * this.fireflyArea.y;
             targets[i3 + 2] = (Math.random() - 0.5) * this.fireflyArea.z;
             
-            // Pure colored fireflies
-            const hueChoice = Math.random();
+            // Bright vibrant firefly colors with strong contrast - full color spectrum with lower lightness to avoid white
+            const colorChoice = Math.random();
             let hue, saturation, lightness;
             
-            if (hueChoice < 0.5) {
-                hue = 0.50 + Math.random() * 0.05;
+            if (colorChoice < 0.2) {
+                hue = 0.48 + Math.random() * 0.06; // Bright cyan
                 saturation = 1.0;
-                lightness = 0.45 + Math.random() * 0.08;
+                lightness = 0.62 + Math.random() * 0.08; // Higher contrast
+            } else if (colorChoice < 0.4) {
+                hue = 0.58 + Math.random() * 0.08; // Electric blue
+                saturation = 1.0;
+                lightness = 0.60 + Math.random() * 0.08; // Higher contrast
+            } else if (colorChoice < 0.6) {
+                hue = 0.80 + Math.random() * 0.08; // Bright magenta
+                saturation = 1.0;
+                lightness = 0.58 + Math.random() * 0.1; // Higher contrast
+            } else if (colorChoice < 0.8) {
+                hue = 0.90 + Math.random() * 0.05; // Hot pink
+                saturation = 1.0;
+                lightness = 0.60 + Math.random() * 0.08; // Higher contrast
             } else {
-                hue = 0.45 + Math.random() * 0.08;
+                hue = 0.30 + Math.random() * 0.06; // Lime green for contrast
                 saturation = 1.0;
-                lightness = 0.42 + Math.random() * 0.08;
+                lightness = 0.58 + Math.random() * 0.08; // Higher contrast
             }
             
             const color = new THREE.Color().setHSL(hue, saturation, lightness);
@@ -545,18 +927,19 @@ export class CastleBioluminescentPlant extends LightComponent {
                     float midGlow = 1.0 - smoothstep(0.15, 0.38, dist);
                     float outerGlow = 1.0 - smoothstep(0.38, 0.5, dist);
                     
-                    vec3 glowColor = vColor * 2.0;
-                    glowColor = mix(glowColor, vec3(0.3, 1.0, 1.0), coreGlow * 0.5);
+                    // Keep the actual color without excessive brightening
+                    vec3 glowColor = vColor;
                     
-                    float alpha = (coreGlow * 1.8 + midGlow * 1.2 + outerGlow * 0.6 + fresnel * 0.9) * vAlpha;
-                    vec3 finalColor = glowColor * (1.5 + coreGlow * 2.5 + midGlow * 1.2 + fresnel * 0.8);
+                    float alpha = (coreGlow * 1.2 + midGlow * 0.8 + outerGlow * 0.4 + fresnel * 0.5) * vAlpha;
+                    vec3 finalColor = glowColor * (1.0 + coreGlow * 0.5 + midGlow * 0.3);
                     
                     gl_FragColor = vec4(finalColor, alpha);
                 }
             `,
             transparent: true,
             blending: THREE.AdditiveBlending,
-            depthWrite: false
+            depthWrite: false,
+            toneMapped: false // Prevent ambient light from affecting firefly colors
         });
 
         if (!fireflyMaterial || !fireflyMaterial.uniforms) {
@@ -597,16 +980,17 @@ export class CastleBioluminescentPlant extends LightComponent {
                     positions[baseIndex + 2] = node.basePosition.z + (Math.random() - 0.5) * 0.08;
                 }
                 
+                // Ultra vibrant particle colors
                 const hue = 0.45 + Math.random() * 0.3;
-                const saturation = 0.9 + Math.random() * 0.1;
-                const lightness = 0.7 + Math.random() * 0.25;
+                const saturation = 1.0; // Full saturation
+                const lightness = 0.8 + Math.random() * 0.2; // Much brighter
                 const color = new THREE.Color().setHSL(hue, saturation, lightness);
                 
                 colors[baseIndex] = color.r;
                 colors[baseIndex + 1] = color.g;
                 colors[baseIndex + 2] = color.b;
                 
-                sizes[i * this.magicTrailLength + trailIndex] = 0.015 * (1 - progress * 0.4);
+                sizes[i * this.magicTrailLength + trailIndex] = 0.02 * (1 - progress * 0.4); // Larger particles
                 trailProgress[i * this.magicTrailLength + trailIndex] = progress;
             }
         }
@@ -641,7 +1025,7 @@ export class CastleBioluminescentPlant extends LightComponent {
                     vColor = color;
                     vTrailProgress = trailProgress;
                     
-                    vAlpha = (1.0 - trailProgress) * (0.5 + sin(time * 2.5 + phase) * 0.4);
+                    vAlpha = (1.0 - trailProgress) * (0.7 + sin(time * 2.5 + phase) * 0.5); // Brighter
                     
                     vec3 pos = position;
                     pos.y += sin(time * 2.0 + phase) * 0.03;
@@ -649,7 +1033,7 @@ export class CastleBioluminescentPlant extends LightComponent {
                     pos.z += sin(time * 1.8 + phase * 1.2) * 0.015;
                     
                     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-                    gl_PointSize = size * (55.0 / -mvPosition.z) * (1.0 + sin(time * 4.0 + phase) * 0.4);
+                    gl_PointSize = size * (65.0 / -mvPosition.z) * (1.0 + sin(time * 4.0 + phase) * 0.6); // Larger and more dynamic
                     gl_Position = projectionMatrix * mvPosition;
                 }
             `,
@@ -669,9 +1053,9 @@ export class CastleBioluminescentPlant extends LightComponent {
                     float outerGlow = 1.0 - smoothstep(0.4, 0.5, dist);
                     
                     float trailFactor = 1.0 - vTrailProgress * 0.6;
-                    float alpha = (innerGlow * 1.2 + midGlow * 0.8 + outerGlow * 0.4) * vAlpha * trailFactor;
+                    float alpha = (innerGlow * 1.5 + midGlow * 1.0 + outerGlow * 0.6) * vAlpha * trailFactor; // Brighter
                     
-                    vec3 finalColor = vColor * (1.0 + innerGlow * 1.0 * (1.0 - vTrailProgress));
+                    vec3 finalColor = vColor * (1.5 + innerGlow * 1.5 * (1.0 - vTrailProgress)); // Much brighter
                     
                     gl_FragColor = vec4(finalColor, alpha);
                 }
@@ -686,82 +1070,16 @@ export class CastleBioluminescentPlant extends LightComponent {
     }
 
     createColoredIllumination() {
-        // COMPLETELY REMOVED all Three.js lights
-        // We only use high-emissive materials and particles for illumination
-        
-        console.log("Using pure emissive materials - NO white lights created");
-        
-        // Create additional colored glow planes for area illumination
-        this.createColoredGlowPlanes();
-    }
-
-    createColoredGlowPlanes() {
-        // Create colored glow planes that act as area lights but are pure color
-        const glowPlaneGeometry = new THREE.PlaneGeometry(3, 3);
-        
-        // Multiple colored glow planes
-        const glowColors = [
-            { h: 0.55, s: 1.0, l: 0.3 }, // Cyan
-            { h: 0.45, s: 1.0, l: 0.25 }, // Teal  
-            { h: 0.35, s: 1.0, l: 0.2 },  // Green
-            { h: 0.65, s: 1.0, l: 0.25 }  // Blue
-        ];
-        
-        glowColors.forEach((color, index) => {
-            const glowMaterial = new THREE.ShaderMaterial({
-                uniforms: {
-                    time: { value: 0 },
-                    baseColor: { value: new THREE.Color().setHSL(color.h, color.s, color.l) },
-                    intensity: { value: 0.8 + Math.random() * 0.4 }
-                },
-                vertexShader: `
-                    varying vec2 vUv;
-                    void main() {
-                        vUv = uv;
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                    }
-                `,
-                fragmentShader: `
-                    uniform float time;
-                    uniform vec3 baseColor;
-                    uniform float intensity;
-                    varying vec2 vUv;
-                    
-                    void main() {
-                        vec2 center = vec2(0.5, 0.5);
-                        float dist = distance(vUv, center);
-                        float gradient = 1.0 - smoothstep(0.0, 0.7, dist);
-                        
-                        float pulse = sin(time * 0.3 + float(${index}) * 1.5) * 0.3 + 0.7;
-                        float alpha = gradient * pulse * intensity;
-                        
-                        vec3 color = baseColor * alpha * 1.5;
-                        gl_FragColor = vec4(color, alpha * 0.4);
-                    }
-                `,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false
-            });
-            
-            const glowPlane = new THREE.Mesh(glowPlaneGeometry, glowMaterial);
-            glowPlane.position.set(
-                (Math.random() - 0.5) * 1.5,
-                1.0 + (Math.random() - 0.5) * 0.8,
-                (Math.random() - 0.5) * 1.0
-            );
-            glowPlane.rotation.x = Math.PI / 2;
-            this.plantGroup.add(glowPlane);
-        });
+        // Disabled - no longer creating colored glow planes
     }
 
     createAmbientGlow() {
-        // Pure colored volumetric glow - NO WHITE!
-        const glowGeometry = new THREE.SphereGeometry(3.5, 32, 32);
+        // OPTIMIZED: Reduced from 32x32 to 16x16 segments (75% fewer vertices) and size 4.0 to 3.0
+        const glowGeometry = new THREE.SphereGeometry(3.0, 16, 16);
         const glowMaterial = new THREE.ShaderMaterial({
             uniforms: {
                 time: { value: 0 },
-                baseColor: { value: new THREE.Color(0x004444) } // Dark cyan
+                baseColor: { value: new THREE.Color(0xff00ff) } // Bright magenta
             },
             vertexShader: `
                 varying vec3 vNormal;
@@ -780,15 +1098,15 @@ export class CastleBioluminescentPlant extends LightComponent {
                 varying vec3 vPosition;
                 
                 void main() {
-                    float intensity = 0.3 + sin(time * 0.6) * 0.15;
+                    float intensity = 0.5 + sin(time * 0.6) * 0.3; // Higher intensity
                     float distance = length(vPosition);
-                    float falloff = 1.0 - smoothstep(0.8, 3.5, distance);
+                    float falloff = 1.0 - smoothstep(0.8, 4.0, distance); // Larger range
                     
-                    float hueShift = sin(time * 0.3) * 0.08;
-                    vec3 shiftedColor = baseColor + vec3(hueShift * 0.1, hueShift * 0.05, -hueShift * 0.05);
+                    float hueShift = sin(time * 0.3) * 0.1; // More color variation
+                    vec3 shiftedColor = baseColor * 1.5 + vec3(hueShift * 0.2, hueShift * 0.1, -hueShift * 0.1);
                     
                     vec3 glowColor = shiftedColor * intensity * falloff;
-                    gl_FragColor = vec4(glowColor, 0.15 * falloff);
+                    gl_FragColor = vec4(glowColor, 0.2 * falloff); // More opacity
                 }
             `,
             transparent: true,
@@ -802,171 +1120,90 @@ export class CastleBioluminescentPlant extends LightComponent {
         this.glowMesh = glow;
     }
 
-    createWallLightProjection() {
-        // Pure colorful light projection
-        const projectionGeometry = new THREE.PlaneGeometry(8, 8);
-        const projectionMaterial = new THREE.ShaderMaterial({
-            uniforms: {
-                time: { value: 0 },
-                plantPos: { value: new THREE.Vector3(0, 1, 0) },
-                baseColor: { value: new THREE.Color(0x006666) } // Dark cyan
-            },
-            vertexShader: `
-                varying vec2 vUv;
-                varying vec3 vWorldPosition;
-                
-                void main() {
-                    vUv = uv;
-                    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                    vWorldPosition = worldPosition.xyz;
-                    gl_Position = projectionMatrix * viewMatrix * worldPosition;
-                }
-            `,
-            fragmentShader: `
-                uniform float time;
-                uniform vec3 plantPos;
-                uniform vec3 baseColor;
-                varying vec2 vUv;
-                varying vec3 vWorldPosition;
-                
-                void main() {
-                    vec2 center = vec2(0.5, 0.5);
-                    float dist = distance(vUv, center);
-                    
-                    float gradient = 1.0 - smoothstep(0.0, 0.8, dist);
-                    
-                    float pulse = sin(time * 0.6) * 0.3 + 0.7;
-                    
-                    float hueShift = sin(time * 0.3 + dist * 3.0) * 0.1;
-                    vec3 shiftedColor = baseColor * 1.5 + vec3(hueShift * 0.15, hueShift * 0.1, -hueShift * 0.05);
-                    
-                    float noise = fract(sin(dot(vUv, vec2(12.9898, 78.233))) * 43758.5453) * 0.06;
-                    
-                    float alpha = gradient * pulse + noise;
-                    alpha *= 0.6;
-                    
-                    vec3 color = shiftedColor * alpha;
-                    gl_FragColor = vec4(color, alpha * 0.7);
-                }
-            `,
-            transparent: true,
-            side: THREE.DoubleSide,
-            blending: THREE.AdditiveBlending
-        });
-        
-        const projection = new THREE.Mesh(projectionGeometry, projectionMaterial);
-        projection.position.set(0, 1, -1.2);
-        projection.rotation.x = Math.PI / 2;
-        this.plantGroup.add(projection);
-        this.wallProjection = projection;
-    }
+
 
     update(deltaTime) {
         if (!this._mounted) return;
 
         const time = CastleBioluminescentPlant.sharedClock.getElapsedTime();
-        this.animationState.time = time;
-        this.animationState.colorShift = time * 0.15;
-        this.animationState.lightWave = time * this.lightWaveSpeed;
+        const precomp = CastleBioluminescentPlant.precomputedAnimations;
         
-        this.animationState.breath = Math.sin(time * 0.5) * 0.25 + 0.75;
-        this.animationState.sway = Math.sin(time * 0.4) * 0.08;
-        
-        if (time > this.nextPulseTime) {
-            this.animationState.pulse = 1.0;
-            this.nextPulseTime = time + this.pulseInterval + (Math.random() * 2 - 1);
-        } else {
-            this.animationState.pulse = Math.max(0, this.animationState.pulse - deltaTime * 2.0);
-        }
-        
-        this.updateGlowingNodes(time);
-        this.updateLeaves(time);
-        this.animateFireflies(time, deltaTime);
-        this.updateEnhancedMagicParticles(time);
-        // REMOVED updateNodeLights - no lights to update!
-        
-        this.plantGroup.rotation.z = this.animationState.sway * 0.05;
-        
-        if (this.glowMesh) {
-            this.glowMesh.material.uniforms.time.value = time;
-        }
-        
-        if (this.wallProjection) {
-            this.wallProjection.material.uniforms.time.value = time;
-        }
-    }
-
-    updateGlowingNodes(time) {
-        this.glowingNodes.forEach((nodeData, index) => {
-            const node = nodeData.node;
-            const basePos = nodeData.basePosition;
-            const positionAlongStem = nodeData.positionAlongStem;
-            const wavePhase = nodeData.wavePhase;
-            const baseScale = nodeData.baseScale;
-            
-            const waveOffset = Math.sin(this.animationState.lightWave - positionAlongStem * 5 + wavePhase) * 0.025;
-            const sideWave = Math.cos(this.animationState.lightWave * 1.3 - positionAlongStem * 3 + wavePhase) * 0.01;
-            node.position.y = basePos.y + waveOffset;
-            node.position.x = basePos.x + sideWave;
-            
-            const floatOffset = Math.sin(time * 1.2 + index * 0.8) * 0.012;
-            node.position.y += floatOffset;
-            
-            // Keep pure vibrant colors
-            const baseColor = node.userData.baseColor;
-            if (baseColor) {
-                const hueShift = baseColor.h + Math.sin(time * 0.5 + index * 0.7) * 0.05;
-                const saturation = 1.0;
-                const lightness = 0.5 + Math.sin(time * 0.8 + positionAlongStem * 3) * 0.1;
-                
-                const color = new THREE.Color().setHSL(hueShift, saturation, lightness);
-                node.material.emissive = color;
+        // PERFORMANCE: Auto-assign master if none exists
+        if (!CastleBioluminescentPlant.masterPlant && CastleBioluminescentPlant.instanceCount > 0) {
+            this.isMasterPlant = true;
+            CastleBioluminescentPlant.masterPlant = this;
+            if (!precomp.isRecorded && !precomp.isRecording) {
+                this.startRecording();
             }
-            
-            const wavePulse = Math.sin(this.animationState.lightWave * 3 - positionAlongStem * 8 + wavePhase) * 0.4 + 0.6;
-            const basePulse = this.animationState.pulse > 0.1 ? 
-                Math.sin(time * 12 + index) * this.animationState.pulse * 0.3 : 0;
-            
-            const intensity = (this.animationState.breath + basePulse) * wavePulse;
-            if (node.material.emissiveIntensity !== undefined) {
-                node.material.emissiveIntensity = 4.0 + intensity * 2.0;
-            }
-
-            const pulseSize = 1.0 + Math.sin(this.animationState.lightWave * 4 - positionAlongStem * 7) * 0.3;
-            node.scale.setScalar(baseScale * pulseSize);
-        });
-    }
-
-    updateLeaves(time) {
-        this.leaves.forEach((leafData, index) => {
-            const leaf = leafData.leaf;
-            const baseRotation = leafData.baseRotation;
-            
-            const baseScale = leaf.userData.baseScale;
-            if (!baseScale) {
-                leaf.userData.baseScale = new THREE.Vector3().copy(leaf.scale);
+        }
+        
+        // ========== RECORDING MODE (Master plant only, first 3 seconds) ==========
+        if (precomp.isRecording) {
+            // 🚀 NON-MASTER PLANTS DO NOTHING during recording
+            if (!this.isMasterPlant) {
                 return;
             }
             
-            const rustle = Math.sin(time * 2.0 + index * 0.5) * 0.12;
-            const gentleSway = Math.sin(time * 0.7 + index * 0.3) * 0.05;
-            leaf.rotation.z = baseRotation + rustle;
-            leaf.rotation.x += gentleSway * 0.1;
+            // ONLY MASTER PLANT records
+            this.animationState.time = time;
+            this.animationState.breath = Math.sin(time * 0.5) * 0.25 + 0.75;
+            this.animationState.sway = Math.sin(time * 0.4) * 0.08;
+            this.animationState.colorShift = time * 0.15;
+            this.animationState.lightWave = time * this.lightWaveSpeed;
             
-            const phase = leaf.userData.phase || 0;
-            const primaryPulse = 1.0 + Math.sin(time * this.leafPulseSpeed + phase) * this.leafPulseAmplitude;
-            const secondaryPulse = 1.0 + Math.sin(time * this.leafPulseSpeed * 1.7 + phase * 1.3) * (this.leafPulseAmplitude * 0.3);
-            const pulse = primaryPulse * secondaryPulse;
+            // Pulse timing
+            if (time > this.nextPulseTime) {
+                this.animationState.pulse = 1.0;
+                this.nextPulseTime = time + this.pulseInterval + (Math.random() * 2 - 1);
+            } else {
+                this.animationState.pulse = Math.max(0, this.animationState.pulse - deltaTime * 2.0);
+            }
             
-            leaf.scale.set(
-                baseScale.x * pulse,
-                baseScale.y * pulse, 
-                baseScale.z * pulse
-            );
+            // Animate fireflies and record
+            this.animateFireflies(time, deltaTime);
+            this.plantGroup.rotation.z = this.animationState.sway * 0.05;
             
-            // PURE green leaf color
-            const greenShift = 0.28 + Math.sin(time * 0.3 + index) * 0.08;
-            leaf.material.emissive.setHSL(greenShift, 1.0, 0.4);
+            if (this.glowMesh) {
+                this.glowMesh.material.uniforms.time.value = time;
+                const glowPulse = Math.sin(time * 0.6) * 0.15 + Math.sin(time * 1.2) * 0.1;
+                this.glowMesh.scale.setScalar(1.0 + glowPulse);
+            }
+            
+            this.updateAmbientLight(time);
+            
+            // Record this frame
+            this.recordCurrentFrame(time);
+            
+            // Advance playback frame counter during recording
+            if (precomp.recordingFrame > 0) {
+                precomp.playbackFrame = (precomp.playbackFrame + 1) % precomp.recordingFrame;
+            }
+            return;
+        }
+        
+        // ========== PLAYBACK MODE (Master plant updates all instances) ==========
+        if (precomp.isRecorded) {
+            if (this.isMasterPlant) {
+                // MASTER ONLY: Play back all plants and advance frame counter
+                this.playbackFrame();
+                precomp.playbackFrame = (precomp.playbackFrame + 1) % precomp.totalFrames;
+            }
+            // Non-master plants do nothing - instancing handles everything
+            return;
+        }
+    }
+
+    updateAmbientLight(time) {
+        // 🚀 OPTIMIZATION: Only master plant has lights
+        if (!this.ambientLight || !this.isMasterPlant) return;
+        
+        // Single light pulsing
+        this.ambientLight.children.forEach((child) => {
+            if (child.isPointLight) {
+                const pulse = Math.sin(time * 0.8) * 0.3 + 0.7;
+                const flicker = Math.sin(time * 15) * 0.05 + Math.sin(time * 23) * 0.03;
+                child.intensity = 18 * pulse * (1 + flicker);
+            }
         });
     }
 
@@ -986,26 +1223,32 @@ export class CastleBioluminescentPlant extends LightComponent {
             const fireflyIndex = i / 3;
             const wanderStrength = wanderStrengths[fireflyIndex];
             
-            const currentPos = new THREE.Vector3(positions[i], positions[i + 1], positions[i + 2]);
-            const currentTarget = new THREE.Vector3(targets[i], targets[i + 1], targets[i + 2]);
+            this._fireflyCurrentPos.set(positions[i], positions[i + 1], positions[i + 2]);
+            this._fireflyCurrentTarget.set(targets[i], targets[i + 1], targets[i + 2]);
             
-            const toTarget = new THREE.Vector3().subVectors(currentTarget, currentPos);
-            const distanceToTarget = toTarget.length();
+            this._fireflyToTarget.subVectors(this._fireflyCurrentTarget, this._fireflyCurrentPos);
+            const distanceToTarget = this._fireflyToTarget.length();
             
-            if (distanceToTarget < 0.2 || Math.random() < 0.002 * wanderStrength) {
+            // Pick new target more often to prevent standing still
+            if (distanceToTarget < 0.3 || Math.random() < 0.008 * wanderStrength) {
                 targets[i] = (Math.random() - 0.5) * this.fireflyArea.x;
-                targets[i + 1] = Math.random() * this.fireflyArea.y;
+                targets[i + 1] = Math.random() * this.fireflyArea.y * 1.3; // Increased height variation
                 targets[i + 2] = (Math.random() - 0.5) * this.fireflyArea.z;
             } else {
-                toTarget.normalize();
+                this._fireflyToTarget.normalize();
                 
-                const wanderX = (Math.random() - 0.5) * 0.005 * wanderStrength;
-                const wanderY = (Math.random() - 0.5) * 0.005 * wanderStrength;
-                const wanderZ = (Math.random() - 0.5) * 0.005 * wanderStrength;
+                // Vary speed based on height for more natural movement
+                const heightFactor = positions[i + 1] / this.fireflyArea.y;
+                const speedMultiplier = 0.8 + heightFactor * 0.4; // Faster at top
                 
-                velocities[i] = toTarget.x * this.fireflySpeed * deltaTime * 12 + wanderX;
-                velocities[i + 1] = toTarget.y * this.fireflySpeed * deltaTime * 12 + wanderY;
-                velocities[i + 2] = toTarget.z * this.fireflySpeed * deltaTime * 12 + wanderZ;
+                // More pronounced wandering to prevent stopping
+                const wanderX = (Math.random() - 0.5) * 0.012 * wanderStrength;
+                const wanderY = (Math.random() - 0.5) * 0.012 * wanderStrength;
+                const wanderZ = (Math.random() - 0.5) * 0.012 * wanderStrength;
+                
+                velocities[i] = this._fireflyToTarget.x * this.fireflySpeed * deltaTime * 12 * speedMultiplier + wanderX;
+                velocities[i + 1] = this._fireflyToTarget.y * this.fireflySpeed * deltaTime * 12 * speedMultiplier + wanderY;
+                velocities[i + 2] = this._fireflyToTarget.z * this.fireflySpeed * deltaTime * 12 * speedMultiplier + wanderZ;
                 
                 const speed = Math.sqrt(
                     velocities[i] * velocities[i] + 
@@ -1158,6 +1401,43 @@ export class CastleBioluminescentPlant extends LightComponent {
             scene.remove(this.plantGroup);
             this.cleanupMesh(this.plantGroup);
         }
+        
+        // Remove this plant from the global list
+        const index = CastleBioluminescentPlant.allPlants.indexOf(this);
+        if (index > -1) {
+            CastleBioluminescentPlant.allPlants.splice(index, 1);
+        }
+        
+        // Decrease instance count
+        CastleBioluminescentPlant.instanceCount--;
+        
+        // If this was the master plant, clean up global resources
+        if (this.isMasterPlant) {
+            if (CastleBioluminescentPlant.nodeInstancedMesh) {
+                scene.remove(CastleBioluminescentPlant.nodeInstancedMesh);
+                CastleBioluminescentPlant.nodeInstancedMesh.geometry.dispose();
+                CastleBioluminescentPlant.nodeInstancedMesh.material.dispose();
+                CastleBioluminescentPlant.nodeInstancedMesh = null;
+            }
+            
+            if (CastleBioluminescentPlant.leafInstancedMesh) {
+                scene.remove(CastleBioluminescentPlant.leafInstancedMesh);
+                CastleBioluminescentPlant.leafInstancedMesh.geometry.dispose();
+                CastleBioluminescentPlant.leafInstancedMesh.material.dispose();
+                CastleBioluminescentPlant.leafInstancedMesh = null;
+            }
+            
+            CastleBioluminescentPlant.masterPlant = null;
+            CastleBioluminescentPlant.totalNodeInstances = 0;
+            CastleBioluminescentPlant.totalLeafInstances = 0;
+            
+            // Reset precomputed animations if all plants are removed
+            if (CastleBioluminescentPlant.allPlants.length === 0) {
+                CastleBioluminescentPlant.precomputedAnimations.isRecorded = false;
+                CastleBioluminescentPlant.precomputedAnimations.isRecording = false;
+            }
+        }
+        
         this._mounted = false;
     }
 

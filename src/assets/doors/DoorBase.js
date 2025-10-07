@@ -673,7 +673,18 @@ export class DoorBase {
           collisionSize
         });
 
-        this.body = this.physicsWorld.createDoorBody(collisionCenter, collisionSize);
+        // Create a kinematic body for the door (movable but not affected by forces)
+        this.body = this.physicsWorld.createDynamicBody({
+          mass: 0, // Kinematic body (mass = 0 means it won't be affected by gravity)
+          shape: 'box',
+          size: collisionSize,
+          position: [collisionCenter.x, collisionCenter.y, collisionCenter.z],
+          material: 'wall' // Use wall material for proper collision
+        });
+        
+        // Make it kinematic (controlled by animation, not physics forces)
+        this.body.type = CANNON.Body.KINEMATIC;
+        this.body.collisionResponse = true; // It blocks the player
 
         if (this.body) {
           console.log('Door physics body created successfully');

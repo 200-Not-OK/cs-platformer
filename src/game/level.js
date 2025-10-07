@@ -98,6 +98,55 @@ export class Level {
     this.scene.add(gltf.scene);
     this.gltfScene = gltf.scene; // Store reference for cleanup
     
+    // ONLY enable shadows, don't override materials
+    // Also ensure materials support shadows (MeshStandardMaterial, MeshPhongMaterial, etc.)
+    let shadowMeshCount = 0;
+    let materialFixed = 0;
+    
+    gltf.scene.traverse((child) => {
+      if (child.isMesh) {
+        // PERFORMANCE: Only main surfaces receive shadows, smaller objects don't cast
+        const isSmallObject = child.name.toLowerCase().includes('detail') || 
+                             child.name.toLowerCase().includes('decoration');
+        
+        child.castShadow = !isSmallObject; // Small details don't cast shadows
+        child.receiveShadow = true;        // All surfaces receive shadows
+        shadowMeshCount++;
+        
+        // Check if material supports shadows
+        if (child.material) {
+          const material = child.material;
+          
+          // MeshBasicMaterial doesn't support lighting/shadows - convert if needed
+          if (material.isMeshBasicMaterial) {
+            console.warn(`⚠️  Converting MeshBasicMaterial to MeshStandardMaterial for shadows: ${child.name}`);
+            const newMaterial = new THREE.MeshStandardMaterial({
+              map: material.map,
+              color: material.color,
+              transparent: material.transparent,
+              opacity: material.opacity,
+              side: material.side,
+              roughness: 0.8,
+              metalness: 0.2
+            });
+            child.material = newMaterial;
+            materialFixed++;
+          }
+          
+          // Ensure the material is set up for shadows
+          if (material.isMeshStandardMaterial || material.isMeshPhongMaterial) {
+            // Material already supports shadows - just verify it's configured
+            material.needsUpdate = true;
+          }
+        }
+      }
+    });
+    
+    console.log(`✅ Shadows enabled for ${shadowMeshCount} level meshes`);
+    if (materialFixed > 0) {
+      console.log(`🔧 Fixed ${materialFixed} materials for shadow compatibility`);
+    }
+    
     // Check if we have manual colliders defined
     const hasManualColliders = this.data.colliders && this.data.colliders.length > 0;
     

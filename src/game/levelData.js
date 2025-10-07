@@ -41,15 +41,7 @@ export const levels = [
     "lights": [
       "BasicLights"
     ],
-<<<<<<< HEAD
-    flamePlacementPositions: [
-      [27.53, 0.16, -30.07],
-      [-30, 0.07, 0]
-    ],
-    enemies: [
-=======
     "enemies": [
->>>>>>> f396ee2e2cb9d9b5efa2ff7b3bfad0165e93045e
       {
         "type": "snake",
         "position": [
@@ -266,19 +258,11 @@ export const levels = [
     }
   },
   {
-<<<<<<< HEAD
-    id: "level2",
-    name: "Level 2",
-    gltfUrl: "src/assets/levels/Level2/Level2.gltf",
-    startPosition: [
-      25.9,
-=======
     "id": "level2",
     "name": "Level 2",
     "gltfUrl": "src/assets/levels/Level2/Level2.gltf",
     "startPosition": [
       195,
->>>>>>> f396ee2e2cb9d9b5efa2ff7b3bfad0165e93045e
       6,
       -83
     ],
@@ -316,9 +300,112 @@ export const levels = [
         }
       }
     ],
-<<<<<<< HEAD
     lights: [
-      "BasicLights",
+      // Stars replacing BasicLights at specified coordinates (Y + 15 for elevation)
+      {
+        key: "StarLight",
+        props: {
+          position: [-12.025823053848388, 15.1245687627273453, 178.1670737408198],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [107.02806399789891, 15.18589604134138948, 162.76484097209587],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [37.3222404385603, 15.1245687627273453, 120.04517725703103],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [130.9762479960251, 15.1245687627273453, 124.34771920664302],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [130.82457819522133, 15.14999273591754103, 131.6524554717438],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [25.759123747308454, 15.16136381577697279, 57.40978236364007],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [113.60075814069711, 15.1245687627273453, 75.45198084352933],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [45.84881244172108, 15.16136380644811155, 18.457558176388886],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [163.83881610949769, 15.22766121260374206, 94.95998318210349],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [240.16020953998367, 15.16136380644809412, 76.45611044544076],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [239.88417501943894, 15.16136380644811155, -0.5912993552164365],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [193.86038360355045, 15.16136380644811155, -34.19794303311772],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
+      {
+        key: "StarLight",
+        props: {
+          position: [40.11368964583366, 17.308840240606493, 17.848062963685287],
+          modelPath: "src/assets/cute_little_star.glb",
+          scale: 5
+        }
+      },
       {
         key: "PointPulse",
         props: {
@@ -344,13 +431,23 @@ export const levels = [
         props: {
           position: [145.374145581186, 5.804794296862261, 11.882736073091916],
           particleCount: 10
+          // DirectionalLight handles shadows - flame provides illumination
         }
       },
+      // {
+      //   key: "EtherealCoreRing",
+      //   props: {
+      //     position: [141.374145581186, 5.0, 13.882736073091916],
+      //     particleCount: 10
+      //     // No shadows - illumination only
+      //   }
+      // },
       {
         key: "FlameParticles",
         props: {
           position: [134.718151932843, 5.78268465742263, 11.873464661495646],
           particleCount: 10
+          // No shadows - illumination only
         }
       },
       {
@@ -400,6 +497,7 @@ export const levels = [
         props: {
           position: [187.78189640126286, 5.035426533687112, -67.44935354436615],
           particleCount: 10
+          // No shadows - illumination only
         }
       },
       {
@@ -555,6 +653,324 @@ export const levels = [
           position: [166.49003849952368, 5.607541597099899, 42.969325896],
           particleCount: 10
         }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [83.43254766317186, 1.2057601587692057, 111.77327652375475]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [83.36469817213991, 1.2837301509369499, 105.26460041098828]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [91.93749187886783, 1.3245305189437893, 105.4131052066785]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [92.01687998314709, 1.2738924665817104, 103.8530075210911]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [91.93445268528446, 1.1468793128405508, 99.84808244835246]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [76.8348612416366, 1.1690747691887304, 136.6856170131267]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [86.72046111617131, 1.1568386427489756, 136.6394145696907]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [43.16081674167087, 1.2209428415269354, 173.82469978882676]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [47.248717558787604, 1.215091691338967, 173.9365686334229]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [33.54359217925317, 1.2684842742320261, 173.86320290989576]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [27.962142718073412, 1.2475184889173712, 173.7379627763736]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [27.901049520849455, 1.2410534857407918, 165.32341602390284]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [29.50983264071492, 1.0855084875448937, 173.79064853608793]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [21.653955461457368, 1.335990593395947, 173.83289340256317]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [21.432948856916415, 1.2901892043725935, 165.29445978090334]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [21.589232408805948, 1.1198598939653714, 47.73786196842747]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [21.706710753144954, 1.210215805905272, 43.60889604601839]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [21.660677775299362, 1.1023718397493927, 34.31194906619159]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [21.63143393707036, 1.1242937196725413, 30.207751318766427]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [21.597538914819626, 1.239614254889096, 3.8544445540238788]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [30.165402325457187, 1.2733517314603309, 4.028640010477144]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [82.74369785979741, 1.2034744995497018, -20.95165217270131]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [91.34355557777239, 1.1615141852497464, -20.85240575533394]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [193.3777859516799, 1.114140558774249, 14.772258208550278]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [197.36108239718956, 1.1770794874358907, 14.81711214854276]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [206.88521202137773, 1.1240535256298756, 14.802388272582611]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [210.98731822288883, 1.1948395727054164, 14.761609953261308]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [206.4715987963806, 1.1822178903789826, 29.04207923290771]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [206.46850876190013, 1.2181301539013119, 32.94598130834198]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [206.42559485440637, 1.1891704632705762, 42.42033989301887]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [206.4907449690739, 1.1519639880645105, 46.7048155345102]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [210.8989220530201, 1.311559575994403, 60.86318304106383]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [206.69803220092484, 1.1479738139653146, 60.69789116499635]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [197.50778540340613, 1.2654254234350866, 60.92830557604289]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [191.78947455535467, 1.2749757215178599, 60.87365108168619]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [193.33186633788972, 1.2245386546324122, 60.8548883958861]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [191.9705364266468, 1.1724918117894392, 52.32504686468006]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [185.3635425903781, 1.2253986693052052, 60.87219511164419]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [211.95444995536872, 1.2066072460699182, 79.18318396149154]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [215.96929948212698, 1.1057289410892723, 79.2154750209055]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [225.31042463564654, 1.2774561341042998, 79.34945366129405]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [229.50486855612542, 1.1408690237743233, 79.1650620371092]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [234.96679274350097, 1.3025838129933796, 59.961916586274874]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [234.99701732370139, 1.3603076492769484, 65.11817820324278]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [243.43501109998562, 1.1988560885186335, 64.98130416169266]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [243.3879196285108, 1.3115789654224153, 59.929574626867]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [48.97170953818862, 1.1609243582644542, 30.345325977895833]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [48.84173408543633, 1.0301794412424936, 34.43992916530665]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [49.02306292406539, 1.2221312128210777, 43.76446997096573]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [48.98097966483144, 1.336698357713803, 47.87445208866004]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [193.2713699522292, 1.1566013820618113, 14.821601434415163]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [196.12370846579444, 2.676754784929564, 14.570970839037999]
+        }
+      },
+      {
+        key: "CastleBioluminescentPlant",
+        props: {
+          position: [197.3569011448118, 1.1710099136056555, 14.834863149356453]
+        }
       }
     ],
     flamePlacementPositions: [
@@ -590,9 +1006,6 @@ export const levels = [
       [166.53481479466527, 5.57478373643869, 32.45325588393239],
       [166.49003849952368, 5.607541597099899, 42.969325896]
     ],
-    enemies: [
-=======
-    lights: ["BasicLights"],
     sounds: {
       music: {
         'level2-theme': {
@@ -664,7 +1077,6 @@ export const levels = [
       playVoiceover: 'vo-levelstart'
     },
     proximitySounds: [
->>>>>>> f396ee2e2cb9d9b5efa2ff7b3bfad0165e93045e
       {
         position: [203, 3.7, -66.7],
         sound: 'torch-ambient',

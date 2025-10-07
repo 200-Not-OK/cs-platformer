@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createSceneAndRenderer } from './scene.js';
+import { createSceneAndRenderer, ENABLE_STAR_SHADOWS } from './scene.js';
 import { InputManager } from './input.js';
 import { Player } from './player.js';
 import { LevelManager } from './levelManager.js';
@@ -28,9 +28,14 @@ import { ProximitySoundManager } from './proximitySoundManager.js';
 
 export class Game {
   constructor() {
-    const { scene, renderer } = createSceneAndRenderer();
+    const { scene, renderer, updateSkybox, shaderSystem } = createSceneAndRenderer();
     this.scene = scene;
     this.renderer = renderer;
+    this.updateSkybox = updateSkybox;
+    this.shaderSystem = shaderSystem;
+    
+    // Store shader system reference in scene for easy access
+    this.scene.userData.shaderSystem = shaderSystem;
 
     // Initialize physics world with scene for improved collision detection
     this.physicsWorld = new PhysicsWorld(this.scene, {
@@ -182,20 +187,17 @@ export class Game {
     // Lighting manager (modular per-level lights)
     this.lights = new LightManager(this.scene);
 
-<<<<<<< HEAD
     // Flame placement positions
     this.flamePositions = [];
     this.maxActiveFlames = 40;
     this.flameCounter = 0;
     this.placedFlameKeys = [];
     this.jPressed = false;
-=======
     // Sound manager (initialize with camera for 3D audio)
     this.soundManager = new SoundManager(this.thirdCameraObject);
 
     // Proximity sound manager (for location-based sounds like torches)
     this.proximitySoundManager = null; // Will be initialized after player is ready
->>>>>>> f396ee2e2cb9d9b5efa2ff7b3bfad0165e93045e
 
     // Load the initial level early so subsequent code can reference `this.level`
     this._initializeLevel();
@@ -671,6 +673,31 @@ export class Game {
 
   // update lights (allow dynamic lights to animate)
   if (this.lights) this.lights.update(delta);
+  
+  // Update which star casts shadows (only closest to player) - only if enabled
+  if (ENABLE_STAR_SHADOWS) {
+    this.updateClosestStarShadow();
+  }
+
+  // Update skybox rotation for subtle twinkling effect
+  if (this.updateSkybox) {
+    this.updateSkybox(delta * 1000); // Convert to milliseconds for consistent rotation speed
+  }
+
+    // Smart shadow update: update when player moves more than 1 unit - only if star shadows enabled
+    if (ENABLE_STAR_SHADOWS) {
+      const currentPlayerPos = this.player.getPosition();
+      if (!this.lastShadowUpdatePos) {
+        this.lastShadowUpdatePos = currentPlayerPos.clone();
+        this.renderer.shadowMap.needsUpdate = true;
+      } else {
+        const distanceMoved = currentPlayerPos.distanceTo(this.lastShadowUpdatePos);
+        if (distanceMoved > 1.0) {
+          this.renderer.shadowMap.needsUpdate = true;
+          this.lastShadowUpdatePos.copy(currentPlayerPos);
+        }
+      }
+    }
 
     // render
     this.renderer.render(this.scene, this.activeCamera);
@@ -773,9 +800,6 @@ export class Game {
     // swap UI components according to level.data.ui (array of strings)
     this.applyLevelUI(this.level.data);
     // swap lighting according to level.data.lights (array of descriptors)
-<<<<<<< HEAD
-    await this.applyLevelLights(this.level.data);
-=======
     this.applyLevelLights(this.level.data);
     // load and play sounds for this level
     await this.applyLevelSounds(this.level.data);
@@ -784,7 +808,6 @@ export class Game {
     this.collectiblesManager.cleanup();
     await this.collectiblesManager.spawnCollectiblesForLevel(this.level.data);
 
->>>>>>> f396ee2e2cb9d9b5efa2ff7b3bfad0165e93045e
     return this.level;
   }
 
@@ -1254,5 +1277,46 @@ export class Game {
     this.lights.add(key, LightModules.FlameParticles, { position: pos, camera: this.activeCamera, particleCount: 10 }).catch(err => {
       console.error('Failed to add flame:', err);
     });
+  }
+  
+  // Update which star should cast shadows (only the closest one)
+  updateClosestStarShadow() {
+    if (!this.lights) return;
+    
+    const playerPos = this.player.getPosition();
+    let closestStar = null;
+    let closestDistance = Infinity;
+    
+    // Find all star lights and determine which is closest
+    const allLights = this.lights.getAll();
+    const starLights = [];
+    
+    for (const [key, component] of Object.entries(allLights)) {
+      // Check if this is a StarLight component
+      if (component.constructor.name === 'StarLight' && component.getLightPosition) {
+        const lightPos = component.getLightPosition();
+        if (lightPos) {
+          const distance = playerPos.distanceTo(lightPos);
+          starLights.push({ key, component, distance });
+          
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestStar = component;
+          }
+        }
+      }
+    }
+    
+    // Enable shadows only on the closest star, disable on all others
+    for (const star of starLights) {
+      const shouldCastShadow = star.component === closestStar;
+      star.component.setCastShadow(shouldCastShadow);
+    }
+    
+    // Update shadow map when switching stars
+    if (closestStar !== this.lastClosestStar) {
+      this.lastClosestStar = closestStar;
+      this.renderer.shadowMap.needsUpdate = true;
+    }
   }
 }

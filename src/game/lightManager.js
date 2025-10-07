@@ -39,4 +39,9 @@ export class LightManager {
       inst.update && inst.update(delta);
     }
   }
+  
+  // Get all light instances for shadow management
+  getAll() {
+    return Object.fromEntries(this._instances);
+  }
 }

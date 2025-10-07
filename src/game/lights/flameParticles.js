@@ -239,8 +239,24 @@ export class FlameParticles extends LightComponent {
         this.createParticleSystem(scene);
 
         // --- ENHANCED REALISTIC LIGHTING FOR BETTER AMBIANCE ---
-        this.flameLight = new THREE.PointLight(0xFF8020, 12, 100); 
+        this.flameLight = new THREE.PointLight(0xFF8020, 200, 1000); // Increased intensity and range for much brighter effect
         this.flameLight.position.copy(this.basePosition).y += 1.2;
+        
+        // Enable shadows only if explicitly requested (to avoid GPU texture limit issues)
+        const enableShadows = this.props.castShadow === true;
+        this.flameLight.castShadow = enableShadows;
+        
+        if (enableShadows) {
+            this.flameLight.shadow.mapSize.width = 512;
+            this.flameLight.shadow.mapSize.height = 512;
+            this.flameLight.shadow.camera.near = 0.1;
+            this.flameLight.shadow.camera.far = 25;
+            this.flameLight.shadow.bias = -0.001;
+            console.log('🔥 Flame light configured WITH shadows');
+        } else {
+            console.log('🔥 Flame light configured WITHOUT shadows (GPU limit)');
+        }
+        
         scene.add(this.flameLight);
 
         this._mounted = true;
@@ -582,7 +598,7 @@ export class FlameParticles extends LightComponent {
             
             const heightFactor = this.flameHeight / 2.0;
             
-            this.flameLight.intensity = heatIntensity * 2.4 * heightFactor;
+            this.flameLight.intensity = heatIntensity * 20 * heightFactor; // Doubled multiplier for even brighter flames
             
             const lightBob = Math.sin(this.time * 4) * 0.2;
             const heatBob = this.heatPulse * 0.1;
