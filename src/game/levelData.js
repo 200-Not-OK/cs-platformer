@@ -447,6 +447,20 @@ cinematics: {
       { type: 'fadeIn', ms: 250 }
     ]
   },
+onLevelComplete: {
+  sequence: [
+    { type: 'takeCamera' },
+    { type: 'fadeOut', ms: 200 },
+    { type: 'cut', position: [32, 6, -24], lookAt: [30, 2, -25], fov: 60 },
+    { type: 'fadeIn', ms: 300 },
+    // { type: 'playVO', vo: 'vo-success', block: false },
+    { type: 'orbit', center: 'player', radius: 6, startDeg: 10, endDeg: 70, height: 3.2, duration: 2500 },
+    { type: 'fadeOut', ms: 250 },
+    { type: 'releaseCamera' },
+    { type: 'fadeIn', ms: 250 }
+  ]
+}
+,
 },
     proximitySounds: [
       {
@@ -607,7 +621,7 @@ cinematics: {
             -35
           ]
         ],
-        "health": 100,
+        "health": 500,
         "speed": 5,
         "chaseRange": 12
       }

@@ -68,6 +68,9 @@ export class SnakeBossEnemy extends EnemyBase {
     // Enhanced health bar for boss
     this.healthBarAlwaysVisible = true; // Use different property name
     this.healthBarSize = { width: 2.0, height: 0.25 }; // Larger health bar
+
+    // Ensure we only signal defeat once
+    this._deathEventFired = false;
     
     console.log(`👑 SnakeBossEnemy created with health: ${this.health}, speed: ${this.speed}`);
     console.log(`👑 Boss enrage threshold: ${this.enrageThreshold}`);
@@ -560,7 +563,7 @@ export class SnakeBossEnemy extends EnemyBase {
     }
   }
 
-  // Override death to play death animation
+  // Override death to play death animation + fire one-time defeat events
   takeDamage(amount) {
     const wasDead = !this.alive;
     super.takeDamage(amount);
@@ -571,6 +574,34 @@ export class SnakeBossEnemy extends EnemyBase {
         this._playAnimation(this.bossAnimations.death, false);
       }
       console.log(`👑 BOSS DEFEATED!`);
+
+      
+
+      // 🔔 Fire once: tell the rest of the game the boss is down
+      if (!this._deathEventFired) {
+        this._deathEventFired = true;
+        try {
+          const levelId = this.game?.currentLevelId || this.game?.levelId || null;
+
+          // Prefer your in-game event bus if present
+          if (this.game?.events?.emit) {
+            this.game.events.emit('boss:defeated', { levelId });
+          }
+
+          // Also broadcast a DOM event as a safe fallback
+          window.dispatchEvent(new CustomEvent('boss:defeated', { detail: { levelId } }));
+        } catch (e) {
+          console.warn('Could not dispatch boss:defeated event:', e);
+        }
+      }
+
+      if (this.game?.events?.emit) {
+      this.game.events.emit('level:complete', { levelId: this.game?.level?.data?.id });
+    } else {
+      window.dispatchEvent(new CustomEvent('level:complete', {
+        detail: { levelId: this.game?.level?.data?.id }
+      }));
+    }
     }
   }
 
