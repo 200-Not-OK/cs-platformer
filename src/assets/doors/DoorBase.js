@@ -14,6 +14,9 @@ export class DoorBase {
       this.mesh = new THREE.Group();
       this.scene.add(this.mesh);
 
+      // Initialize doorPanel to prevent undefined errors during async loading
+      this.doorPanel = null;
+
       // Door properties - support both size array and individual width/height
       const width = options.width || (options.size ? options.size[0] : 2);
       const height = options.height || (options.size ? options.size[1] : 4);
@@ -670,7 +673,18 @@ export class DoorBase {
           collisionSize
         });
 
-        this.body = this.physicsWorld.createDoorBody(collisionCenter, collisionSize);
+        // Create a kinematic body for the door (movable but not affected by forces)
+        this.body = this.physicsWorld.createDynamicBody({
+          mass: 0, // Kinematic body (mass = 0 means it won't be affected by gravity)
+          shape: 'box',
+          size: collisionSize,
+          position: [collisionCenter.x, collisionCenter.y, collisionCenter.z],
+          material: 'wall' // Use wall material for proper collision
+        });
+        
+        // Make it kinematic (controlled by animation, not physics forces)
+        this.body.type = CANNON.Body.KINEMATIC;
+        this.body.collisionResponse = true; // It blocks the player
 
         if (this.body) {
           console.log('Door physics body created successfully');
@@ -810,6 +824,9 @@ export class DoorBase {
       return canInteract;
     } else {
       // When door is open, allow interaction from around the door panel's current position
+      if (!this.doorPanel) {
+        return false; // Cannot interact if doorPanel not loaded yet
+      }
       this.doorPanel.updateWorldMatrix(true, false);
       const panelWorldPos = new THREE.Vector3();
       this.doorPanel.getWorldPosition(panelWorldPos);

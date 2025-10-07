@@ -8,7 +8,7 @@ export class HemisphereFill extends LightComponent {
   }
 
   mount(scene) {
-    this.light = new THREE.HemisphereLight(this.props.skyColor ?? 0xb1e1ff, this.props.groundColor ?? 0x444444, this.props.intensity ?? 0.6);
+    this.light = new THREE.HemisphereLight(this.props.skyColor ?? 0xb1e1ff, this.props.groundColor ?? 0x444444, this.props.intensity ?? 0.01);
     scene.add(this.light);
     this._mounted = true;
   }

@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+src/assets/*.hdr
+src/assets/*.glb
+src/assets/Free Galaxies 8k.hdr
