@@ -3,6 +3,7 @@ export const levels = [
   {
     "id": "intro",
     "name": "Intro Level",
+    "order": 1,
     "gltfUrl": "src/assets/levels/introLevel.gltf",
     "startPosition": [
       0,
@@ -260,6 +261,7 @@ export const levels = [
   {
     "id": "level2",
     "name": "Level 2",
+    "order": 0,
     "gltfUrl": "src/assets/levels/Level2/Level2.gltf",
     "startPosition": [
       195,
@@ -369,8 +371,83 @@ export const levels = [
         }
       },
       playMusic: 'level2-theme',
-      playVoiceover: 'vo-levelstart'
+      playVoiceover: null
     },
+cinematics: {
+  onLevelStart: {
+    sequence: [
+      { type: 'takeCamera' },
+      { type: 'fadeOut', ms: 300 },
+
+      // Tighter establishing on the knight (closer + slightly narrower FOV)
+      { type: 'cut', position: [196.2, 6.9, -82.2], lookAt: [195, 5.8, -83], fov: 48 },
+      { type: 'fadeIn', ms: 600 },
+
+      // === 35s VO with timed captions ===
+      {
+        type: 'playVO',
+        vo: 'vo-levelstart',
+        block: true, // hold the sequence until VO is done
+
+        // Your locked caption timings
+        segments: [
+          { at:     0,  ms: 2000, text: "Hey everybody, welcome to the Serpent’s Labyrinth." },
+          { at:  2400,  ms: 2700, text: "You’re a knight now, in a world of stone walls and lurking dangers." },
+          { at:  5500,  ms: 2500, text: "Inside, you’ll find apples hidden in chests." },
+          { at:  8500,  ms: 1500, text: "They’re your key to escape." },
+          { at: 10000,  ms: 3500, text: "But beware—the snakes that guard them are not ordinary creatures;" },
+          { at: 14000,  ms: 6000, text: "each one slithers with its own cunning, and if they catch you—well, let’s just say you won’t be making it out alive." },
+          { at: 21000,  ms: 6000, text: "And there’s talk of something far worse: a great beast, a serpent older than the labyrinth itself." },
+          { at: 27500,  ms: 3500, text: "If you hear the ground tremble, don’t stick around to find out why." },
+          { at: 31500,  ms: 3500, text: "Gather the apples, find the exit, and escape before it finds you." }
+        ],
+
+        // Camera timeline aligned to those beats (computed waits include prior step durations)
+        concurrent: [
+          // 0.0s → 13.0s: slow hero orbit (starts 1s in)
+          { type: 'wait', ms: 1000 },
+          { type: 'orbit', center: 'player', radius: 7.5, startDeg: 30, endDeg: 50, height: 4.8, duration: 12000 },
+
+          // // ~14.0s: "each one slithers..." → CUT to a snake and showcase it
+          { type: 'wait', ms: 1000 },                   // brings us to ~14.0s
+          // { type: 'fadeOut', ms: 140 },
+          // // // snake at [140, 1.4, -30]
+          { type: 'cut', position: [137.00079992092608, 0.1245687627273453, -39.95321271964637], lookAt:  [135.5589805717232, 0.1245687627273453, -23.224077180845633], fov: 52 },
+          { type: 'fadeIn', ms: 140 },
+          { type: 'orbit', center: [132.98057775780848, 0.1245687627273453, -20.09886231664358], radius: 7, startDeg: 75, endDeg: 65, height: 3.0, duration: 5200 },
+
+          // ~21.0s: "something far worse..." → BOSS DOOR tease + ominous zoom/rumble
+          { type: 'wait', ms: 1220 },                   // lands ~21.0s
+          // { type: 'fadeIn', ms: 1460 },
+          { type: 'cut', position:[72, 4, -6], lookAt:[68.89083005033424, 3, -8.], fov: 100 },
+                    { type: 'orbit', center: [70.20661523837512, 3.5, -7], radius: 2, startDeg: 230, endDeg: 180, height: 3.0, duration: 5200 },
+          // { type: 'fadeIn', ms: 160 },
+          { type: 'rumble', sfx: 'rumbling', seconds: 1.2, magnitude: 0.18, volume: 0.7 },
+          // // { type: 'zoom', fov: 39, duration: 3000 },
+
+          // // ~27.5s: "hear the ground tremble" → second rumble hit
+          // { type: 'wait', ms: 5180 },                   // lands ~27.5s
+          { type: 'rumble', sfx: 'rumbling', seconds: 1.1, magnitude: 0.15, volume: 0.6 },
+
+          // // ~31.5s: "Gather the apples..." → CUT to a chest and push in
+          { type: 'wait', ms: 4000 },                   // lands ~31.5s
+          // { type: 'fadeOut', ms: 120 },
+          // chest_1 at [145, 0.5, -46]
+          { type: 'cut', position:  [138,4,120], lookAt: [135,4,116], fov: 100 },
+           { type: 'orbit', center:  [138,4,120], radius: 2, startDeg: 230, endDeg: 180, height: 1.0, duration: 200 },
+          { type: 'fadeIn', ms: 120 },
+          // { type: 'zoom', fov: 70, duration: 900 }
+          // (we let the shot hold on the chest until VO completes)
+        ]
+      },
+
+      // Hand back control
+      { type: 'fadeOut', ms: 250 },
+      { type: 'releaseCamera' },
+      { type: 'fadeIn', ms: 250 }
+    ]
+  },
+},
     proximitySounds: [
       {
         position: [203, 3.7, -66.7],
@@ -5414,5 +5491,6 @@ export const levels = [
         "color": 7048739
       }
     ]
-  }
+  },
+  
 ];
