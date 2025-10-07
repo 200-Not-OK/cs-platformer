@@ -9,12 +9,12 @@ export class BasicLights extends LightComponent {
   }
 
   mount(scene) {
-    this.dir = new THREE.DirectionalLight(this.props.color ?? 0xffffff, this.props.intensity ?? 1);
+    this.dir = new THREE.DirectionalLight(this.props.color ?? 0xffffff, this.props.intensity ?? 0.1);
     const pos = this.props.direction ?? [10, 20, 10];
     this.dir.position.set(...pos);
     scene.add(this.dir);
 
-    this.amb = new THREE.AmbientLight(this.props.ambientColor ?? 0xe8e8e8, this.props.ambientIntensity ?? 1.4);
+    this.amb = new THREE.AmbientLight(this.props.ambientColor ?? 0xe8e8e8, this.props.ambientIntensity ?? 0.05);
     scene.add(this.amb);
     this._mounted = true;
   }

@@ -173,61 +173,12 @@ export class PhysicsWorld {
     const maxDelta = 1/30;
     const clampedDelta = Math.min(deltaTime, maxDelta);
     
-    try {
-      // Validate physics world state before stepping
-      if (!this.world || !this.world.bodies) {
-        console.error('Physics world is corrupted, skipping step');
-        return;
-      }
-      
-      // Check for corrupted bodies and remove them
-      const bodiesToRemove = [];
-      for (let i = 0; i < this.world.bodies.length; i++) {
-        const body = this.world.bodies[i];
-        if (!body || !body.position || !body.quaternion || !body.velocity) {
-          console.warn(`Removing corrupted physics body at index ${i}`);
-          bodiesToRemove.push(body);
-        }
-      }
-      
-      // Remove corrupted bodies
-      bodiesToRemove.forEach(body => {
-        if (body) {
-          this.removeBody(body);
-        }
-      });
-      
-      // Step physics simulation
-      this.world.step(clampedDelta);
-    } catch (error) {
-      console.error('Physics step error:', error);
-      // Try to recover by clearing corrupted state
-      this._recoverFromPhysicsError();
-    }
+    // Step physics simulation
+    this.world.step(clampedDelta);
     
     // Update debug renderer if enabled
     if (this.debugEnabled && this.debugRenderer) {
       this.debugRenderer.update();
-    }
-  }
-  
-  _recoverFromPhysicsError() {
-    console.warn('Attempting to recover from physics error...');
-    try {
-      // Reset world time to prevent accumulation issues
-      this.world.time = 0;
-      
-      // Clear any invalid contacts
-      if (this.world.contacts) {
-        this.world.contacts.length = 0;
-      }
-      
-      // Reset solver iterations
-      if (this.world.solver) {
-        this.world.solver.iterations = 10;
-      }
-    } catch (error) {
-      console.error('Failed to recover from physics error:', error);
     }
   }
   
@@ -412,14 +363,6 @@ export class PhysicsWorld {
     
     return body;
   }
-
-  /**
-   * Add a physics body to the world
-   */
-  addBody(body) {
-    if (!body) return;
-    this.world.addBody(body);
-  }
   
   removeBody(body) {
     if (!body) return;
@@ -538,37 +481,18 @@ export class PhysicsWorld {
     return body;
   }
   
-  createDoorBody(position, size) {
-    try {
-      const shape = new CANNON.Box(new CANNON.Vec3(size[0]/2, size[1]/2, size[2]/2));
-      const body = new CANNON.Body({
-        mass: 0,
-        type: CANNON.Body.KINEMATIC,
-        material: this.materials.wall || this.materials.ground
-      });
-      
-      body.addShape(shape);
-      body.position.set(position.x, position.y, position.z);
-      
-      this.world.addBody(body);
-      this.staticBodies.add(body);
-      
-      body.userData = { 
-        type: 'door',
-        collisionType: 'box'
-      };
-      
-      console.log('Created door physics body:', {
-        position: body.position,
-        size: size,
-        shape: shape
-      });
-      
-      return body;
-    } catch (error) {
-      console.error('Failed to create door physics body:', error);
-      return null;
-    }
+  addStaticCapsule(position, radius, height, materialType = 'ground') {
+    // Cannon.js doesn't have a capsule shape, so we'll create a cylinder
+    const shape = new CANNON.Cylinder(radius, radius, height, 8);
+    const body = new CANNON.Body({ mass: 0, material: this.materials[materialType] });
+    body.addShape(shape);
+    body.position.set(position.x, position.y, position.z);
+    body.type = CANNON.Body.KINEMATIC;
+    
+    this.world.addBody(body);
+    this.staticBodies.add(body);
+    
+    return body;
   }
   
   dispose() {

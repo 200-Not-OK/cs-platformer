@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createSceneAndRenderer } from './scene.js';
+import { createSceneAndRenderer, ENABLE_STAR_SHADOWS } from './scene.js';
 import { InputManager } from './input.js';
 import { Player } from './player.js';
 import { LevelManager } from './levelManager.js';
@@ -26,15 +26,16 @@ import { CollectiblesManager } from './CollectiblesManager.js';
 import { SoundManager } from './soundManager.js';
 import { ProximitySoundManager } from './proximitySoundManager.js';
 
-// OPTIONAL: if you have a levelData export, this improves level picker labelling.
-// If your project doesn't export this, you can safely remove the import and the uses of LEVELS.
-import { levels as LEVELS } from './levelData.js';
-
 export class Game {
   constructor() {
-    const { scene, renderer } = createSceneAndRenderer();
+    const { scene, renderer, updateSkybox, shaderSystem } = createSceneAndRenderer();
     this.scene = scene;
     this.renderer = renderer;
+    this.updateSkybox = updateSkybox;
+    this.shaderSystem = shaderSystem;
+    
+    // Store shader system reference in scene for easy access
+    this.scene.userData.shaderSystem = shaderSystem;
 
     // Initialize physics world with scene for improved collision detection
     this.physicsWorld = new PhysicsWorld(this.scene, {
@@ -58,7 +59,7 @@ export class Game {
       colliderWidthScale: 0.5,   // 40% of model width (default: 0.4)
       colliderHeightScale: 1,  // 90% of model height (default: 0.9)
       colliderDepthScale: 0.5,    // 40% of model depth (default: 0.4)
-      game: this // Pass game reference for death handling and boss win event
+      game: this // Pass game reference for death handling
     });
     // Player position will be set by loadLevel() call
 
@@ -168,7 +169,7 @@ export class Game {
     this.ui.add('interactionPrompt', InteractionPrompt, { message: 'to interact' });
     // Add voiceover card for character dialogues
     this.ui.add('voiceoverCard', VoiceoverCard, {
-      characterName: 'Pravesh',
+      characterName: 'Praveen',
       position: 'left'
     });
 
@@ -186,18 +187,17 @@ export class Game {
     // Lighting manager (modular per-level lights)
     this.lights = new LightManager(this.scene);
 
+    // Flame placement positions
+    this.flamePositions = [];
+    this.maxActiveFlames = 40;
+    this.flameCounter = 0;
+    this.placedFlameKeys = [];
+    this.jPressed = false;
     // Sound manager (initialize with camera for 3D audio)
     this.soundManager = new SoundManager(this.thirdCameraObject);
 
     // Proximity sound manager (for location-based sounds like torches)
     this.proximitySoundManager = null; // Will be initialized after player is ready
-
-    // Overlays (built on demand)
-    this._victoryOverlay = null;
-    this._levelPicker = null;
-
-    // Listen for level completion (boss dispatches 'level:complete')
-    window.addEventListener('level:complete', () => this._onLevelComplete());
 
     // Load the initial level early so subsequent code can reference `this.level`
     this._initializeLevel();
@@ -243,7 +243,7 @@ export class Game {
       console.log(`
 🎮 === GAME CONTROLS ===
 🎥 C - Cycle cameras (Free → Third → First)
-🔄 N - Level Picker
+🔄 N - Next level
 🔍 M - Toggle physics debug visualization  
 🚪 H - Toggle door collision helpers
 ⚔️  B - Toggle combat debug visuals
@@ -259,9 +259,6 @@ export class Game {
     await this.loadLevel(0);
     // Apply lights for current level   
     this.applyLevelLights(this.level?.data);
-
-    // Show level picker shortly after load-in (as requested)
-    setTimeout(() => this._showLevelPicker(), 400);
   }
 
   _bindKeys() {
@@ -300,8 +297,9 @@ export class Game {
         // ensure player is active when in third- or first-person
         // (handled each frame in _loop by checking activeCamera)
       } else if (code === 'KeyN') {
-        // Open the Level Picker instead of jumping to next level
-        this._showLevelPicker();
+        // next level — use loadLevel so per-level UI is applied
+        const nextIndex = this.levelManager.currentIndex + 1;
+        this.loadLevel(nextIndex).catch(err => console.error('Failed to load level:', err));
       } else if (code === 'KeyM') {
         // toggle physics debug visualization
         this.physicsWorld.enableDebugRenderer(!this.physicsWorld.isDebugEnabled());
@@ -448,7 +446,7 @@ export class Game {
       console.log(`🎤 voCard exists?`, !!voCard);
       if (voCard) {
         console.log(`🎤 Showing voiceover card for Pravesh`);
-        voCard.show('Pravesh');
+        voCard.show('Praveen');
         voCard.startSpeaking();
 
         // Hide after duration
@@ -647,6 +645,14 @@ export class Game {
     // Update door system
     this.doorManager.update(delta, this.player.getPosition());
 
+    // Handle flame placement input (j key to place flames at predefined positions)
+    if (this.input.isKey('KeyJ') && !this.jPressed) {
+      this.jPressed = true;
+      this.placeFlames();
+    } else if (!this.input.isKey('KeyJ')) {
+      this.jPressed = false;
+    }
+
     // Update collectibles system
     this.collectiblesManager.update(delta);
 
@@ -665,68 +671,94 @@ export class Game {
     // Check apple collection status for Level 2 door unlocking
     this.checkAppleCollectionForDoors();
 
-    // update lights (allow dynamic lights to animate)
-    if (this.lights) this.lights.update(delta);
+  // update lights (allow dynamic lights to animate)
+  if (this.lights) this.lights.update(delta);
+  
+  // Update which star casts shadows (only closest to player) - only if enabled
+  if (ENABLE_STAR_SHADOWS) {
+    this.updateClosestStarShadow();
+  }
+
+  // Update skybox rotation for subtle twinkling effect
+  if (this.updateSkybox) {
+    this.updateSkybox(delta * 1000); // Convert to milliseconds for consistent rotation speed
+  }
+
+    // Smart shadow update: update when player moves more than 1 unit - only if star shadows enabled
+    if (ENABLE_STAR_SHADOWS) {
+      const currentPlayerPos = this.player.getPosition();
+      if (!this.lastShadowUpdatePos) {
+        this.lastShadowUpdatePos = currentPlayerPos.clone();
+        this.renderer.shadowMap.needsUpdate = true;
+      } else {
+        const distanceMoved = currentPlayerPos.distanceTo(this.lastShadowUpdatePos);
+        if (distanceMoved > 1.0) {
+          this.renderer.shadowMap.needsUpdate = true;
+          this.lastShadowUpdatePos.copy(currentPlayerPos);
+        }
+      }
+    }
 
     // render
     this.renderer.render(this.scene, this.activeCamera);
   }
 
   // Load level by index and swap UI based on level metadata
-  // Load level by index and swap UI based on level metadata
   async loadLevel(index) {
     if (this.level) this.level.dispose();
-
+    
     // Preserve debug state before disposing old physics world
     const wasDebugEnabled = this.physicsWorld.isDebugEnabled();
-
+    
     // Clear existing physics bodies and recreate physics world with improved collision detection
     this.physicsWorld.dispose();
     this.physicsWorld = new PhysicsWorld(this.scene, {
       useAccurateCollision: false, // Disable Trimesh by default for more reliable collision
       debugMode: wasDebugEnabled   // Preserve debug state across level transitions
     });
-
-    // Update references that depend on physics world
+    
+    // Update player's physics world reference
     this.player.physicsWorld = this.physicsWorld;
+    
+    // Update combat system's physics world reference
     this.combatSystem.physicsWorld = this.physicsWorld;
+    
+    // Update door manager's physics world reference
     this.doorManager.physicsWorld = this.physicsWorld;
+    
+    // Update collectibles manager's physics world reference
     this.collectiblesManager.updatePhysicsWorld(this.physicsWorld);
+    
+    // Clear existing doors when loading a new level
     this.doorManager.dispose();
     this.doorManager = new DoorManager(this.scene, this.physicsWorld, this);
-    this.doorsUnlockedByApples = false;
-
+    this.doorsUnlockedByApples = false; // Reset door unlock status for new level
+    
+    // Recreate player's physics body in the new physics world
     if (this.player.originalModelSize) {
       this.player.createPhysicsBody(this.player.originalModelSize);
     }
-
+    
+    // Update level manager's physics world reference
     this.levelManager.physicsWorld = this.physicsWorld;
+    
     this.level = await this.levelManager.loadIndex(index);
+
+    // Set flame placement positions
+    this.flamePositions = this.level.data.flamePlacementPositions || [];
 
     // Position player at start position from level data
     const start = this.level.data.startPosition;
     this.player.setPosition(new THREE.Vector3(...start));
     console.log(`🏃 Player spawned at position: [${start.join(', ')}] for level: ${this.level.data.name}`);
+    
+    // Trigger level start cinematic
+    this.level.triggerLevelStartCinematic(this.activeCamera, this.player);
 
-    // swap UI + lights first
-    this.applyLevelUI(this.level.data);
-    this.applyLevelLights(this.level.data);
-
-    // IMPORTANT:
-    // If an onLevelStart cinematic exists, we want the cinematic to control VO timing.
-    const hasLevelStartCinematic =
-      !!(this.level?.data?.cinematics && (this.level.data.cinematics.onLevelStart || Array.isArray(this.level.data.cinematics)));
-
-    // Load sounds. If cinematic exists, defer VO to it.
-    await this.applyLevelSounds(this.level.data, { deferVoiceoverToCinematic: hasLevelStartCinematic });
-
-    // Spawn collectibles AFTER sounds/UI are ready
-    this.collectiblesManager.cleanup();
-    await this.collectiblesManager.spawnCollectiblesForLevel(this.level.data);
-
-    // Doors (Level 2 example)
-    if (index === 1) {
-      this.doorManager.spawn('model', {
+    // spawn doors at specific positions only on level 2
+    if (index === 1) { // level2
+      // Boss door - locked until all apples collected
+      this.doorManager.spawn('model', { 
         position: [25.9, 0, -4.5],
         preset: 'wooden',
         width: 6,
@@ -736,11 +768,15 @@ export class Game {
         modelUrl: 'src/assets/doors/level2_boss_door.glb',
         swingDirection: 'forward left',
         interactionDistance: 10,
-        autoOpenOnApproach: false,
-        locked: true,
-        requiredKey: 'all_apples'
+        autoOpenOnApproach: false, // Disabled until unlocked
+        locked: true, // Lock the door initially
+        requiredKey: 'all_apples' // Custom key requirement
+      //  passcode: '123'
       });
-      this.doorManager.spawn('basic', {
+      console.log('Spawned locked boss door model at position [25.9, 0, -4.5] on level 2 - requires all apples');
+      
+      // Second door - also locked until all apples collected
+      this.doorManager.spawn('basic', { 
         position: [56.5, 0, -9.4],
         preset: 'wooden',
         width: 4.7,
@@ -751,20 +787,29 @@ export class Game {
         swingDirection: 'forward left',
         initialRotation: 90,
         interactionDistance: 10,
-        autoOpenOnApproach: false,
-        locked: true,
-        requiredKey: 'all_apples'
+        autoOpenOnApproach: false, // Disabled until unlocked
+        locked: true, // Lock the door initially
+        requiredKey: 'all_apples' // Custom key requirement
       });
+      console.log('Spawned locked basic door at position [55, 0, -4.5] on level 2 - requires all apples');
+      
+      // Apply current door helper visibility state
       this.doorManager.toggleColliders(this.doorHelpersVisible);
     }
 
-    // Finally: trigger the cinematic (sounds are loaded and ready).
-    // The cinematic's `playVO` step will start narration exactly on cue.
-    this.level.triggerLevelStartCinematic(this.activeCamera, this.player);
+    // swap UI components according to level.data.ui (array of strings)
+    this.applyLevelUI(this.level.data);
+    // swap lighting according to level.data.lights (array of descriptors)
+    this.applyLevelLights(this.level.data);
+    // load and play sounds for this level
+    await this.applyLevelSounds(this.level.data);
+
+    // Spawn collectibles after all systems are initialized
+    this.collectiblesManager.cleanup();
+    await this.collectiblesManager.spawnCollectiblesForLevel(this.level.data);
 
     return this.level;
   }
-
 
   /**
    * Check if all apples have been collected and unlock doors in Level 2
@@ -897,17 +942,25 @@ export class Game {
     const list = (levelData && levelData.lights) ? levelData.lights : null;
     if (!list) return;
     // list is array of either string keys or objects { key, props }
+    const loadPromises = [];
     for (const item of list) {
       let key, props;
       if (typeof item === 'string') { key = item; props = {}; }
       else { key = item.key; props = item.props || {}; }
+      
+      // Pass camera reference to FlameParticles
+      if (key === 'FlameParticles') {
+        props.camera = this.activeCamera;
+      }
+      
       const Module = LightModules[key];
       if (!Module) {
         console.warn('Unknown light module key in level data:', key);
         continue;
       }
-      this.lights.add(key, Module, props);
+      loadPromises.push(this.lights.add(key + '_' + Math.random().toString(36).substr(2, 9), Module, props));
     }
+    return Promise.all(loadPromises);
   }
 
   applyLevelUI(levelData) {
@@ -995,72 +1048,100 @@ export class Game {
     }
   }
 
-  async applyLevelSounds(levelData, opts = {}) {
-    const { deferVoiceoverToCinematic = false } = opts;
-
-    console.log('🔊 applyLevelSounds for:', levelData?.name, 'deferVO:', deferVoiceoverToCinematic);
+  async applyLevelSounds(levelData) {
+    console.log('🔊🔊🔊 applyLevelSounds CALLED! 🔊🔊🔊');
+    console.log('🔊 applyLevelSounds called for level:', levelData.name);
+    console.log('🔊 Sound manager exists?', !!this.soundManager);
+    console.log('🔊 Level sounds config:', levelData.sounds);
 
     if (!this.soundManager) {
       console.warn('⚠️ Sound manager not available!');
       return;
     }
-    if (!levelData?.sounds) {
+
+    if (!levelData.sounds) {
       console.warn('⚠️ No sounds config in level data!');
-      // Proximity sounds still handled below if present
+      console.log('🔍 Skipping to proximity sounds check...');
+      // Even if no sounds, still check for proximity sounds
+      console.log(`🔍 Checking for proximity sounds in level data...`);
+      console.log(`🔍 levelData.proximitySounds exists?`, !!levelData.proximitySounds);
+      console.log(`🔍 levelData.proximitySounds value:`, levelData.proximitySounds);
+      return;
     }
 
     try {
-      if (levelData?.sounds) {
-        await this.soundManager.loadSounds(levelData.sounds);
-        console.log('🔊 Sounds loaded OK');
+      console.log('🔊 Starting to load sounds...');
+      // Load sounds for this level
+      await this.soundManager.loadSounds(levelData.sounds);
+      console.log('🔊 Sounds loaded successfully!');
 
-        // Store what to play
-        this._pendingMusic    = levelData.sounds.playMusic || null;
-        this._pendingAmbient  = levelData.sounds.playAmbient || null;
+      // Store what music/ambient/voiceover to play for this level
+      console.log('🔊 DEBUG: levelData.sounds object:', levelData.sounds);
+      console.log('🔊 DEBUG: levelData.sounds.playMusic =', levelData.sounds.playMusic);
+      console.log('🔊 DEBUG: levelData.sounds.playAmbient =', levelData.sounds.playAmbient);
+      console.log('🔊 DEBUG: levelData.sounds.playVoiceover =', levelData.sounds.playVoiceover);
 
-        // If a cinematic will drive VO timing, do NOT set a pending VO here.
-        this._pendingVoiceover = deferVoiceoverToCinematic ? null : (levelData.sounds.playVoiceover || null);
+      this._pendingMusic = levelData.sounds.playMusic;
+      this._pendingAmbient = levelData.sounds.playAmbient;
+      this._pendingVoiceover = levelData.sounds.playVoiceover;
 
-        const ctx = this.soundManager.listener.context;
-        const ctxRunning = ctx && ctx.state === 'running';
+      // Check if AudioContext is already running (user has interacted)
+      const audioContext = this.soundManager.listener.context;
+      console.log('🔊 AudioContext state:', audioContext.state);
 
-        // Start music/ambient immediately if we can. (No delay!)
-        if (ctxRunning) {
-          if (this._pendingMusic) {
-            this.soundManager.playMusic(this._pendingMusic);
-            this._pendingMusic = null;
-          }
-          if (this._pendingAmbient) {
-            this.soundManager.playAmbient(this._pendingAmbient);
-            this._pendingAmbient = null;
-          }
-          // Only auto-play VO if not deferred to cinematic
-          if (this._pendingVoiceover) {
-            // No 500ms delay—start now so it doesn’t drift
-            const vo = this._pendingVoiceover;
-            this._pendingVoiceover = null;
-            this.playVoiceover(vo, 2000);
-          }
-        } else {
-          console.log('🔊 AudioContext suspended. Will start audio on first user click.');
+      if (audioContext.state === 'running') {
+        // AudioContext is ready, play immediately
+        if (this._pendingMusic) {
+          console.log('🔊 AudioContext running, playing music:', this._pendingMusic);
+          this.soundManager.playMusic(this._pendingMusic);
+          this._pendingMusic = null;
         }
+        if (this._pendingAmbient) {
+          console.log('🔊 AudioContext running, playing ambient:', this._pendingAmbient);
+          this.soundManager.playAmbient(this._pendingAmbient);
+          this._pendingAmbient = null;
+        }
+        if (this._pendingVoiceover) {
+          console.log('🔊 AudioContext running, playing voiceover:', this._pendingVoiceover);
+          const voToPlay = this._pendingVoiceover;
+          this._pendingVoiceover = null;
+          setTimeout(() => {
+            this.playVoiceover(voToPlay, 15000); // 15 seconds for voiceover
+          }, 500); // Small delay so VO plays after music starts
+        }
+      } else {
+        console.log('🔊 AudioContext suspended. Music will play after user interaction (click).');
+        console.log('🔊 Pending music:', this._pendingMusic);
+        console.log('🔊 Pending ambient:', this._pendingAmbient);
+        console.log('🔊 Pending voiceover:', this._pendingVoiceover);
       }
 
-      // Proximity sounds
-      if (levelData?.proximitySounds) {
+      // Load proximity sounds if specified
+      console.log(`🔍 Checking for proximity sounds in level data...`);
+      console.log(`🔍 levelData.proximitySounds exists?`, !!levelData.proximitySounds);
+      console.log(`🔍 levelData.proximitySounds value:`, levelData.proximitySounds);
+
+      if (levelData.proximitySounds) {
+        console.log(`🎵 Level has ${levelData.proximitySounds.length} proximity sound zones`);
+        // Create proximity sound manager if not exists
         if (!this.proximitySoundManager) {
+          console.log(`🎵 Creating new ProximitySoundManager`);
           this.proximitySoundManager = new ProximitySoundManager(this.soundManager, this.player);
         }
         this.proximitySoundManager.loadProximitySounds(levelData.proximitySounds);
-      } else if (this.proximitySoundManager) {
-        // Clean up if the new level doesn't define proximity audio
-        this.proximitySoundManager.dispose();
+      } else {
+        console.warn(`⚠️⚠️⚠️ NO PROXIMITY SOUNDS FOUND IN LEVEL DATA! ⚠️⚠️⚠️`);
+        if (this.proximitySoundManager) {
+          // Clean up proximity sounds if no proximity sounds in new level
+          this.proximitySoundManager.dispose();
+        }
       }
-    } catch (err) {
-      console.error(`❌ Failed to load/apply sounds for ${levelData?.name}:`, err);
+
+      console.log(`🔊 Loaded sounds for level: ${levelData.name}`);
+    } catch (error) {
+      console.error(`❌ Failed to load sounds for level ${levelData.name}:`, error);
     }
   }
-
 
   checkFinalSnake() {
     if (!this.level || !this.level.getEnemies) return;
@@ -1181,266 +1262,61 @@ export class Game {
     }
   }
 
-  /* ===========================
-     Victory Moment + overlays
-     =========================== */
-
-  _onLevelComplete() {
-    console.log('🏁 Level complete event received');
-
-    // Temporarily disable input while we show cinematics/overlays
-    this.input?.setEnabled?.(false);
-
-    // Kick the level-complete cinematic if your level defines it
-    if (this.level?.triggerLevelCompleteCinematic) {
-      this.level.triggerLevelCompleteCinematic(this.activeCamera, this.player);
+  placeFlames() {
+    console.log('Placing flame at player position, current flames:', this.placedFlameKeys.length);
+    const pos = this.player.getPosition().toArray();
+    const key = 'placedFlame_' + this.flameCounter++;
+    this.placedFlameKeys.push(key);
+    if (this.placedFlameKeys.length > this.maxActiveFlames) {
+      const oldKey = this.placedFlameKeys.shift();
+      console.log('Removing old flame:', oldKey);
+      this.lights.remove(oldKey);
     }
-
-    // Play success VO (pravesh_success_vo.mp3 should be registered as "vo-success")
-    if (this.soundManager?.sfx?.['vo-success']) {
-      this.playVoiceover('vo-success', 7000);
-      // Optional captions to go with the VO (simple sequenced bubbles)
-this._runCaptionSequence([
-  { at: 0,    text: "You made it—the apples are yours and the labyrinth is behind you." },
-  { at: 1700, text: "Not bad, knight." },
-  { at: 2600, text: "I’d say you’ve earned a break… but the next challenge won’t be so forgiving." },
-  { at: 4800, text: "Take a breath, sharpen your wits," },
-  { at: 6200, text: "and get ready—Level Four awaits." }
-]);
-
+    console.log('Adding flame at', pos, 'with key', key, 'total now:', this.placedFlameKeys.length);
+    // Make add async-aware
+    this.lights.add(key, LightModules.FlameParticles, { position: pos, camera: this.activeCamera, particleCount: 10 }).catch(err => {
+      console.error('Failed to add flame:', err);
+    });
+  }
+  
+  // Update which star should cast shadows (only the closest one)
+  updateClosestStarShadow() {
+    if (!this.lights) return;
+    
+    const playerPos = this.player.getPosition();
+    let closestStar = null;
+    let closestDistance = Infinity;
+    
+    // Find all star lights and determine which is closest
+    const allLights = this.lights.getAll();
+    const starLights = [];
+    
+    for (const [key, component] of Object.entries(allLights)) {
+      // Check if this is a StarLight component
+      if (component.constructor.name === 'StarLight' && component.getLightPosition) {
+        const lightPos = component.getLightPosition();
+        if (lightPos) {
+          const distance = playerPos.distanceTo(lightPos);
+          starLights.push({ key, component, distance });
+          
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestStar = component;
+          }
+        }
+      }
     }
-
-    // Show the victory overlay a beat after the camera move starts
-setTimeout(() => {
-  this._showVictoryOverlay();  // already shows Replay + Go To Level
-  this._showLevelPicker();     // or pop the picker directly
-  this.input?.setEnabled?.(true);
-}, 3000); // after orbit; tweak to your taste
-
-  }
-
-  _runCaptionSequence(segments = []) {
-    // Uses the same simple bubble you already use in showSimpleDialogue
-    segments.forEach(seg => {
-      setTimeout(() => {
-        this.showSimpleDialogue('Pravesh', seg.text, 1600);
-      }, seg.at || 0);
-    });
-  }
-
-  _ensureVictoryOverlay() {
-    if (this._victoryOverlay) return;
-
-    const overlay = document.createElement('div');
-    Object.assign(overlay.style, {
-      position: 'fixed',
-      inset: '0',
-      display: 'none',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'linear-gradient(180deg, rgba(0,0,0,.65), rgba(0,0,0,.85))',
-      zIndex: 9999
-    });
-
-    const card = document.createElement('div');
-    Object.assign(card.style, {
-      width: 'min(92vw, 720px)',
-      borderRadius: '18px',
-      border: '3px solid #51cf66',
-      background: '#0b1324',
-      color: 'white',
-      padding: '24px',
-      boxShadow: '0 20px 60px rgba(0,0,0,.6)',
-      fontFamily: 'system-ui, sans-serif',
-      textAlign: 'center'
-    });
-
-    const title = document.createElement('div');
-    title.textContent = 'Victory! 🏆';
-    Object.assign(title.style, { fontSize: '28px', fontWeight: 800, marginBottom: '6px' });
-
-    const subtitle = document.createElement('div');
-    subtitle.textContent = 'Choose your next step:';
-    Object.assign(subtitle.style, { opacity: .85, marginBottom: '16px' });
-
-    const actions = document.createElement('div');
-    Object.assign(actions.style, {
-      display: 'flex',
-      gap: '10px',
-      flexWrap: 'wrap',
-      alignItems: 'center',
-      justifyContent: 'center'
-    });
-
-    const btn = (label) => {
-      const b = document.createElement('button');
-      b.textContent = label;
-      Object.assign(b.style, {
-        cursor: 'pointer',
-        padding: '12px 16px',
-        borderRadius: '12px',
-        border: '2px solid #51cf66',
-        background: '#112143',
-        color: 'white',
-        fontWeight: 700
-      });
-      b.onmouseenter = () => b.style.transform = 'translateY(-2px)';
-      b.onmouseleave = () => b.style.transform = 'translateY(0)';
-      return b;
-    };
-
-    const replay = btn('Replay Level');
-    replay.onclick = () => {
-      overlay.style.display = 'none';
-      // Reload current level index
-      const idx = this.levelManager?.currentIndex ?? 0;
-      this.loadLevel(idx);
-      // Re-enable input
-      this.input?.setEnabled?.(true);
-    };
-
-    const toLevelButtonsWrap = document.createElement('div');
-    Object.assign(toLevelButtonsWrap.style, { display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' });
-
-    const levelsArray = this._getAvailableLevels();
-    for (const lvl of levelsArray) {
-      const b = btn(`Go to: ${lvl.name || lvl.id}`);
-      b.onclick = () => {
-        overlay.style.display = 'none';
-        const idx = this._findLevelIndexById(lvl.id);
-        if (idx >= 0) this.loadLevel(idx);
-        this.input?.setEnabled?.(true);
-      };
-      toLevelButtonsWrap.appendChild(b);
+    
+    // Enable shadows only on the closest star, disable on all others
+    for (const star of starLights) {
+      const shouldCastShadow = star.component === closestStar;
+      star.component.setCastShadow(shouldCastShadow);
     }
-
-    const hint = document.createElement('div');
-    hint.textContent = 'Press N to open the Level Picker any time';
-    Object.assign(hint.style, { marginTop: '10px', opacity: .65, fontSize: '12px' });
-
-    actions.appendChild(replay);
-    actions.appendChild(toLevelButtonsWrap);
-    card.appendChild(title);
-    card.appendChild(subtitle);
-    card.appendChild(actions);
-    card.appendChild(hint);
-    overlay.appendChild(card);
-    document.body.appendChild(overlay);
-
-    this._victoryOverlay = overlay;
-  }
-
-  _showVictoryOverlay() {
-    this._ensureVictoryOverlay();
-    if (this._victoryOverlay) {
-      this._victoryOverlay.style.display = 'flex';
+    
+    // Update shadow map when switching stars
+    if (closestStar !== this.lastClosestStar) {
+      this.lastClosestStar = closestStar;
+      this.renderer.shadowMap.needsUpdate = true;
     }
-  }
-
-  /* ===========================
-     Level Picker overlay
-     =========================== */
-
-  _ensureLevelPicker() {
-    if (this._levelPicker) return;
-
-    const picker = document.createElement('div');
-    Object.assign(picker.style, {
-      position: 'fixed',
-      inset: 0,
-      display: 'none',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,.75))',
-      zIndex: 9998
-    });
-
-    const card = document.createElement('div');
-    Object.assign(card.style, {
-      width: 'min(92vw, 640px)',
-      borderRadius: '18px',
-      border: '3px solid #4dabf7',
-      background: '#0b1222',
-      color: 'white',
-      padding: '22px',
-      boxShadow: '0 20px 60px rgba(0,0,0,.55)',
-      fontFamily: 'system-ui, sans-serif',
-      textAlign: 'center'
-    });
-
-    const title = document.createElement('div');
-    title.textContent = 'Choose a Level';
-    Object.assign(title.style, { fontSize: '26px', fontWeight: 800, marginBottom: '8px' });
-
-    const grid = document.createElement('div');
-    Object.assign(grid.style, {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-      gap: '10px',
-      marginTop: '12px'
-    });
-
-    const levelsArray = this._getAvailableLevels();
-    levelsArray.forEach((lvl) => {
-      const b = document.createElement('button');
-      b.textContent = `${lvl.name || lvl.id}`;
-      Object.assign(b.style, {
-        cursor: 'pointer',
-        padding: '18px 12px',
-        borderRadius: '14px',
-        border: '2px solid #4dabf7',
-        background: '#142647',
-        color: 'white',
-        fontWeight: 700
-      });
-      b.onclick = () => {
-        picker.style.display = 'none';
-        const idx = this._findLevelIndexById(lvl.id);
-        if (idx >= 0) this.loadLevel(idx);
-      };
-      grid.appendChild(b);
-    });
-
-    const hint = document.createElement('div');
-    hint.textContent = 'Press ESC to close • Press N to open this any time';
-    Object.assign(hint.style, { marginTop: '10px', opacity: .65, fontSize: '12px' });
-
-    card.appendChild(title);
-    card.appendChild(grid);
-    card.appendChild(hint);
-    picker.appendChild(card);
-    document.body.appendChild(picker);
-
-    // Close on ESC
-    const onEsc = (e) => { if (e.code === 'Escape') picker.style.display = 'none'; };
-    window.addEventListener('keydown', onEsc);
-
-    this._levelPicker = picker;
-  }
-
-  _showLevelPicker() {
-    this._ensureLevelPicker();
-    if (this._levelPicker) {
-      this._levelPicker.style.display = 'flex';
-    }
-  }
-
-  _getAvailableLevels() {
-    // Prefer explicit level data export if present
-    const listFromExport = Array.isArray(LEVELS) ? LEVELS : (LEVELS?.levels ?? null);
-    const listFromManager = this.levelManager?.levels ?? null;
-
-    const list = listFromExport || listFromManager || [];
-    // If you only want a couple of levels visible, filter here:
-    // return list.filter(l => ['intro','level2'].includes(l.id));
-    return list;
-  }
-
-  _findLevelIndexById(id) {
-    const listFromExport = Array.isArray(LEVELS) ? LEVELS : (LEVELS?.levels ?? null);
-    const listFromManager = this.levelManager?.levels ?? null;
-    const list = listFromExport || listFromManager || [];
-    const idx = list.findIndex(l => l.id === id);
-    return idx >= 0 ? idx : 0;
   }
 }

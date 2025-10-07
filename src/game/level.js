@@ -1,341 +1,415 @@
-// src/game/level.js
 import * as THREE from 'three';
 import { EnemyManager } from './EnemyManager.js';
+
 import { loadGLTFModel } from './gltfLoader.js';
 import { CinematicsManager } from './cinematicsManager.js';
 
-/**
- * Level
- * - Loads GLTF (visuals) and optional manual colliders from levelData
- * - Falls back to procedural geometry if GLTF fails/missing
- * - Always guarantees at least one static ground so player doesn't fall forever
- * - Spawns enemies, exposes getPlatforms() for player collisions
- * - Provides cinematic trigger helpers
- * - Disposes cleanly
- */
+// A Level that can load geometry from GLTF files or fallback to procedural objects
 export class Level {
   constructor(scene, physicsWorld, levelData, showColliders = true, game = null) {
     this.scene = scene;
     this.physicsWorld = physicsWorld;
-    this.data = levelData || {};
-    this.game = game;
-
-    this.showColliders = !!showColliders;
-
-    this.objects = [];        // THREE.Mesh/Group added to scene (visuals)
-    this.physicsBodies = [];  // physics handles from PhysicsWorld
-    this.gltfLoaded = false;
-    this.gltfScene = null;
-
+    this.data = levelData;
+    this.game = game; // Reference to game for passing to enemies
+    this.objects = []; // contains visual meshes
+    this.physicsBodies = []; // contains physics bodies for collision
+    this.showColliders = showColliders;
     this.enemyManager = new EnemyManager(this.scene, this.physicsWorld);
-
-    // Cinematics
-    this.cinematicsManager = new CinematicsManager(this.game);
+    this.gltfLoaded = false;
+    this.gltfScene = null; // Track the GLTF scene for proper cleanup
+    this.cinematicsManager = new CinematicsManager(scene);
   }
 
-  // Async factory to enforce that content is fully built before returning.
+  // Static factory method for async construction
   static async create(scene, physicsWorld, levelData, showColliders = true, game = null) {
     const level = new Level(scene, physicsWorld, levelData, showColliders, game);
     await level._buildFromData();
     return level;
   }
 
-  // ---------------------------------------------------------------------------
-  // BUILD
-  // ---------------------------------------------------------------------------
   async _buildFromData() {
-    const id = this.data.id || '(no-id)';
-    console.log('🏗️ Building level from data:', id);
+    console.log('🏗️ Building level from data:', this.data.id);
     console.log('📋 Level data gltfUrl:', this.data.gltfUrl || 'NOT SET');
-
+    
     let geometryLoaded = false;
-
-    // 1) Try GLTF visuals first
+    
+    // Try to load GLTF geometry first
     if (this.data.gltfUrl) {
       try {
+        console.log('Attempting to load level GLTF:', this.data.gltfUrl);
         await this._loadGLTFGeometry(this.data.gltfUrl);
         this.gltfLoaded = true;
         geometryLoaded = true;
         console.log('✅ GLTF level geometry loaded successfully');
       } catch (error) {
         console.warn('❌ Failed to load GLTF level geometry:', error);
+        console.warn('🔍 Error details:', error.message);
+        console.warn('🔍 Error stack:', error.stack);
         this.gltfLoaded = false;
       }
     }
-
-    // 2) Fallback procedural geometry
+    
+    // Only use fallback if GLTF didn't load
     if (!geometryLoaded) {
       console.log('📦 Using fallback procedural geometry');
       this._buildFallbackGeometry();
     }
-
-    // 3) Always ensure there's at least a ground collider if none exist
-    this._ensureDefaultGround();
-
-    // 4) Enemies
+    
+    // Load enemies (always done regardless of geometry type)
     console.log('👾 Loading enemies...');
     this._loadEnemies();
-
-    // 5) Cinematics
+    
+    // Initialize cinematics
     if (this.data.cinematics) {
       console.log('🎬 Loading cinematics...');
       this.cinematicsManager.loadCinematics(this.data.cinematics);
     }
-
-    console.log(`✅ Level build complete. GLTF loaded: ${this.gltfLoaded}. Visual objects: ${this.objects.length}. Physics bodies: ${this.physicsBodies.length}`);
+    
+    console.log('Level build complete. GLTF loaded:', this.gltfLoaded);
   }
 
   async _loadGLTFGeometry(url) {
     console.log('🔄 Loading GLTF from:', url);
+    
     const gltf = await loadGLTFModel(url);
-
-    if (!gltf || !gltf.scene) {
-      throw new Error(`Invalid GLTF: ${url}`);
+    
+    // Validate GLTF structure
+    if (!gltf) {
+      throw new Error(`GLTF loader returned null/undefined for ${url}`);
     }
-
-    // Add whole GLTF to scene first to keep transforms
-    this.scene.add(gltf.scene);
-    this.gltfScene = gltf.scene;
-
-    // Collect meshes for tagging/association
+    
+    if (!gltf.scene) {
+      throw new Error(`GLTF missing scene property for ${url}`);
+    }
+    
+    let meshCount = 0;
     const meshesToProcess = [];
+    
+    // First pass: collect all meshes without modifying the scene tree
     gltf.scene.traverse((child) => {
       if (child.isMesh) {
         meshesToProcess.push(child);
       }
     });
-    console.log(`🔍 Found ${meshesToProcess.length} meshes in GLTF`);
-
-    const hasManualColliders = Array.isArray(this.data.colliders) && this.data.colliders.length > 0;
-
+    
+    console.log(`  🔍 Found ${meshesToProcess.length} meshes to process`);
+    
+    // Add entire GLTF scene to our scene first
+    this.scene.add(gltf.scene);
+    this.gltfScene = gltf.scene; // Store reference for cleanup
+    
+    // ONLY enable shadows, don't override materials
+    // Also ensure materials support shadows (MeshStandardMaterial, MeshPhongMaterial, etc.)
+    let shadowMeshCount = 0;
+    let materialFixed = 0;
+    
+    gltf.scene.traverse((child) => {
+      if (child.isMesh) {
+        // PERFORMANCE: Only main surfaces receive shadows, smaller objects don't cast
+        const isSmallObject = child.name.toLowerCase().includes('detail') || 
+                             child.name.toLowerCase().includes('decoration');
+        
+        child.castShadow = !isSmallObject; // Small details don't cast shadows
+        child.receiveShadow = true;        // All surfaces receive shadows
+        shadowMeshCount++;
+        
+        // Check if material supports shadows
+        if (child.material) {
+          const material = child.material;
+          
+          // MeshBasicMaterial doesn't support lighting/shadows - convert if needed
+          if (material.isMeshBasicMaterial) {
+            console.warn(`⚠️  Converting MeshBasicMaterial to MeshStandardMaterial for shadows: ${child.name}`);
+            const newMaterial = new THREE.MeshStandardMaterial({
+              map: material.map,
+              color: material.color,
+              transparent: material.transparent,
+              opacity: material.opacity,
+              side: material.side,
+              roughness: 0.8,
+              metalness: 0.2
+            });
+            child.material = newMaterial;
+            materialFixed++;
+          }
+          
+          // Ensure the material is set up for shadows
+          if (material.isMeshStandardMaterial || material.isMeshPhongMaterial) {
+            // Material already supports shadows - just verify it's configured
+            material.needsUpdate = true;
+          }
+        }
+      }
+    });
+    
+    console.log(`✅ Shadows enabled for ${shadowMeshCount} level meshes`);
+    if (materialFixed > 0) {
+      console.log(`🔧 Fixed ${materialFixed} materials for shadow compatibility`);
+    }
+    
+    // Check if we have manual colliders defined
+    const hasManualColliders = this.data.colliders && this.data.colliders.length > 0;
+    
     if (hasManualColliders) {
       console.log('🎯 Using manual colliders from level data');
       this._loadManualColliders(meshesToProcess);
     } else {
-      console.log('🖼️ No manual colliders defined — adding visuals only (no physics from GLTF)');
+      console.log('🖼️ No colliders defined in level data - rendering meshes only (no physics)');
       this._loadVisualsOnly(meshesToProcess);
     }
-  }
-
-  _loadManualColliders(meshesToProcess) {
-    // Tag visuals
-    for (const mesh of meshesToProcess) {
-      mesh.userData.type = 'gltf';
-      this.objects.push(mesh);
+    
+    console.log(`✅ GLTF processing complete: ${meshesToProcess.length} meshes, ${this.physicsBodies.length} physics bodies`);
+    if (this.physicsBodies.length === 0) {
+      console.log(`💡 Tip: Use the editor to create manual colliders for physics interaction`);
     }
-
-    // Build physics by definitions
-    for (const def of this.data.colliders) {
-      try {
-        console.log(`  🎯 Creating manual collider: ${def.id || '(no-id)'}`);
-        const body = this._createPhysicsBodyFromDefinition(def);
-        if (!body) continue;
-        this.physicsBodies.push(body);
-
-        // Associate matching mesh (optional)
-        const match = meshesToProcess.find(m =>
-          m.name === def.meshName ||
-          (def.meshName && m.name?.toLowerCase() === def.meshName.toLowerCase())
+  }
+  
+  _loadManualColliders(meshesToProcess) {
+    // Add all meshes to objects array for visual representation
+    for (const child of meshesToProcess) {
+      this.objects.push(child);
+      child.userData.type = 'gltf';
+    }
+    
+    // Create physics bodies from manual collider definitions
+    for (const colliderDef of this.data.colliders) {
+      console.log(`  🎯 Creating manual collider: ${colliderDef.id}`);
+      
+      const physicsBody = this._createPhysicsBodyFromDefinition(colliderDef);
+      if (physicsBody) {
+        this.physicsBodies.push(physicsBody);
+        
+        // Try to associate with corresponding mesh
+        const associatedMesh = meshesToProcess.find(mesh => 
+          mesh.name === colliderDef.meshName || 
+          mesh.name.toLowerCase() === colliderDef.meshName?.toLowerCase()
         );
-        if (match) {
-          match.userData.physicsBody = body;
-          match.userData.manualCollider = true;
+        
+        if (associatedMesh) {
+          associatedMesh.userData.physicsBody = physicsBody;
+          associatedMesh.userData.manualCollider = true;
         }
-      } catch (e) {
-        console.warn('⚠️ Failed to create manual collider:', def, e);
       }
     }
   }
-
+  
   _loadVisualsOnly(meshesToProcess) {
-    for (const mesh of meshesToProcess) {
-      mesh.userData.type = 'gltf';
-      mesh.userData.visualOnly = true;
-      this.objects.push(mesh);
+    // Add all meshes to objects array for visual representation only
+    // No physics bodies will be created
+    for (const child of meshesToProcess) {
+      console.log(`  🖼️ Adding visual mesh: ${child.name || 'unnamed'} (no physics)`);
+      this.objects.push(child);
+      child.userData.type = 'gltf';
+      child.userData.visualOnly = true; // Mark as visual-only for debugging
     }
     console.log(`📝 Added ${meshesToProcess.length} visual meshes without physics bodies`);
   }
-
+  
+  _loadAutoGeneratedColliders(meshesToProcess) {
+    // Second pass: process each mesh safely (original behavior)
+    for (const child of meshesToProcess) {
+      console.log(`  📦 Processing mesh: ${child.name || 'unnamed'}`);
+      
+      this.objects.push(child);
+      
+      // Determine collision detection options based on mesh name
+      const meshName = child.name.toLowerCase();
+      const collisionOptions = {
+        useAccurateCollision: meshName.includes('complex') || 
+                             meshName.includes('detailed') || 
+                             meshName.includes('trimesh') ||
+                             meshName.includes('accurate'),
+        forceBoxCollider: meshName.includes('box') || 
+                         meshName.includes('simple') ||
+                         meshName.includes('basic')
+      };
+      
+      // Determine material type based on mesh name
+      let materialType = 'ground'; // Default
+      if (meshName.includes('wall') || meshName.includes('barrier') || meshName.includes('fence')) {
+        materialType = 'wall';
+      } else if (meshName.includes('platform') || meshName.includes('ledge')) {
+        materialType = 'platform';
+      }
+      
+      // Add mesh to physics world as static collision body with improved collision detection
+      const physicsBody = this.physicsWorld.addStaticMesh(child, materialType, collisionOptions);
+      if (physicsBody) {
+        this.physicsBodies.push(physicsBody);
+        child.userData.physicsBody = physicsBody;
+      }
+      
+      // Tag as GLTF geometry
+      child.userData.type = 'gltf';
+      child.userData.isCollider = child.name.toLowerCase().includes('collider') || 
+                                 child.name.toLowerCase().includes('collision');
+    }
+  }
+  
   _createPhysicsBodyFromDefinition(colliderDef) {
-    const { type, position = [0, 0, 0], size = [1, 1, 1], rotation = [0, 0, 0], materialType = 'ground' } = colliderDef;
-
-    const pos = new THREE.Vector3(position[0], position[1], position[2]);
-
-    if (type === 'box') {
-      const half = new THREE.Vector3(size[0], size[1], size[2]);
-      return this.physicsWorld.addStaticBox(pos, half, materialType, rotation);
+    try {
+      const { type, position, size, rotation, materialType = 'ground' } = colliderDef;
+      
+      // Log rotation info for debugging
+      if (rotation && (rotation[0] !== 0 || rotation[1] !== 0 || rotation[2] !== 0)) {
+        console.log(`🔄 Creating rotated collider ${colliderDef.id}: rotation [${rotation[0]}, ${rotation[1]}, ${rotation[2]}] degrees`);
+      }
+      
+      if (type === 'box') {
+        return this.physicsWorld.addStaticBox(
+          new THREE.Vector3(position[0], position[1], position[2]),
+          new THREE.Vector3(size[0], size[1], size[2]),
+          materialType,
+          rotation // Pass rotation to physics world
+        );
+      } else if (type === 'sphere') {
+        return this.physicsWorld.addStaticSphere(
+          new THREE.Vector3(position[0], position[1], position[2]),
+          size[0], // radius
+          materialType,
+          rotation // Pass rotation to physics world
+        );
+      } else if (type === 'capsule') {
+        console.warn(`Capsule colliders are not yet supported`);
+        return null;
+      }
+      
+      console.warn(`Unknown collider type: ${type}`);
+      return null;
+    } catch (error) {
+      console.error(`Failed to create physics body for collider ${colliderDef.id}:`, error);
+      return null;
     }
-
-    if (type === 'sphere') {
-      const radius = size[0] || 1;
-      return this.physicsWorld.addStaticSphere(pos, radius, materialType, rotation);
-    }
-
-    console.warn(`Unknown collider type: ${type}`);
-    return null;
   }
 
   _buildFallbackGeometry() {
-    const src = this.data.fallbackObjects || this.data.objects || [];
-    console.log('🔨 Building fallback geometry (count):', src.length);
-
-    const hasManualColliders = Array.isArray(this.data.colliders) && this.data.colliders.length > 0;
-    const createPhysics = hasManualColliders;
-
+    const objectsToProcess = this.data.fallbackObjects || this.data.objects || [];
+    console.log('🔨 Building fallback procedural geometry, total objects:', objectsToProcess.length);
+    
+    // Check if we should create physics bodies based on colliders definition
+    const hasManualColliders = this.data.colliders && this.data.colliders.length > 0;
+    const createPhysics = hasManualColliders; // Only create physics if colliders are defined
+    
     if (!createPhysics) {
-      console.log('🖼️ No colliders in level data — fallback meshes will be visual-only');
+      console.log('🖼️ No colliders defined - creating fallback geometry without physics');
     }
-
-    for (const obj of src) {
+    
+    for (const obj of objectsToProcess) {
       if (obj.type === 'box') {
+        console.log(`  📦 Creating fallback box at [${obj.position}] size [${obj.size}]${createPhysics ? ' with physics' : ' (visual only)'}`);
         const geom = new THREE.BoxGeometry(obj.size[0], obj.size[1], obj.size[2]);
         const mat = new THREE.MeshStandardMaterial({ color: obj.color ?? 0x808080 });
         const mesh = new THREE.Mesh(geom, mat);
         mesh.position.set(obj.position[0], obj.position[1], obj.position[2]);
         mesh.userData.type = 'box';
-        if (!createPhysics) mesh.userData.visualOnly = true;
-
+        
+        if (!createPhysics) {
+          mesh.userData.visualOnly = true; // Mark as visual-only for debugging
+        }
+        
         this.scene.add(mesh);
         this.objects.push(mesh);
 
+        // Only add physics body if colliders are defined in level data
         if (createPhysics) {
-          const body = this.physicsWorld.addStaticMesh(mesh);
-          if (body) {
-            this.physicsBodies.push(body);
-            mesh.userData.physicsBody = body;
+          const physicsBody = this.physicsWorld.addStaticMesh(mesh);
+          if (physicsBody) {
+            this.physicsBodies.push(physicsBody);
+            mesh.userData.physicsBody = physicsBody;
           }
         }
       }
-      // TODO: support more primitive types if you add them to levelData
+      // extendable: add other object types here (spheres, triggers, etc.)
     }
+    
+    console.log(`✅ Fallback geometry complete: ${this.objects.length} objects, ${this.physicsBodies.length} physics bodies`);
   }
 
-  /**
-   * Ensure there's a basic ground if no physics bodies exist at all.
-   * Prevents "fall forever" when GLTF has no colliders and fallback had none.
-   */
-  _ensureDefaultGround() {
-    if (this.physicsBodies.length > 0) return;
-
-    const size = 200;
-    const groundGeom = new THREE.BoxGeometry(size, 2, size);
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-    const ground = new THREE.Mesh(groundGeom, groundMat);
-    ground.position.set(0, -1, 0);
-    ground.receiveShadow = true;
-    ground.userData.type = 'auto-ground';
-
-    this.scene.add(ground);
-    this.objects.push(ground);
-
-    const body = this.physicsWorld.addStaticMesh(ground, 'ground');
-    if (body) {
-      this.physicsBodies.push(body);
-      ground.userData.physicsBody = body;
-    }
-    console.log('🟫 Added default ground collider (safety net)');
-  }
-
-  // ---------------------------------------------------------------------------
-  // ENEMIES
-  // ---------------------------------------------------------------------------
   _loadEnemies() {
-    if (!Array.isArray(this.data.enemies) || this.data.enemies.length === 0) return;
-
-    for (const ed of this.data.enemies) {
-      try {
-        const opts = { ...ed, game: this.game };
-        this.enemyManager.spawn(ed.type, opts);
-      } catch (e) {
-        console.warn('Failed to spawn enemy', ed, e);
+    // Spawn enemies if defined in level data
+    if (this.data.enemies && Array.isArray(this.data.enemies)) {
+      for (const ed of this.data.enemies) {
+        try {
+          // Pass game reference to enemies through options
+          const enemyOptions = { ...ed, game: this.game };
+          this.enemyManager.spawn(ed.type, enemyOptions);
+        } catch (e) {
+          console.warn('Failed to spawn enemy', ed, e);
+        }
       }
-    }
-    console.log(`👾 Loaded ${this.data.enemies.length} enemies`);
-  }
-
-  // ---------------------------------------------------------------------------
-  // TICK
-  // ---------------------------------------------------------------------------
-  update(delta = 1 / 60, player = null, platforms = []) {
-    if (this.enemyManager) {
-      const plats = platforms && platforms.length ? platforms : this.getPlatforms();
-      this.enemyManager.update(delta, player, plats);
+      console.log(`Loaded ${this.data.enemies.length} enemies`);
     }
   }
 
-  // For player collisions we prefer objects that actually have physics.
-  getPlatforms() {
-    const withBodies = this.objects.filter(o => o.userData?.physicsBody);
-    if (withBodies.length > 0) return withBodies;
-    // Fallback to all objects (safe)
-    return this.objects;
+  update(delta = 1/60, player = null, platforms = []) {
+    // Update enemies with physics-based collision detection
+    if (this.enemyManager) this.enemyManager.update(delta, player, platforms.length ? platforms : this.getPlatforms());
   }
 
   toggleColliders(v) {
-    this.showColliders = !!v;
-    // Visual debug is owned by physics engine’s debug drawer.
+    this.showColliders = v;
+    // Physics bodies don't have visual helpers in the new system
+    // Collision visualization is handled by the physics engine debug rendering
   }
 
-  // ---------------------------------------------------------------------------
-  // CINEMATICS helpers (callable from Game)
-  // ---------------------------------------------------------------------------
-  triggerLevelStartCinematic(/* camera, player */) {
-    if (this.cinematicsManager) this.cinematicsManager.playCinematic('onLevelStart');
-  }
-  triggerEnemyDefeatCinematic(/* camera, player */) {
-    if (this.cinematicsManager) this.cinematicsManager.playCinematic('onEnemyDefeat');
-  }
-  triggerLevelCompleteCinematic(/* camera, player */) {
-    if (this.cinematicsManager) this.cinematicsManager.playCinematic('onLevelComplete');
-  }
-  getCinematicsManager() { return this.cinematicsManager; }
-  getEnemies() { return this.enemyManager ? this.enemyManager.enemies : []; }
-
-  // ---------------------------------------------------------------------------
-  // DISPOSE
-  // ---------------------------------------------------------------------------
   dispose() {
-    try {
-      // Remove GLTF scene (first, in case contained meshes are also in objects)
-      if (this.gltfScene) {
-        this.scene.remove(this.gltfScene);
-        this._disposeObject3DDeep(this.gltfScene);
-        this.gltfScene = null;
+    // Remove visual meshes from scene
+    this.objects.forEach(m => this.scene.remove(m));
+    
+    // Remove physics bodies from physics world
+    this.physicsBodies.forEach(body => {
+      if (body) {
+        this.physicsWorld.removeBody(body);
       }
+    });
+    
+    // Clear arrays
+    
+    // Remove GLTF scene if it exists
+    if (this.gltfScene) {
+      this.scene.remove(this.gltfScene);
+      this.gltfScene = null;
+    }
+    
+    this.objects = [];
+    this.physicsBodies = [];
+    
+    // Dispose managers
+    if (this.enemyManager) { this.enemyManager.dispose(); this.enemyManager = null; }
+    if (this.cinematicsManager) { this.cinematicsManager.dispose(); this.cinematicsManager = null; }
+  }
 
-      // Remove visual objects
-      for (const obj of this.objects) {
-        this.scene.remove(obj);
-        this._disposeObject3DDeep(obj);
-      }
-      this.objects = [];
+  getPlatforms() {
+    // For player collisions we treat all objects as potential colliders
+    return this.objects;
+  }
+  
 
-      // Remove physics bodies
-      for (const body of this.physicsBodies) {
-        if (body) this.physicsWorld.removeBody(body);
-      }
-      this.physicsBodies = [];
 
-      // Managers
-      if (this.enemyManager) { this.enemyManager.dispose?.(); this.enemyManager = null; }
-      if (this.cinematicsManager) { this.cinematicsManager.dispose?.(); this.cinematicsManager = null; }
-    } catch (e) {
-      console.warn('Level.dispose encountered an issue:', e);
+  // Cinematic triggers
+  triggerLevelStartCinematic(camera, player) {
+    if (this.cinematicsManager) {
+      this.cinematicsManager.playCinematic('onLevelStart', camera, player);
     }
   }
 
-  _disposeObject3DDeep(obj) {
-    obj.traverse((n) => {
-      if (n.isMesh) {
-        if (n.geometry) n.geometry.dispose?.();
-        if (n.material) {
-          if (Array.isArray(n.material)) {
-            n.material.forEach(m => m?.dispose?.());
-          } else {
-            n.material.dispose?.();
-          }
-        }
-      }
-    });
+  triggerEnemyDefeatCinematic(camera, player) {
+    if (this.cinematicsManager) {
+      this.cinematicsManager.playCinematic('onEnemyDefeat', camera, player);
+    }
+  }
+
+  triggerLevelCompleteCinematic(camera, player) {
+    if (this.cinematicsManager) {
+      this.cinematicsManager.playCinematic('onLevelComplete', camera, player);
+    }
+  }
+
+  getCinematicsManager() {
+    return this.cinematicsManager;
+  }
+
+  getEnemies() {
+    return this.enemyManager ? this.enemyManager.enemies : [];
   }
 }
