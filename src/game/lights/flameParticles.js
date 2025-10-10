@@ -4,9 +4,18 @@ import { LightComponent } from '../lightComponent.js';
 export class FlameParticles extends LightComponent {
     static noiseTexture = null;
     static alphaTexture = null;
-    static sharedClock = new THREE.Clock(true);
+    static sharedClock = null;
+    
     constructor(props = {}) {
         super(props);
+        
+        // Initialize shared clock on first instance
+        if (!FlameParticles.sharedClock) {
+            FlameParticles.sharedClock = new THREE.Clock();
+            FlameParticles.sharedClock.start();
+            console.log('🔥 Flame clock started');
+        }
+        
         this.flameMesh = null;
         this.particleSystem = null;
         this.flameLight = null;
@@ -575,6 +584,11 @@ export class FlameParticles extends LightComponent {
 
     update(delta) {
         if (!this.flameMesh || !this.particleSystem) return;
+        
+        if (!FlameParticles.sharedClock) {
+            console.warn('🔥 Flame clock not initialized!');
+            return;
+        }
         
         this.time = FlameParticles.sharedClock.getElapsedTime();
         

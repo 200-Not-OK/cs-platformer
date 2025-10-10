@@ -915,6 +915,7 @@ export class Game {
     const list = (levelData && levelData.lights) ? levelData.lights : null;
     if (!list) return;
     // list is array of either string keys or objects { key, props }
+    let lightCounter = {}; // Track count of each light type for unique keys
     for (const item of list) {
       let key, props;
       if (typeof item === 'string') { key = item; props = {}; }
@@ -924,7 +925,10 @@ export class Game {
         console.warn('Unknown light module key in level data:', key);
         continue;
       }
-      this.lights.add(key, Module, props);
+      // Generate unique key for each instance (e.g., "FlameParticles_0", "FlameParticles_1")
+      if (!lightCounter[key]) lightCounter[key] = 0;
+      const uniqueKey = `${key}_${lightCounter[key]++}`;
+      this.lights.add(uniqueKey, Module, props);
     }
   }
 
