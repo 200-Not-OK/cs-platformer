@@ -12,7 +12,6 @@
     "vite": "^7.1.7"
   },
   "dependencies": {
-    "@wolffo/three-fire": "^1.1.0",
     "cannon-es": "^0.20.0",
     "cannon-es-debugger": "^1.0.0",
     "gsap": "^3.13.0",

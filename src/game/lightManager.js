@@ -7,15 +7,13 @@ export class LightManager {
     this._instances = new Map();
   }
 
-  async add(key, ComponentClass, props = {}) {
+  add(key, ComponentClass, props = {}) {
     if (this._instances.has(key)) return this._instances.get(key);
     const inst = new ComponentClass(props);
     if (!(inst instanceof LightComponent)) {
       // allow either subclassing LightComponent or a plain object with mount/unmount
     }
-    if (inst.mount) {
-      await inst.mount(this.scene);
-    }
+    inst.mount && inst.mount(this.scene);
     this._instances.set(key, inst);
     return inst;
   }
@@ -38,10 +36,5 @@ export class LightManager {
     for (const inst of this._instances.values()) {
       inst.update && inst.update(delta);
     }
-  }
-  
-  // Get all light instances for shadow management
-  getAll() {
-    return Object.fromEntries(this._instances);
   }
 }
