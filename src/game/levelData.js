@@ -71,8 +71,8 @@ export const levels = [
             0.3
           ]
         ],
-        "speed": 10,
-        "chaseRange": 6,
+        "speed": 8,
+        "chaseRange": 10,
         "health": 35
       }
     ],
@@ -1171,8 +1171,8 @@ onLevelComplete: {
           [145, 1.4, -35]
         ],
         "health": 35,
-        "speed": 10,
-        "chaseRange": 6,
+        "speed": 8,
+        "chaseRange": 10,
         "modelUrl": "src/assets/enemies/snake/scene.gltf"
       },
       {
@@ -1185,8 +1185,8 @@ onLevelComplete: {
           [156.97, 1.4, 23.12]
         ],
         "health": 35,
-        "speed": 10,
-        "chaseRange": 6,
+        "speed": 8,
+        "chaseRange": 10,
         "modelUrl": "src/assets/enemies/snake/scene.gltf"
       },
       {
@@ -1199,8 +1199,8 @@ onLevelComplete: {
           [127.02, 1.4, 121.51]
         ],
         "health": 35,
-        "speed": 10,
-        "chaseRange": 6,
+        "speed": 8,
+        "chaseRange": 10,
         "modelUrl": "src/assets/enemies/snake/scene.gltf"
       },
       {
@@ -1213,8 +1213,8 @@ onLevelComplete: {
           [93.65, 1.4, 160.63]
         ],
         "health": 35,
-        "speed": 10,
-        "chaseRange": 6,
+        "speed": 8,
+        "chaseRange": 10,
         "modelUrl": "src/assets/enemies/snake/scene.gltf"
       },
       {
@@ -1227,8 +1227,8 @@ onLevelComplete: {
           [225.46, 1.4, 64.91]
         ],
         "health": 35,
-        "speed": 10,
-        "chaseRange": 6,
+        "speed": 8,
+        "chaseRange": 10,
         "modelUrl": "src/assets/enemies/snake/scene.gltf"
       },
       {
@@ -1241,8 +1241,8 @@ onLevelComplete: {
           [0.37, 1.4, 174.30]
         ],
         "health": 35,
-        "speed": 10,
-        "chaseRange": 6,
+        "speed": 8,
+        "chaseRange": 10,
         "modelUrl": "src/assets/enemies/snake/scene.gltf"
       },
       {
@@ -1255,8 +1255,8 @@ onLevelComplete: {
           [80.63, 1.4, -12.35]
         ],
         "health": 35,
-        "speed": 10,
-        "chaseRange": 6,
+        "speed": 8,
+        "chaseRange": 10,
         "modelUrl": "src/assets/enemies/snake/scene.gltf"
       },
       {
@@ -1294,7 +1294,7 @@ onLevelComplete: {
           ]
         ],
         "health": 500,
-        "speed": 5,
+        "speed": 3,
         "chaseRange": 12
       }
     ],

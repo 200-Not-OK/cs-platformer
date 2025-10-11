@@ -24,8 +24,8 @@ export class SnakeEnemy extends EnemyBase {
     this.attackRange = 2.5; // Increased attack range to account for collider sizes
     this.chaseRange = options.chaseRange ?? 6.0;
     this.patrolSpeed = 0.8;
-    this.chaseSpeed = 1.7; // Reduced from 2.2 to make chase less aggressive
-    this.attackCooldown = 2500; // 2.5 seconds between attacks
+    this.chaseSpeed = 2.2; // Reduced from 2.2 to make chase less aggressive
+    this.attackCooldown = 3000; // 3 seconds between attacks
     this.lastAttackTime = 0;
     this.attackTargetLocked = false; // Track if attack is committed
     
@@ -513,7 +513,7 @@ export class SnakeEnemy extends EnemyBase {
       // Deal damage to player if attack was committed (started in range)
       if (this.attackTargetLocked) {
         if (player.takeDamage) {
-          player.takeDamage(15);
+          player.takeDamage(7);
           console.log('🐍 Snake bite hit! Player took 15 damage (attack was committed)');
         }
         this.attackTargetLocked = false; // Reset the lock
