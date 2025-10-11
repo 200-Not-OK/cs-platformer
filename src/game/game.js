@@ -74,6 +74,24 @@ export class Game {
     //this.activeCamera = this.freeCameraObject;
     // Enable alwaysTrackMouse for third-person camera
     this.input.alwaysTrackMouse = true;
+    
+    // Skip intro/cinematic with K key
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyK' && this.cinematicLock) {
+        console.log('⏭️ Skipping intro/cinematic with K key');
+        this.cinematicLock = false;
+        if (this.input) this.input.setEnabled(true);
+        if (this.level?.cinematicsManager) {
+          this.level.cinematicsManager.skipRequested = true;
+        }
+        // Force camera back to third person
+        if (this.thirdCameraObject) {
+          this.activeCamera = this.thirdCameraObject;
+        }
+        this.input.alwaysTrackMouse = true;
+      }
+    });
+    
     // Request pointer lock for third-person/first-person camera when the user clicks
     // Ignore clicks originating from the pause menu so the Resume button's click
     // doesn't accidentally trigger a second request or race with the resume flow.
@@ -897,6 +915,7 @@ export class Game {
     const list = (levelData && levelData.lights) ? levelData.lights : null;
     if (!list) return;
     // list is array of either string keys or objects { key, props }
+    let lightCounter = {}; // Track count of each light type for unique keys
     for (const item of list) {
       let key, props;
       if (typeof item === 'string') { key = item; props = {}; }
@@ -906,7 +925,10 @@ export class Game {
         console.warn('Unknown light module key in level data:', key);
         continue;
       }
-      this.lights.add(key, Module, props);
+      // Generate unique key for each instance (e.g., "FlameParticles_0", "FlameParticles_1")
+      if (!lightCounter[key]) lightCounter[key] = 0;
+      const uniqueKey = `${key}_${lightCounter[key]++}`;
+      this.lights.add(uniqueKey, Module, props);
     }
   }
 

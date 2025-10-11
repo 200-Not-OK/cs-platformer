@@ -6,7 +6,6 @@ export class Player {
   constructor(scene, physicsWorld, options = {}) {
     this.scene = scene;
     this.physicsWorld = physicsWorld;
-    this.game = options.game; // Reference to the game instance for death handling
     
     // Player settings
     this.speed = options.speed ?? 8;
@@ -86,6 +85,13 @@ export class Player {
     this.collisionContacts = []; // Store current collision contacts
     this.wallNormals = []; // Store wall normal vectors for sliding
     
+    // Character-only lighting (illuminates only the player model)
+    this.characterLight = new THREE.PointLight(0xFFFFFF, 50, 15); // Very bright white light, large range
+    this.characterLight.position.set(0, 3, 0); // Position above player for better coverage
+    this.characterLight.castShadow = false; // No shadows, just illumination
+    this.mesh.add(this.characterLight); // Attach to player so it follows
+    console.log('💡 Character self-illumination light added');
+    
     // Load 3D model first, then create physics body
     this.loadModel();
   }
@@ -132,6 +138,38 @@ export class Player {
           
           // Add the loaded model to our mesh group
           this.mesh.add(gltf.scene);
+          
+          // Enable shadow casting and receiving for the character
+          gltf.scene.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;    // Character casts shadows
+              child.receiveShadow = true;  // Character receives shadows from environment
+              child.frustumCulled = false; // Prevent disappearing due to frustum culling
+              
+              // Ensure material is stable and doesn't flicker
+              if (child.material) {
+                child.material.depthWrite = true;
+                child.material.depthTest = true;
+                child.material.needsUpdate = true;
+                
+                // Remove emissive - use point light only
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(mat => {
+                    mat.depthWrite = true;
+                    mat.depthTest = true;
+                    mat.transparent = false;
+                    mat.needsUpdate = true;
+                  });
+                } else {
+                  child.material.transparent = false;
+                }
+              }
+              
+              // Set render order to ensure it's drawn consistently
+              child.renderOrder = 1;
+            }
+          });
+          console.log('✅ Character shadow casting enabled, frustum culling disabled, and materials stabilized');
           
           // Setup animations if available
           if (gltf.animations && gltf.animations.length > 0) {
@@ -500,13 +538,7 @@ export class Player {
     if (this.actions.death) {
       this.playAction(this.actions.death, 0.2, false);
     }
-    
-    // Trigger game death menu after a short delay to let animation start
-    if (this.game && this.game.showDeathMenu) {
-      setTimeout(() => {
-        this.game.showDeathMenu();
-      }, 1000); // 1 second delay to let death animation play
-    }
+    // Can trigger game over, respawn, etc.
   }
 
   performInteract() {

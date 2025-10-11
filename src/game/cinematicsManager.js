@@ -9,6 +9,7 @@ export class CinematicsManager {
     this.cinematics = {};
     this.isPlaying = false;
     this.current = null;
+    this.skipRequested = false;
 
     this.dialogueUI = null; // caption box
     this._ensureCaptionUI();
@@ -18,12 +19,24 @@ export class CinematicsManager {
     // timers we must clear if cinematic ends early
     this._timers = [];
     this._captionTimer = null;
+
+    // Skip cinematic with K key
+    this._skipKeyHandler = (e) => {
+      if (e.code === 'KeyK' && this.isPlaying) {
+        console.log('🎬 Skipping cinematic...');
+        this.skipRequested = true;
+      }
+    };
+    window.addEventListener('keydown', this._skipKeyHandler);
   }
 
   dispose() {
     this._clearTimers();
     this._hideCaption(true);
     this.dialogueUI = null;
+    if (this._skipKeyHandler) {
+      window.removeEventListener('keydown', this._skipKeyHandler);
+    }
   }
 
   loadCinematics(cinematicsData) {
@@ -38,6 +51,7 @@ export class CinematicsManager {
 
     this.isPlaying = true;
     this.current = key;
+    this.skipRequested = false;
 
     // lock controls
     this.game.cinematicLock = true;
@@ -61,12 +75,19 @@ export class CinematicsManager {
 
       this.isPlaying = false;
       this.current = null;
+      this.skipRequested = false;
     }
   }
 
   // ----------------- SEQUENCE RUNNER -----------------
   async _runSequence(steps) {
     for (const step of steps) {
+      // Check if skip was requested
+      if (this.skipRequested) {
+        console.log('🎬 Cinematic skipped by user');
+        break;
+      }
+
       const { type } = step;
 
       if (type === 'takeCamera') {
